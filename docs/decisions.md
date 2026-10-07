@@ -105,3 +105,44 @@ This document formalizes the architectural decisions made on Day 1. All future i
 - **Context:** Day 1 requires an organized directory structure without cluttering subdirectories with premature placeholder files.
 - **Decision:** The structure places `app/`, `data/`, `models/`, `docs/`, and `tests/` at the root of `d:\Share_market_predictor`. Placeholder files are strictly omitted; `.gitkeep` is used only to preserve required data and model directory paths in Git.
 - **Consequences:** Keeps the project minimal and fully aligned with Ponytail/YAGNI principles.
+
+---
+
+## ADR 14: Environment-Driven Configuration with Zero-Secret Commitment
+- **Status:** Accepted
+- **Context:** Applications need flexible runtime configuration across development, testing, and production without hardcoding values or leaking credentials.
+- **Decision:** Application settings are managed centrally via `app/core/config.py` using standard dataclasses and `python-dotenv`. Default values are restricted strictly to safe, non-sensitive parameters. Secrets must be supplied via environment variables at runtime and are guarded by `.gitignore`.
+- **Consequences:** Configuration is centralized, typed, immutable, and immune to credential leaks in version control.
+
+---
+
+## ADR 15: Centralized Standard-Library Logging Foundation
+- **Status:** Accepted
+- **Context:** Modules across ingestion, prediction, and API need uniform log formatting, timestamps, and log-level control without adding heavy third-party telemetry dependencies.
+- **Decision:** Logging is implemented centrally in `app/core/logging_config.py` using Python's standard `logging` library. Modules obtain namespaced loggers via `get_logger(__name__)`.
+- **Consequences:** Zero external dependencies, consistent output formatting across all future modules, and clean debuggability.
+
+---
+
+## ADR 16: Canonical Internal Schemas Separated from External Providers
+- **Status:** Accepted
+- **Context:** Financial data providers (NSE, Yahoo Finance, brokers) use wildly differing field names, timestamp formats, and JSON structures. Direct usage throughout downstream code causes tight coupling and fragile pipelines.
+- **Decision:** All internal pipelines consume only canonical schema contracts (`app/core/schemas.py`). External payloads must be mapped into canonical contracts immediately at the adapter boundary.
+- **Consequences:** Downstream feature engineering and modeling are insulated from upstream provider format changes.
+
+---
+
+## ADR 17: Strict Preservation of Timestamps and Data Provenance
+- **Status:** Accepted
+- **Context:** Time-series models and point-in-time prediction verification depend on knowing exactly when an observation occurred and where it originated.
+- **Decision:** All canonical market data structures require explicit `timestamp` (as valid `datetime` objects) and non-empty `source` tags.
+- **Consequences:** Prevents temporal leakage, eliminates look-ahead bias, and provides an immutable audit trail for every data point.
+
+---
+
+## ADR 18: Strict Structural and Domain Validation on Market Contracts
+- **Status:** Accepted
+- **Context:** Corrupted or unphysical market records (negative prices, high lower than low, inverted OHLC relationships) cause silent failures or distorted features in ML models.
+- **Decision:** Canonical contracts enforce domain validation at instantiation time (positive prices, non-negative volume, high >= max(open, close), low <= min(open, close)).
+- **Consequences:** Malformed data fails fast with explicit `ValidationError` before corrupting cached datasets or model training matrices.
+

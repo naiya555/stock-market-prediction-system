@@ -148,3 +148,23 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
 ### 3.14. Controlled Retraining
 - **Role:** Periodic, gatekeeper-managed model updates.
 - **Rules:** Retraining is never automated or unmonitored. Predictions do not immediately feed back into training sets. Models undergo walk-forward backtesting before deployment to the model registry.
+
+---
+
+## 4. Core Primitives & Cross-Cutting Foundation (`app/core/`)
+
+### 4.1. Centralized Configuration (`app/core/config.py`)
+- **Single Source of Truth:** Centralized settings container (`Settings`) managing runtime mode, logging verbosity, timezones (`Asia/Kolkata`), and storage paths.
+- **Environment Driven:** Reads overrides from environment variables and local `.env` files via `python-dotenv`.
+- **Zero-Secret Invariant:** No API keys, passwords, or secrets are hardcoded. Safe defaults are provided only for non-secret values.
+
+### 4.2. Centralized Structured Logging (`app/core/logging_config.py`)
+- **Consistent Format:** Standardized log formatting (`timestamp | level | logger | message`) across all application tiers.
+- **Universal Availability:** Utilized consistently across future collectors, prediction pipelines, API routes, and database operations.
+- **Sanitization:** Loggers are configured strictly to output application state and events, never printing sensitive credentials.
+
+### 4.3. Canonical Data Schema Contracts (`app/core/schemas.py`)
+- **Adapter Invariant:** All future external data adapters (NSE scrapers, broker APIs, news feeds) must normalize external payloads into canonical internal dataclasses (`MarketOHLCV`, `MarketQuote`, `DataSourceMetadata`).
+- **Temporal Integrity:** Every record preserves the explicit point-in-time `timestamp` and source origin `source`.
+- **Physical Validation:** Domain rules (e.g., `high >= max(open, close)`, `low <= min(open, close)`, strictly positive prices) are enforced at contract instantiation, preventing malformed data from reaching downstream modeling layers.
+

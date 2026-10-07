@@ -1,14 +1,26 @@
-"""Indian Stock Market Prediction System - Day 1 Foundation Entry Point."""
+"""Indian Stock Market Prediction System - Main Entry Point."""
 
 import sys
 from pathlib import Path
 
+from app.core.config import get_settings
+from app.core.logging_config import get_logger, setup_logging
+
+logger = get_logger("app.main")
+
 
 def main() -> int:
-    """Verify application foundation and environment readiness."""
+    """Verify application configuration, logging, and environment readiness."""
+    settings = get_settings()
+    setup_logging(settings.log_level)
+
+    logger.info("Initializing %s in %s mode", settings.app_name, settings.environment)
+
     print("Stock Market Prediction System")
     print("Day 1 environment ready")
+    print("Day 2 core foundation ready")
     print(f"Python runtime: {sys.version.split()[0]}")
+    print(f"Environment: {settings.environment}")
     print(f"Project root: {Path(__file__).resolve().parent}")
     return 0
 

@@ -67,3 +67,66 @@ Establish the foundational infrastructure, architecture documentation, environme
 
 ### Next Step (Day 2 Starting Point)
 Configure application environment configurations, core settings, logging primitives, and data schema contracts in `app/core/` to prepare for Phase 2 historical market data integration.
+
+---
+
+## Day 2 - Core Application Foundation
+
+### Goal
+Build the core application foundation required prior to historical market data integration:
+1. Environment-driven application configuration layer.
+2. Centralized structured logging foundation.
+3. Canonical market-data schema contracts with domain and point-in-time validation.
+
+### Work Completed
+1. **Application Configuration (`app/core/config.py`):**
+   - Implemented immutable `Settings` dataclass reading safe defaults and environment variable overrides via `python-dotenv`.
+   - Defined paths (`base_dir`, `data_dir`, `model_dir`), runtime environments, logging level, and timezone (`Asia/Kolkata`).
+   - Created cached singleton retrieval helper `get_settings()`.
+   - Created `.env.example` template with explicit guidance prohibiting secret commits.
+2. **Centralized Logging (`app/core/logging_config.py`):**
+   - Implemented standardized structured logging format (`timestamp | level | logger | message`).
+   - Configured root handler with dynamic log-level support and standard output stream.
+   - Implemented `get_logger(name)` for namespaced logging across all current and future modules.
+3. **Canonical Data Schema Contracts (`app/core/schemas.py`):**
+   - Defined immutable `MarketOHLCV` contract enforcing explicit point-in-time timestamps, non-empty sources, positive prices, non-negative volume, and physical bounds (`high >= max(open, close)`, `low <= min(open, close)`).
+   - Defined immutable `MarketQuote` contract for real-time/latest price quotes.
+   - Defined `DataSourceMetadata` contract for data provenance tracking.
+   - Defined explicit `ValidationError` exception for fast-failure boundary checking.
+4. **Core Package Exports (`app/core/__init__.py`):**
+   - Cleanly exported `Settings`, `get_settings`, `setup_logging`, `get_logger`, `MarketOHLCV`, `MarketQuote`, `DataSourceMetadata`, `ValidationError`.
+5. **Application Entry Point Update (`main.py`):**
+   - Integrated `get_settings()` and `setup_logging()` to verify end-to-end initialization on startup.
+6. **Comprehensive Unit Testing (`tests/test_core.py`):**
+   - Added 16 new test cases covering default settings, environment overrides, singleton caching, logging setup, valid and invalid OHLCV bars, invalid quote rejection, and metadata provenance.
+   - Verified regression: all 4 Day 1 foundation tests continue to pass (20 total tests passing).
+7. **Documentation Updates:**
+   - Updated `README.md` reflecting Day 2 status and current capabilities.
+   - Updated `docs/architecture.md` with Section 4 detailing core primitives.
+   - Updated `docs/decisions.md` with ADRs 14 through 18.
+
+### Validation
+- **Application Startup Execution:**
+  ```powershell
+  & .\.venv\Scripts\python.exe main.py
+  ```
+  *Result:* Exited code 0. Logged initialization and displayed readiness messages.
+- **Automated Test Suite:**
+  ```powershell
+  & .\.venv\Scripts\pytest.exe -v
+  ```
+  *Result:* 20 passed in 0.05s.
+
+### Review
+- **Ponytail / Minimalism Review:** Verified standard library usage (`dataclasses`, `logging`, `pathlib`, `datetime`). Zero unnecessary third-party packages or speculative abstractions added.
+- **Security Check:** Verified no credentials or secrets exist in configuration, source, or test fixtures. `.env` remains strictly ignored by `.gitignore`.
+
+### Git Commit
+- **Commit Message:** `feat: add core application foundation`
+
+### GitHub
+- **Push Status:** PUSHED to `origin/main`
+
+### Next Step (Day 3 Starting Point)
+Begin Phase 2: Historical market data architecture, provider adapter interfaces, and point-in-time data ingestion pipelines for Indian equities.
+

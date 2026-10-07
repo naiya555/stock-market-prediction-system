@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 1: Project Foundation Complete  
+> **Status:** Ongoing Project — Day 2: Core Application Foundation Complete  
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -41,7 +41,7 @@ When fully developed, the end-user workflow will operate as follows:
 ## 3. Major Components
 
 - **`app/api/`**: FastAPI application endpoints and route handlers (planned).
-- **`app/core/`**: Configuration, logging, timestamp validation, and shared primitives.
+- **`app/core/`**: Centralized configuration (`config.py`), logging foundation (`logging_config.py`), and canonical schema contracts (`schemas.py`).
 - **`app/database/`**: Relational database persistence (SQLite initially, PostgreSQL migration path).
 - **`app/market/`**: Market data acquisition, cleaning, technical feature engineering, and market breadth.
 - **`app/news/`**: Financial news ingestion, deduplication, and entity linking.
@@ -52,16 +52,16 @@ When fully developed, the end-user workflow will operate as follows:
 
 ---
 
-## 4. Current Status: Day 1 (Foundation)
+## 4. Current Status: Day 2 (Core Application Foundation)
 
-Day 1 establishes the architectural foundation, development standards, virtual environment, and initial validation suite. No predictive models, mock data, or premature API integrations are present on Day 1.
+Day 2 establishes the core application configuration, logging foundation, and canonical market-data schema contracts required prior to data collection.
 
 ### Current Features
-- Defined 16-phase long-term project roadmap.
-- Comprehensive architectural documentation and architectural decision records (ADRs).
-- Zero-leakage data source planning guide.
-- Configured Python virtual environment and baseline dependency management.
-- Foundation test suite verifying environment integrity and absence of mock data.
+- Defined 16-phase long-term project roadmap and architecture documentation.
+- Centralized, environment-driven configuration layer (`app/core/config.py`) with safe non-secret defaults.
+- Structured application logging system (`app/core/logging_config.py`) with configurable log levels.
+- Canonical market-data contracts (`MarketOHLCV`, `MarketQuote`, `DataSourceMetadata` in `app/core/schemas.py`) enforcing point-in-time timestamps and structural bounds.
+- 20 automated unit tests passing across foundation, settings, logging, and schemas.
 
 ---
 
