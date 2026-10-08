@@ -19,6 +19,7 @@ def main() -> int:
     print("Stock Market Prediction System")
     print("Day 1 environment ready")
     print("Day 2 core foundation ready")
+    print("Day 3 market data foundation ready")
     print(f"Python runtime: {sys.version.split()[0]}")
     print(f"Environment: {settings.environment}")
     print(f"Project root: {Path(__file__).resolve().parent}")

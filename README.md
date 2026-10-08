@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 2: Core Application Foundation Complete  
+> **Status:** Ongoing Project — Day 3: Market-Data Schema + Source Investigation Complete  
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -52,16 +52,20 @@ When fully developed, the end-user workflow will operate as follows:
 
 ---
 
-## 4. Current Status: Day 2 (Core Application Foundation)
+## 4. Current Status: Day 3 (Market-Data Schema + Source Investigation)
 
-Day 2 establishes the core application configuration, logging foundation, and canonical market-data schema contracts required prior to data collection.
+Day 3 defines the market-data layer architecture, source evaluation, and provider contract before historical collection begins on Day 4.
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.
 - Centralized, environment-driven configuration layer (`app/core/config.py`) with safe non-secret defaults.
 - Structured application logging system (`app/core/logging_config.py`) with configurable log levels.
 - Canonical market-data contracts (`MarketOHLCV`, `MarketQuote`, `DataSourceMetadata` in `app/core/schemas.py`) enforcing point-in-time timestamps and structural bounds.
-- 20 automated unit tests passing across foundation, settings, logging, and schemas.
+- Market-data module package (`app/market/` and `app/market/providers/`).
+- Minimal historical provider abstraction (`BaseMarketDataProvider`) decoupling external sources from downstream pipelines.
+- Indian equity source investigation and evaluation cataloged in `docs/data-sources.md`.
+- Selected initial target equity (`BHARTIARTL`) and shortlisted provider for Day 4 (`yfinance` with status `PLANNED / TO BE VERIFIED`).
+- 26 automated unit tests passing across foundation, core settings, logging, canonical schemas, and market provider contracts.
 
 ---
 

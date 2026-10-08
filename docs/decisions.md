@@ -146,3 +146,36 @@ This document formalizes the architectural decisions made on Day 1. All future i
 - **Decision:** Canonical contracts enforce domain validation at instantiation time (positive prices, non-negative volume, high >= max(open, close), low <= min(open, close)).
 - **Consequences:** Malformed data fails fast with explicit `ValidationError` before corrupting cached datasets or model training matrices.
 
+---
+
+## ADR 19: Centralized Canonical Schemas Preserved Without Duplication
+- **Status:** Accepted
+- **Context:** As domain packages like `app/market/` are established, there is a risk of defining competing duplicate dataclasses or models for OHLCV bars.
+- **Decision:** The canonical market-data contracts remain strictly centralized in `app/core/schemas.py`. The `app/market/` package re-exports and consumes these contracts directly rather than declaring duplicate representations.
+- **Consequences:** Eliminates schema fragmentation, guarantees single-point validation, and avoids duplicate type maintenance.
+
+---
+
+## ADR 20: Separation of Historical Collection from Minimal Provider Abstraction
+- **Status:** Accepted
+- **Context:** Implementing concrete data ingestion collectors before establishing contracts risks building over-engineered or source-coupled systems.
+- **Decision:** Establish a minimal abstract provider contract (`BaseMarketDataProvider`) on Day 3 defining `fetch_historical_ohlcv(symbol, start_date, end_date, interval)` without writing any concrete network scrapers, downloads, or collectors today.
+- **Consequences:** Satisfies Ponytail/YAGNI principles, sets clean boundaries between contract design (Day 3) and data collection (Day 4), and isolates provider-specific formats from downstream pipelines.
+
+---
+
+## ADR 21: Verification-First Stance on External Market Data Sources
+- **Status:** Accepted
+- **Context:** Public financial data sources are frequently assumed to have free, stable, and unrestricted APIs, which often breaks upon real deployment due to anti-bot measures, rate limits, or paywalls.
+- **Decision:** No external provider is assumed to have a free, permanent public API without empirical verification. Evaluated sources are explicitly classified with statuses (`VERIFIED`, `PLANNED`, `TO BE VERIFIED`, `NOT SELECTED`). `yfinance` is selected as the primary Day 4 candidate marked `PLANNED / TO BE VERIFIED`, with official NSE Bhavcopy as the benchmark verification reference.
+- **Consequences:** Prevents false architectural assumptions, protects against API surprises, and ensures Day 4 begins with explicit verification tests before data acquisition.
+
+---
+
+## ADR 22: Mandatory Point-in-Time Temporal Integrity and Provenance Guarantees
+- **Status:** Accepted
+- **Context:** Time-series ML models easily suffer from look-ahead bias and data leakage if market records lack unambiguous timestamps or if post-event revisions are used as historical observations.
+- **Decision:** All provider adapters must supply explicit market bar observation `timestamp` and immutable `source` identifiers. Generic labels (e.g., "market_data") are prohibited. Data timestamped after forecast time $T_{pred}$ is strictly excluded from feature extraction.
+- **Consequences:** Eliminates look-ahead bias, supports forensic auditability of past forecasts, and guarantees verifiable out-of-sample backtesting.
+
+

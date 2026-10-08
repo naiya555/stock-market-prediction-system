@@ -102,3 +102,40 @@ This document catalogs the candidate data sources required for the Indian Stock 
    When generating a prediction at $T_{pred}$, all records where `data_available_at > T_pred` are strictly inaccessible to the model.
 3. **Graceful Degradation:**  
    If an external data source experiences downtime, pipelines must fail safely with explicit warning logs without corrupting the historical database.
+
+---
+
+## 11. Day 3 Market Data Source Investigation & Provider Decision
+
+### 11.1. Candidate Source Evaluation
+
+| Source / Provider | Data Type & Granularity | Access Method & Auth | Pricing & Limits | Reliability & Caveats | Symbol Coverage | Status |
+|---|---|---|---|---|---|:---:|
+| **Yahoo Finance (`yfinance`)** | Historical OHLCV (1d, 1wk, 1mo, intraday 1m–60m) | Python package / HTTP REST. No API key required; session cookie/crumb handshake. | Free community access. Rate limits on rapid bursts. | High development utility; unofficial API subject to upstream structure shifts. Must handle corporate adjustments explicitly (`auto_adjust=False`). | Comprehensive Indian equities (`.NS` for NSE, `.BO` for BSE) | **PLANNED / TO BE VERIFIED** |
+| **NSE Official Bhavcopy** | Official EOD settlement OHLCV, deliverable volume, trades (1d) | HTTP archive download from `nseindia.com`. No auth for manual; session headers required for automation. | Free public statutory disclosure. CDN / Akamai bot protection. | Exchange authoritative ground truth. URL schemes change periodically; lacks intraday resolution. | All NSE listed equities | **TO BE VERIFIED** |
+| **Alpha Vantage** | Historical OHLCV (1d, intraday 1m–60m) | REST API. API key required. | Free tier capped at 25 requests/day. Paid plans from $49.99/mo. | Inadequate free throughput for multi-year training datasets. Spotty/delayed Indian equity coverage. | Limited/inconsistent Indian ticker coverage | **NOT SELECTED** |
+| **Indian Broker APIs (Zerodha Kite, Upstox, Angel One)** | Tick-by-tick, historical 1m–1d OHLCV, market depth | Official REST API & WebSockets. API key + Secret + TOTP auth. | Kite: ₹2,000/mo (API) + ₹2,000/mo (historical). Upstox/Angel One: Free tiers for account holders. | High reliability, exchange-grade fidelity. Requires Indian KYC brokerage account and daily token management. | Full NSE/BSE coverage | **PLANNED** (Phase 14 Live) |
+| **Google Finance / Scraping** | Web quotes | HTML scraping. No supported public API. | Free display on web. Scraping strictly prohibited. | Fragile, violates Terms of Service, no reliable historical series API. | Global / Indian | **NOT SELECTED** |
+
+### 11.2. Initial Stock Target: `BHARTIARTL`
+- **Target Equity:** Bharti Airtel Limited (`BHARTIARTL`)
+- **Sector Focus:** Nifty Telecommunications / Nifty 50
+- **Exchange Identifier:** `BHARTIARTL` (NSE), `BHARTIARTL.NS` (Yahoo Finance)
+- **Rationale:** Liquid large-cap constituent representing the telecommunications sector with extensive historical series, active options/futures chains, and substantial news coverage.
+- **Strict Boundary:** No market data for `BHARTIARTL` is fetched or fabricated on Day 3. Real acquisition occurs exclusively in Day 4.
+
+### 11.3. Day 4 Provider Decision
+- **Shortlisted Primary Provider:** **Yahoo Finance (`yfinance`)**
+- **Decision Status:** **PLANNED / TO BE VERIFIED**
+- **Justification:** Offers the lowest friction path for bootstrapping historical daily OHLCV for Indian equities without requiring immediate paid brokerage subscriptions, KYC verification, or complex daily session handshakes.
+- **Verification Requirements for Day 4:**
+  1. Empirically verify network availability and download integrity for `BHARTIARTL.NS`.
+  2. Confirm accurate unadjusted vs. adjusted close handling (`auto_adjust=False`).
+  3. Validate timezone localization from UTC to Indian Standard Time (`Asia/Kolkata`).
+- **Official Ground Truth Fallback:** **NSE Bhavcopy** (Status: **TO BE VERIFIED** for reconciliation and official settlement volume).
+
+### 11.4. Provenance and Temporal Integrity Guarantees
+- Every market record emitted by any provider adapter must be mapped into `app.core.schemas.MarketOHLCV`.
+- Required provenance attributes: `source` (provider name), `timestamp` (market bar time), `symbol` (uppercase ticker).
+- At prediction time $T_{pred}$, temporal leakage is strictly forbidden: $\forall t_{obs} > T_{pred}$, data is inaccessible to feature extraction or model inference.
+

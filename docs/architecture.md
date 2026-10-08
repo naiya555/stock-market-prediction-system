@@ -168,3 +168,21 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
 - **Temporal Integrity:** Every record preserves the explicit point-in-time `timestamp` and source origin `source`.
 - **Physical Validation:** Domain rules (e.g., `high >= max(open, close)`, `low <= min(open, close)`, strictly positive prices) are enforced at contract instantiation, preventing malformed data from reaching downstream modeling layers.
 
+### 4.4. Market Data Layer Foundation (`app/market/`)
+- **Layer Data Flow:**
+  ```text
+  External Market Data Source
+          ↓
+  Provider Interface
+          ↓
+  Normalization
+          ↓
+  Canonical MarketOHLCV
+          ↓
+  Validation
+  ```
+- **Provider Interface (`app/market/providers/base.py`):** Establishes the `BaseMarketDataProvider` abstract contract defining `name` and `fetch_historical_ohlcv(symbol, start_date, end_date, interval)`.
+- **Decoupled Architecture:** Provider implementations are responsible for mapping external raw payloads into canonical `MarketOHLCV` records. Downstream feature engineering and modeling are completely insulated from vendor specifics.
+- **Strict Schedule Boundary:** The market data module foundation and contract abstraction are established on Day 3. Concrete historical collection implementation begins strictly on Day 4.
+
+
