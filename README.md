@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 4: Historical Data Collector Complete  
+> **Status:** Ongoing Project — Day 5: Data Cleaning Complete  
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -52,9 +52,9 @@ When fully developed, the end-user workflow will operate as follows:
 
 ---
 
-## 4. Current Status: Day 4 (Historical Data Collector)
+## 4. Current Status: Day 5 (Data Cleaning)
 
-Day 4 delivers the first working, verified historical market data collector for Indian equities.
+Day 5 delivers the deterministic data-cleaning pipeline for historical market data produced by the collector.
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.
@@ -62,11 +62,15 @@ Day 4 delivers the first working, verified historical market data collector for 
 - Structured application logging system (`app/core/logging_config.py`) with configurable log levels.
 - Canonical market-data contracts (`MarketOHLCV`, `MarketQuote`, `DataSourceMetadata` in `app/core/schemas.py`) enforcing point-in-time timestamps and structural bounds.
 - Market-data module package (`app/market/` and `app/market/providers/`).
-- Minimal historical provider abstraction (`BaseMarketDataProvider`) decoupling external sources from downstream pipelines.
-- Concrete `YFinanceProvider` implementing historical daily OHLCV retrieval for Indian equities (`.NS` / `.BO`).
-- Raw unadjusted price convention (`auto_adjust=False`) preserving true traded market prices.
-- Empirically verified live data retrieval for target stock `BHARTIARTL.NS`.
-- 35 automated unit tests passing across foundation, settings, logging, canonical schemas, and provider adapters.
+- Historical provider abstraction (`BaseMarketDataProvider`) and concrete `YFinanceProvider` for Indian cash equities.
+- Data cleaning pipeline (`clean_market_data` in `app/market/cleaner.py`):
+  - Missing-value detection with quarantine/rejection policy (zero blind interpolation).
+  - Deterministic duplicate resolution (identical duplicates collapsed; conflicting duplicates quarantined).
+  - Physical OHLCV candle validation (positive prices, non-negative volume, strict wick geometry).
+  - Timezone normalization to `Asia/Kolkata` with calendar session date preservation.
+  - Chronological ascending sorting by `(symbol, timestamp)`.
+  - Comprehensive audit summary metrics (`CleaningSummary`).
+- 44 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, and data cleaning.
 
 ---
 

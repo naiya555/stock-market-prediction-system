@@ -296,5 +296,96 @@ Executed isolated verification script (`scripts/verify_collector.py`):
 ### Next Step
 Day 5: Data Cleaning — implement missing-value detection, duplicate timestamp resolution, price anomaly filtering, and sequential date/time normalization pipelines.
 
+---
+
+## Day 5 - Data Cleaning
+
+### Goal
+Build the deterministic data-cleaning layer for the historical market data produced by the Day 4 collector:
+1. Define explicit cleaning rules for missing values, duplicate timestamps, incorrect values, sorting, and timezone normalization.
+2. Implement non-destructive cleaning pipeline in `app/market/cleaner.py`.
+3. Provide auditable `CleaningSummary` tracking input, output, rejected, missing, and duplicate counts.
+4. Add comprehensive unit tests covering all cleaning edge cases with zero external dependencies.
+5. Verify that real historical market data collected from Day 4 flows cleanly through the cleaner.
+
+### Cleaning Rules
+1. **Missing Values:** Records with missing/null/blank/NaN prices, volume, symbol, or source are quarantined/rejected. Zero blind forward-filling or interpolation is permitted.
+2. **Duplicate Timestamps:**
+   - Identical duplicates (same symbol, timestamp, OHLC, volume) are safely collapsed into 1 canonical bar.
+   - Conflicting duplicates (different prices/volume for the same symbol and timestamp) are quarantined/rejected to prevent fabricating artificial market reality.
+3. **Invalid Values:** Non-positive prices (`<= 0`), negative volume (`< 0`), and violated physical candle geometry (`High < Low`, `High < max(Open, Close)`, `Low > min(Open, Close)`) are rejected.
+4. **Timezone Normalization:** Standardized to `Asia/Kolkata`. Naive daily timestamps are interpreted as `Asia/Kolkata` sessions preserving calendar dates; aware timestamps are localized via timezone conversion.
+5. **Chronological Sorting:** All output records are strictly sorted by `(symbol, timestamp)` ascending.
+6. **Non-Destructive Preservation:** Raw input records remain untouched; cleaned records are newly instantiated.
+
+### Implementation
+1. **Data Cleaning Module (`app/market/cleaner.py`):**
+   - Implemented `clean_market_data(records, target_timezone="Asia/Kolkata") -> CleaningResult`.
+   - Defined immutable dataclasses `CleaningSummary` and `CleaningResult`.
+   - Exposed `clean_market_data`, `CleaningResult`, and `CleaningSummary` via `app/market/__init__.py`.
+2. **Application Entry Point Update (`main.py`):**
+   - Added Day 5 data cleaning readiness check.
+3. **Real-Data Verification Script (`scripts/verify_cleaner.py`):**
+   - Validates end-to-end integration: `YFinanceProvider` -> `clean_market_data` -> verified `MarketOHLCV` output.
+
+### Real Data Verification
+Executed `scripts/verify_cleaner.py`:
+```powershell
+& .\.venv\Scripts\python.exe scripts/verify_cleaner.py
+```
+- Input: 6 raw canonical bars retrieved from `YFinanceProvider` for `BHARTIARTL.NS` (2026-09-01 to 2026-09-08).
+- Audit Metrics:
+  - Input Count: 6
+  - Output Count: 6
+  - Missing Records: 0
+  - Invalid Records: 0
+  - Identical Duplicates: 0
+  - Conflicting Duplicates: 0
+  - Total Rejected: 0
+  - Chronologically Sorted: True
+- Result: 100% of real market bars passed cleaning without loss or distortion.
+
+### Tests
+- **Unit Test Suite (`tests/test_cleaning.py`):**
+  - Added 9 deterministic offline unit tests covering:
+    - Preservation of clean data
+    - Empty input handling
+    - Detection of missing values (null, blank, NaN)
+    - Rejection of invalid/impossible OHLCV and negative volume
+    - Identical duplicate collapse
+    - Conflicting duplicate quarantine
+    - Chronological sorting
+    - Timezone and calendar session preservation
+    - CleaningSummary serialization and metrics
+- **Full Test Suite Execution:**
+  ```powershell
+  & .\.venv\Scripts\pytest.exe -v
+  ```
+  - Total tests: 44 PASSED in 0.82s.
+  - Zero external network dependencies.
+
+### Review
+- **Ponytail / Minimalism Review:** Clean functional pipeline with standard library collections and dataclasses (`defaultdict`, `ZoneInfo`, `dataclass`). Zero bulky ETL frameworks, zero unnecessary abstractions.
+- **Strict Boundary Review:** Confirmed zero returns/volatility calculations (Day 6), zero charts (Day 7), zero technical indicators, zero ML/LLM, zero database.
+
+### Documentation
+- Updated `README.md` to Day 5 completion with 44 passing tests.
+- Updated `docs/architecture.md` with Section 4.4 showing data cleaning pipeline and schedule boundaries.
+- Updated `docs/decisions.md` with ADRs 26 through 29.
+- Updated `docs/daily-progress.md` with Day 5 audit log.
+
+### Git Commit
+- **Commit Message:** `feat: add historical market data cleaning pipeline`
+
+### GitHub
+- **Push Status:** PUSHED to `origin/main`
+
+### Issues
+None.
+
+### Next Step
+Day 6: Returns + Volatility — implement continuous log returns, simple percentage returns, rolling realized volatility, and statistical spread features.
+
+
 
 

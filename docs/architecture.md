@@ -168,27 +168,33 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
 - **Temporal Integrity:** Every record preserves the explicit point-in-time `timestamp` and source origin `source`.
 - **Physical Validation:** Domain rules (e.g., `high >= max(open, close)`, `low <= min(open, close)`, strictly positive prices) are enforced at contract instantiation, preventing malformed data from reaching downstream modeling layers.
 
-### 4.4. Market Data Layer & Historical Collector (`app/market/`)
-- **Ingestion Pipeline Data Flow:**
+### 4.4. Market Data Layer & Cleaning Pipeline (`app/market/`)
+- **Market Data Pipeline Flow:**
   ```text
-  External Provider (Yahoo Finance / NSE)
+  Historical Collector (YFinanceProvider)
           ↓
-  Concrete Provider Adapter (YFinanceProvider)
+  Raw Market Data (MarketOHLCV)
           ↓
-  Normalization (Raw Unadjusted OHLCV)
+  Cleaning Layer (clean_market_data in app/market/cleaner.py)
           ↓
-  Canonical MarketOHLCV (app.core.schemas)
+  Validated/Clean Market Data (MarketOHLCV)
           ↓
-  Validation (Domain Bounds & Positive Prices)
+  Future Feature Engineering (Day 6 Returns + Volatility)
   ```
-- **Provider Interface (`app/market/providers/base.py`):** Establishes the `BaseMarketDataProvider` abstract contract defining `name` and `fetch_historical_ohlcv(symbol, start_date, end_date, interval)`.
-- **Concrete Provider Adapter (`app/market/providers/yfinance_provider.py`):** Implements `YFinanceProvider` for Indian cash equities (`.NS` / `.BO`). Encapsulates all third-party DataFrame manipulations and upstream HTTP session handling within the adapter boundary.
-- **Price Convention:** Adopts raw unadjusted OHLCV prices (`auto_adjust=False`) to preserve authentic historical market trade levels and physical candle relationships (`High >= max(Open, Close)`, `Low <= min(Open, Close)`).
+- **Provider Interface & Collector (`app/market/providers/`):** `BaseMarketDataProvider` contract implemented by `YFinanceProvider` for Indian cash equities (`.NS` / `.BO`). Encapsulates all third-party DataFrame manipulations and returns canonical `MarketOHLCV` records using raw unadjusted prices (`auto_adjust=False`).
+- **Data Cleaning Layer (`app/market/cleaner.py`):**
+  - **Missing Values:** Quarantines records with missing/null/NaN prices or volume; zero blind interpolation or forward-fill.
+  - **Duplicate Handling:** Collapses identical duplicates into 1 bar; quarantines conflicting duplicates without fabricating arbitrary consensus prices.
+  - **Physical Validation:** Filters/quarantines invalid geometry (`High < max(Open, Close)`, `Low > min(Open, Close)`, non-positive prices, negative volume).
+  - **Timezone Normalization:** Enforces standard `Asia/Kolkata` timezone while preserving the exact trading-session calendar date.
+  - **Chronological Sorting:** Ensures records are strictly ordered by `(symbol, timestamp)` ascending.
+  - **Auditable Summary:** Yields `CleaningResult` pairing cleaned records with `CleaningSummary` audit metrics.
 - **Strict Development Schedule Boundaries:**
-  - **Day 4 (Current):** Implements the concrete historical market data collector adapter, input boundaries, and ingestion validation.
-  - **Day 5 (Planned):** Implements data cleaning pipelines (missing values, duplicate bars, date/time sequence normalization).
-  - **Day 6 (Planned):** Implements continuous returns and rolling realized volatility calculations.
-  - **Day 7 (Planned):** Delivers initial market charting and end-to-end data pipeline completion.
+  - **Day 4 (Complete):** Concrete historical market data collector adapter and empirical verification.
+  - **Day 5 (Current):** Data cleaning layer (missing values, duplicates, physical anomalies, date normalization, chronological sorting).
+  - **Day 6 (Planned):** Continuous returns and rolling realized volatility calculations.
+  - **Day 7 (Planned):** First market charting and full data pipeline completion.
+
 
 
 
