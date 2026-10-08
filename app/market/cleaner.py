@@ -7,9 +7,9 @@ rejection, timezone normalization to Asia/Kolkata, and chronological sorting.
 
 from collections import defaultdict
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 import math
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 from zoneinfo import ZoneInfo
 
 from app.core.logging_config import get_logger
@@ -83,7 +83,7 @@ def _normalize_datetime(dt: Any, tz: ZoneInfo) -> Optional[datetime]:
 
 
 def clean_market_data(
-    records: Sequence[Union[MarketOHLCV, Dict[str, Any]]],
+    records: Union[Sequence[Union[MarketOHLCV, Dict[str, Any]]], Iterable[Union[MarketOHLCV, Dict[str, Any]]]],
     target_timezone: str = "Asia/Kolkata",
 ) -> CleaningResult:
     """Clean and validate historical market data records.
@@ -99,13 +99,14 @@ def clean_market_data(
     5. Sorting: Records are sorted chronologically by (symbol, timestamp) ascending.
 
     Args:
-        records: Sequence of MarketOHLCV dataclasses or raw dictionaries.
+        records: Sequence or iterable of MarketOHLCV dataclasses or raw dictionaries.
         target_timezone: Application timezone name (default 'Asia/Kolkata').
 
     Returns:
         CleaningResult containing validated canonical records and an audit summary.
     """
-    input_count = len(records)
+    records_list = list(records) if not isinstance(records, (list, tuple)) else records
+    input_count = len(records_list)
     tz = ZoneInfo(target_timezone)
 
     missing_records_count = 0
@@ -114,7 +115,7 @@ def clean_market_data(
 
     valid_candidates: List[MarketOHLCV] = []
 
-    for idx, item in enumerate(records):
+    for idx, item in enumerate(records_list):
         # Extract fields whether item is MarketOHLCV or Dict
         if isinstance(item, MarketOHLCV):
             symbol = item.symbol

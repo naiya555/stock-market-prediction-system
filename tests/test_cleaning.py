@@ -310,3 +310,16 @@ def test_cleaning_result_summary_to_dict():
     assert data["rejected_count"] == 2
     assert data["is_sorted"] is True
     assert data["rejection_reasons"] == ["reason1"]
+
+
+def test_clean_market_data_iterable_input(sample_valid_bars):
+    """Verify that cleaner properly handles iterators/generators without length errors."""
+    def bar_generator():
+        for bar in sample_valid_bars:
+            yield bar
+
+    result = clean_market_data(bar_generator())
+    assert len(result.records) == 2
+    assert result.summary.input_count == 2
+    assert result.summary.output_count == 2
+
