@@ -168,21 +168,27 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
 - **Temporal Integrity:** Every record preserves the explicit point-in-time `timestamp` and source origin `source`.
 - **Physical Validation:** Domain rules (e.g., `high >= max(open, close)`, `low <= min(open, close)`, strictly positive prices) are enforced at contract instantiation, preventing malformed data from reaching downstream modeling layers.
 
-### 4.4. Market Data Layer Foundation (`app/market/`)
-- **Layer Data Flow:**
+### 4.4. Market Data Layer & Historical Collector (`app/market/`)
+- **Ingestion Pipeline Data Flow:**
   ```text
-  External Market Data Source
+  External Provider (Yahoo Finance / NSE)
           ↓
-  Provider Interface
+  Concrete Provider Adapter (YFinanceProvider)
           ↓
-  Normalization
+  Normalization (Raw Unadjusted OHLCV)
           ↓
-  Canonical MarketOHLCV
+  Canonical MarketOHLCV (app.core.schemas)
           ↓
-  Validation
+  Validation (Domain Bounds & Positive Prices)
   ```
 - **Provider Interface (`app/market/providers/base.py`):** Establishes the `BaseMarketDataProvider` abstract contract defining `name` and `fetch_historical_ohlcv(symbol, start_date, end_date, interval)`.
-- **Decoupled Architecture:** Provider implementations are responsible for mapping external raw payloads into canonical `MarketOHLCV` records. Downstream feature engineering and modeling are completely insulated from vendor specifics.
-- **Strict Schedule Boundary:** The market data module foundation and contract abstraction are established on Day 3. Concrete historical collection implementation begins strictly on Day 4.
+- **Concrete Provider Adapter (`app/market/providers/yfinance_provider.py`):** Implements `YFinanceProvider` for Indian cash equities (`.NS` / `.BO`). Encapsulates all third-party DataFrame manipulations and upstream HTTP session handling within the adapter boundary.
+- **Price Convention:** Adopts raw unadjusted OHLCV prices (`auto_adjust=False`) to preserve authentic historical market trade levels and physical candle relationships (`High >= max(Open, Close)`, `Low <= min(Open, Close)`).
+- **Strict Development Schedule Boundaries:**
+  - **Day 4 (Current):** Implements the concrete historical market data collector adapter, input boundaries, and ingestion validation.
+  - **Day 5 (Planned):** Implements data cleaning pipelines (missing values, duplicate bars, date/time sequence normalization).
+  - **Day 6 (Planned):** Implements continuous returns and rolling realized volatility calculations.
+  - **Day 7 (Planned):** Delivers initial market charting and end-to-end data pipeline completion.
+
 
 

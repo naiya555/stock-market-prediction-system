@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 3: Market-Data Schema + Source Investigation Complete  
+> **Status:** Ongoing Project — Day 4: Historical Data Collector Complete  
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -52,9 +52,9 @@ When fully developed, the end-user workflow will operate as follows:
 
 ---
 
-## 4. Current Status: Day 3 (Market-Data Schema + Source Investigation)
+## 4. Current Status: Day 4 (Historical Data Collector)
 
-Day 3 defines the market-data layer architecture, source evaluation, and provider contract before historical collection begins on Day 4.
+Day 4 delivers the first working, verified historical market data collector for Indian equities.
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.
@@ -63,9 +63,10 @@ Day 3 defines the market-data layer architecture, source evaluation, and provide
 - Canonical market-data contracts (`MarketOHLCV`, `MarketQuote`, `DataSourceMetadata` in `app/core/schemas.py`) enforcing point-in-time timestamps and structural bounds.
 - Market-data module package (`app/market/` and `app/market/providers/`).
 - Minimal historical provider abstraction (`BaseMarketDataProvider`) decoupling external sources from downstream pipelines.
-- Indian equity source investigation and evaluation cataloged in `docs/data-sources.md`.
-- Selected initial target equity (`BHARTIARTL`) and shortlisted provider for Day 4 (`yfinance` with status `PLANNED / TO BE VERIFIED`).
-- 26 automated unit tests passing across foundation, core settings, logging, canonical schemas, and market provider contracts.
+- Concrete `YFinanceProvider` implementing historical daily OHLCV retrieval for Indian equities (`.NS` / `.BO`).
+- Raw unadjusted price convention (`auto_adjust=False`) preserving true traded market prices.
+- Empirically verified live data retrieval for target stock `BHARTIARTL.NS`.
+- 35 automated unit tests passing across foundation, settings, logging, canonical schemas, and provider adapters.
 
 ---
 

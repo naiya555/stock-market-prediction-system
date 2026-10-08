@@ -178,4 +178,29 @@ This document formalizes the architectural decisions made on Day 1. All future i
 - **Decision:** All provider adapters must supply explicit market bar observation `timestamp` and immutable `source` identifiers. Generic labels (e.g., "market_data") are prohibited. Data timestamped after forecast time $T_{pred}$ is strictly excluded from feature extraction.
 - **Consequences:** Eliminates look-ahead bias, supports forensic auditability of past forecasts, and guarantees verifiable out-of-sample backtesting.
 
+---
+
+## ADR 23: Adoption and Empirical Verification of Yahoo Finance as Baseline Historical Collector
+- **Status:** Accepted
+- **Context:** Day 3 shortlisted Yahoo Finance (`yfinance`) with status `PLANNED / TO BE VERIFIED`. Before building downstream pipelines, empirical verification of network access, rate limits, and Indian equity coverage (`BHARTIARTL.NS`) is required.
+- **Decision:** Yahoo Finance is accepted as the primary baseline historical provider after empirically verifying live data retrieval for `BHARTIARTL.NS` (fetching 6 canonical daily bars with 100% domain validation pass rate).
+- **Consequences:** Provides a zero-cost, zero-auth historical pipeline for development; provider-specific quirks (e.g., exclusive end date in API calls) are encapsulated cleanly in `YFinanceProvider`.
+
+---
+
+## ADR 24: Raw Unadjusted Price Convention for Historical Market Bars
+- **Status:** Accepted
+- **Context:** Financial data providers provide both raw prices and retroactively adjusted prices (accounting for historical splits and dividends). Applying retroactive adjustments directly to bar OHLC prices distorts physical candle integrity (wicks, high/low bounds) and mixes raw volume with synthetic prices.
+- **Decision:** The collector uses raw unadjusted prices (`auto_adjust=False`) for `MarketOHLCV` bars. Close, Open, High, Low reflect the exact traded prices during that historical session. Corporate action adjustments needed for continuous return calculations will be applied downstream in Day 6 feature engineering.
+- **Consequences:** Preserves authentic market reality, ensures physical candle validity (`High >= max(Open, Close)`, `Low <= min(Open, Close)`), and prevents silent data corruption.
+
+---
+
+## ADR 25: Isolation of Provider DataFrames at Adapter Boundary
+- **Status:** Accepted
+- **Context:** Upstream libraries like `yfinance` produce Pandas DataFrames with library-specific indexes, columns, and types. Leaking DataFrames across the core architecture creates tight coupling and fragility.
+- **Decision:** All Pandas DataFrames remain strictly private within `app/market/providers/yfinance_provider.py`. The provider adapter normalizes every row into canonical, immutable `MarketOHLCV` dataclass instances before returning them.
+- **Consequences:** Downstream consumers receive strictly validated, typed dataclasses independent of any specific data vendor or tabular library.
+
+
 

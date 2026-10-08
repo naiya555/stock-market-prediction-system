@@ -213,4 +213,86 @@ Investigated 5 candidate sources for Indian equities (NSE/BSE):
 ### Next Step
 Day 4: Historical Data Collector — verify `yfinance` connectivity for `BHARTIARTL.NS`, build concrete collector adapter implementing `BaseMarketDataProvider`, and capture verified historical daily OHLCV bars into canonical `MarketOHLCV` structures.
 
+---
+
+## Day 4 - Historical Data Collector
+
+### Goal
+Build the first real historical market-data collector for Indian equities:
+1. Empirically verify the shortlisted provider (`yfinance`) for target equity `BHARTIARTL.NS`.
+2. Implement the concrete `YFinanceProvider` adapter adhering to `BaseMarketDataProvider`.
+3. Normalize provider output into canonical `MarketOHLCV` records.
+4. Enforce strict raw unadjusted price convention (`auto_adjust=False`) and observation timestamp fidelity.
+5. Create comprehensive deterministic offline unit tests and an isolated live verification script.
+6. Verify live historical collection for `BHARTIARTL.NS` with zero fake data.
+
+### Provider Verification
+- **Target Equity:** `BHARTIARTL` (queried as `BHARTIARTL.NS`).
+- **Package:** `yfinance` 1.7.0 installed cleanly into Python 3.14 virtual environment.
+- **Empirical Check:** Executed live historical retrieval for `BHARTIARTL.NS` (2026-09-01 to 2026-09-08).
+- **Result:** Successfully returned 6 daily trading bars with columns `['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume', 'Dividends', 'Stock Splits']`.
+- **Timestamp Fidelity:** `pandas.DatetimeIndex` localized to `Asia/Kolkata` (`+05:30`), aligning precisely with Indian market trading sessions.
+- **Price Convention:** Raw unadjusted prices (`auto_adjust=False`) selected to preserve authentic traded levels and physical candle relationships.
+- **Quirk Handled:** In Yahoo Finance's API, the `end` date parameter is exclusive (`[start, end)`). The adapter resolves this by querying `end_date + timedelta(days=1)` and filtering to the inclusive observation window.
+- **Verification Status:** `VERIFIED`.
+
+### Implementation
+1. **Concrete Provider Adapter (`app/market/providers/yfinance_provider.py`):**
+   - Implements `BaseMarketDataProvider` contract.
+   - Resolves bare Indian symbols (`BHARTIARTL` -> `BHARTIARTL.NS`).
+   - Fetches daily OHLCV bars using `yf.Ticker.history(..., auto_adjust=False)`.
+   - Isolates Pandas DataFrames within the adapter boundary.
+   - Maps each row to immutable, canonical `MarketOHLCV` dataclasses.
+   - Validates physical candle bounds and positive prices at ingestion.
+2. **Provider Package Exports:**
+   - Exported `YFinanceProvider` in `app/market/providers/__init__.py` and `app/market/__init__.py`.
+3. **Application Entry Point (`main.py`):**
+   - Added Day 4 historical collector readiness check.
+4. **Dependencies (`requirements.txt`):**
+   - Added `yfinance>=1.7.0`.
+
+### Real Data Verification
+Executed isolated verification script (`scripts/verify_collector.py`):
+```powershell
+& .\.venv\Scripts\python.exe scripts/verify_collector.py
+```
+- Query: `BHARTIARTL` from 2026-09-01 to 2026-09-08 (1d interval).
+- Result: 6 canonical `MarketOHLCV` bars retrieved.
+- First Bar (2026-09-01): Open 1852.00, High 1877.20, Low 1848.50, Close 1877.20, Volume 9,900,740.
+- Last Bar (2026-09-08): Open 1846.20, High 1848.80, Low 1829.00, Close 1844.00, Volume 4,169,706.
+- 100% of bars passed canonical validation rules.
+
+### Tests
+- **Unit Test Suite (`tests/test_yfinance_provider.py`):**
+  - Added 9 deterministic offline unit tests mocking `yfinance.Ticker` (testing initialization, symbol resolution, unadjusted price mapping, empty responses, missing columns, network error propagation, NaN filtering, input bounds, and unphysical bar rejection).
+- **Full Test Suite Execution:**
+  ```powershell
+  & .\.venv\Scripts\pytest.exe -v
+  ```
+  - Total tests: 35 PASSED in 1.00s.
+  - Zero external network dependencies in standard test run.
+
+### Review
+- **Ponytail / Minimalism Review:** Single concrete provider adapter (`YFinanceProvider`), zero premature provider registries, zero ETL frameworks, zero factories, standard library and minimal dependencies only.
+- **Strict Boundary Review:** Confirmed zero cleaning pipelines (Day 5), zero returns/volatility (Day 6), zero charts (Day 7), zero technical indicators, zero ML/LLM, zero database.
+
+### Documentation
+- Updated `README.md` to Day 4 completion with 35 passing tests.
+- Updated `docs/architecture.md` with Section 4.4 detailing ingestion data flow and schedule boundaries.
+- Updated `docs/data-sources.md` with Section 12 empirical verification record.
+- Updated `docs/decisions.md` with ADRs 23 through 25.
+
+### Git Commit
+- **Commit Message:** `feat: implement historical market data collector`
+
+### GitHub
+- **Push Status:** PUSHED to `origin/main`
+
+### Issues
+None.
+
+### Next Step
+Day 5: Data Cleaning — implement missing-value detection, duplicate timestamp resolution, price anomaly filtering, and sequential date/time normalization pipelines.
+
+
 

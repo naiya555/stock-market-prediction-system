@@ -1,5 +1,8 @@
-# Day 1 Foundation Dependencies
-# Heavy dependencies (pandas, scikit-learn, xgboost, fastapi, etc.) will be added in their respective phases as needed.
+# Baseline Dependencies
 python-dotenv>=1.0.0
 pytest>=8.0.0
+
+# Day 4 Historical Market Data Provider
+yfinance>=1.7.0
+
 
