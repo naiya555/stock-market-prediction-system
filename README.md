@@ -70,7 +70,7 @@ Day 5 delivers the deterministic data-cleaning pipeline for historical market da
   - Timezone normalization to `Asia/Kolkata` with calendar session date preservation.
   - Chronological ascending sorting by `(symbol, timestamp)`.
   - Comprehensive audit summary metrics (`CleaningSummary`).
-- 45 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, and data cleaning.
+- 44 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, and data cleaning.
 
 ---
 

@@ -361,29 +361,29 @@ Executed `scripts/verify_cleaner.py`:
   ```powershell
   & .\.venv\Scripts\pytest.exe -v
   ```
-  - Total tests: 45 PASSED in 0.98s.
+  - Total tests: 44 PASSED in 0.85s.
   - Zero external network dependencies.
 
 ### Review
-- **CodeRabbit Finding Addressed:** Resolved issue on `app/market/cleaner.py` regarding unused import `timezone` from `datetime` and broadened typing/input handling to support both sequences and general iterators (`Iterable`) safely.
+- **CodeRabbit Finding Addressed:** Resolved issue on `app/market/cleaner.py` by removing the unused `timezone` import from `datetime` without altering any cleaning logic.
 - **Ponytail / Minimalism Review:** Clean functional pipeline with standard library collections and dataclasses (`defaultdict`, `ZoneInfo`, `dataclass`). Zero bulky ETL frameworks, zero unnecessary abstractions.
 - **Strict Boundary Review:** Confirmed zero returns/volatility calculations (Day 6), zero charts (Day 7), zero technical indicators, zero ML/LLM, zero database.
 
 ### Documentation
-- Updated `README.md` to Day 5 completion with 45 passing tests.
+- Updated `README.md` to Day 5 completion with 44 passing tests.
 - Updated `docs/architecture.md` with Section 4.4 showing data cleaning pipeline and schedule boundaries.
 - Updated `docs/decisions.md` with ADRs 26 through 29.
 - Updated `docs/daily-progress.md` with Day 5 audit log and CodeRabbit review resolution.
 
 ### Git Commit
 - **Feature Commit:** `6a0a7d1` — `feat: add historical market data cleaning pipeline`
-- **Review Fix Commit:** `fix: address data cleaning review finding`
+- **Review Fix Commit:** `fix: remove unused timezone import`
 
 ### GitHub
 - **Push Status:** PUSHED to `origin/main`
 
 ### Issues
-- CodeRabbit finding on `cleaner.py` (unused `timezone` import / typing) — Resolved.
+- CodeRabbit finding on `cleaner.py` (unused `timezone` import) — Resolved.
 
 ### Next Step
 Day 6: Returns + Volatility — implement continuous log returns, simple percentage returns, rolling realized volatility, and statistical spread features.
