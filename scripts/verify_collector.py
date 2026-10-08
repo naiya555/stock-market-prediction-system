@@ -26,7 +26,7 @@ def main() -> int:
     provider = YFinanceProvider()
     print(f"Provider Name: {provider.name}")
 
-    # Use a small bounded historical window of 5 trading days
+    # Use a small bounded historical window of 6 trading sessions (8 calendar days)
     start_dt = datetime(2026, 9, 1)
     end_dt = datetime(2026, 9, 8)
     symbol = "BHARTIARTL"

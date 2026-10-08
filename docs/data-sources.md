@@ -150,7 +150,7 @@ This document catalogs the candidate data sources required for the Indian Stock 
 | **Provider** | Yahoo Finance (`yfinance` v1.7.0) |
 | **Verification Status** | **VERIFIED** (Empirical live test successful) |
 | **Target Symbol** | `BHARTIARTL` (queried as `BHARTIARTL.NS`) |
-| **Observation Window** | 2026-09-01 to 2026-09-08 (5 trading sessions, 6 daily bars captured) |
+| **Observation Window** | 2026-09-01 to 2026-09-08 (6 trading sessions, 6 daily bars captured) |
 | **Data Interval** | `1d` (Daily) |
 | **Price Convention** | **Raw Unadjusted OHLCV** (`auto_adjust=False`). Preserves actual traded prices and physical candle relationships (`High >= max(Open, Close)`, `Low <= min(Open, Close)`). |
 | **Timestamp Fidelity** | Returned as `pandas.DatetimeIndex` localized to `Asia/Kolkata` (`+05:30`). Mapped to Python `datetime` objects retaining calendar session integrity without synthetic intraday hour fabrication. |

@@ -256,7 +256,7 @@ Executed isolated verification script (`scripts/verify_collector.py`):
 ```powershell
 & .\.venv\Scripts\python.exe scripts/verify_collector.py
 ```
-- Query: `BHARTIARTL` from 2026-09-01 to 2026-09-08 (1d interval).
+- Query: `BHARTIARTL` from 2026-09-01 to 2026-09-08 (6 trading sessions, 1d interval).
 - Result: 6 canonical `MarketOHLCV` bars retrieved.
 - First Bar (2026-09-01): Open 1852.00, High 1877.20, Low 1848.50, Close 1877.20, Volume 9,900,740.
 - Last Bar (2026-09-08): Open 1846.20, High 1848.80, Low 1829.00, Close 1844.00, Volume 4,169,706.
@@ -273,23 +273,25 @@ Executed isolated verification script (`scripts/verify_collector.py`):
   - Zero external network dependencies in standard test run.
 
 ### Review
+- **CodeRabbit Finding Addressed:** Corrected documentation consistency issue in `docs/data-sources.md` and verification scripts where the observation window was described as 5 sessions instead of the actual 6 trading sessions (6 daily bars across Sep 1, 2, 3, 4, 7, 8).
 - **Ponytail / Minimalism Review:** Single concrete provider adapter (`YFinanceProvider`), zero premature provider registries, zero ETL frameworks, zero factories, standard library and minimal dependencies only.
 - **Strict Boundary Review:** Confirmed zero cleaning pipelines (Day 5), zero returns/volatility (Day 6), zero charts (Day 7), zero technical indicators, zero ML/LLM, zero database.
 
 ### Documentation
 - Updated `README.md` to Day 4 completion with 35 passing tests.
 - Updated `docs/architecture.md` with Section 4.4 detailing ingestion data flow and schedule boundaries.
-- Updated `docs/data-sources.md` with Section 12 empirical verification record.
+- Updated `docs/data-sources.md` with Section 12 empirical verification record (corrected to 6 trading sessions / 6 daily bars).
 - Updated `docs/decisions.md` with ADRs 23 through 25.
 
 ### Git Commit
 - **Commit Message:** `feat: implement historical market data collector`
+- **Fix Commit Message:** `fix: correct historical verification session count`
 
 ### GitHub
 - **Push Status:** PUSHED to `origin/main`
 
 ### Issues
-None.
+- CodeRabbit finding: "Fix the session count in the verification record" — Resolved (corrected documentation and script comment from 5 to 6 trading sessions matching the 6 retrieved bars).
 
 ### Next Step
 Day 5: Data Cleaning — implement missing-value detection, duplicate timestamp resolution, price anomaly filtering, and sequential date/time normalization pipelines.
