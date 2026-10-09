@@ -267,3 +267,12 @@ This document formalizes the architectural decisions made on Day 1. All future i
 - **Context:** Volatility is often cited in annualized terms, but mixing raw daily return volatility with annualized figures causes scale mismatch in machine learning feature sets.
 - **Decision:** The primary realized volatility metric is raw rolling daily return standard deviation. When annualized volatility is required, it is computed in an explicitly distinct attribute (`annualized_volatility`) scaled by $\sqrt{252}$ reflecting the ~252 annual trading sessions in the Indian market (NSE/BSE).
 - **Consequences:** Prevents confusion between daily standard deviations and annualized figures while ensuring proper feature scaling for downstream gradient-boosted models.
+
+---
+
+## ADR 34: Headless Matplotlib Visualization Layer and Ignored Chart Artifact Storage
+- **Status:** Accepted
+- **Context:** Market time-series inspection requires visual charts (price history, daily percentage returns), but execution occurs across headless CI environments, CLI commands, and servers lacking active display windows. Additionally, binary image files must not pollute git commit history.
+- **Decision:** Adopt Matplotlib as a lightweight visualization dependency using the headless `Agg` backend (`matplotlib.use("Agg")`). All generated chart files are written to `data/processed/charts/` which is ignored by version control.
+- **Consequences:** Enables reliable automated chart generation across headless OS environments and keeps git repositories free of binary bloat.
+

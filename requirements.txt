@@ -5,4 +5,5 @@ pytest>=8.0.0
 # Day 4 Historical Market Data Provider
 yfinance>=1.7.0
 
-
+# Day 7 Historical Market Visualization Pipeline
+matplotlib>=3.8.0

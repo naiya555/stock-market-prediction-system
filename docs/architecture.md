@@ -208,13 +208,36 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
 - **Sample Standard Deviation:** Standard deviation computed with Bessel correction ($ddof=1$) on valid daily returns using Python standard library mathematics.
 - **Rolling Realized Volatility:** Sample standard deviation of daily returns across rolling session windows (default 5 sessions). Raw daily standard deviation is the primary feature; annualized volatility is computed with explicit factor $\sqrt{252}$ for Indian equity markets.
 - **Canonical Feature Container:** `ReturnFeatures` immutable dataclass with `.to_dict()` serialization and type-safe property accessors.
-- **Future Indicators Boundary (Out of Scope for Day 6):** Technical indicators (SMA, EMA, RSI, MACD, Bollinger Bands, ATR) and candlestick patterns belong strictly to subsequent roadmap phases and are NOT part of the Day 6 baseline.
+- **Future Indicators Boundary (Out of Scope for Day 6 & 7):** Technical indicators (SMA, EMA, RSI, MACD, Bollinger Bands, ATR) and candlestick patterns belong strictly to subsequent roadmap phases and are NOT part of the Day 7 baseline.
+
+### 4.6. End-to-End Market Data Pipeline & Visualization (`app/market/pipeline.py` & `app/market/visualizer.py`)
+- **End-to-End Pipeline Architecture Flow:**
+  ```text
+  Historical Collector (YFinanceProvider)
+          ↓
+  Data Cleaning Layer (clean_market_data)
+          ↓
+  Feature Layer (compute_market_returns)
+          ↓
+  Pipeline Orchestrator (run_market_data_pipeline)
+          ↓
+  Market Visualizer (generate_market_charts)
+          ↓
+  Processed Charts (data/processed/charts/)
+  ```
+- **Pipeline Orchestrator (`app/market/pipeline.py`):** Unifies collection, cleaning, and feature engineering into deterministic callable pipelines (`run_market_data_pipeline` for network workflows, `process_market_data` for offline records). Yields immutable `MarketDataPipelineResult` maintaining raw, cleaned, and feature structures with audit summaries.
+- **Headless Visualization Layer (`app/market/visualizer.py`):** Utilizes Matplotlib with the non-interactive `Agg` backend to render publication-quality financial charts without display server dependencies:
+  - `plot_closing_prices`: Time-series line chart with INR currency formatting and trading session dates.
+  - `plot_daily_returns`: Session return bar chart with green/red positive/negative color coding and zero baseline.
+  - `generate_market_charts`: Batch chart generator outputting to `data/processed/charts/` (git-ignored).
 
 - **Strict Development Schedule Boundaries:**
   - **Day 4 (Complete):** Concrete historical market data collector adapter and empirical verification.
   - **Day 5 (Complete):** Data cleaning layer (missing values, duplicates, physical anomalies, date normalization, chronological sorting).
   - **Day 6 (Complete):** Returns and rolling realized volatility feature calculations.
-  - **Day 7 (Planned):** First market charting and full data pipeline completion.
+  - **Day 7 (Complete):** First market charting and full data pipeline completion.
+  - **Day 8 (Planned):** Next scheduled milestone phase.
+
 
 
 

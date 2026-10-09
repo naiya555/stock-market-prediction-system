@@ -60,7 +60,7 @@ def test_no_forbidden_day1_mock_data():
 
     # Raw and processed data directories should contain no data files on Day 1
     raw_files = [f for f in (project_root / "data" / "raw").iterdir() if f.name != ".gitkeep"]
-    processed_files = [f for f in (project_root / "data" / "processed").iterdir() if f.name != ".gitkeep"]
+    processed_files = [f for f in (project_root / "data" / "processed").iterdir() if f.name not in (".gitkeep", "charts")]
     model_files = [f for f in (project_root / "models").iterdir() if f.name != ".gitkeep"]
 
     assert len(raw_files) == 0, f"Found unexpected raw data files: {raw_files}"

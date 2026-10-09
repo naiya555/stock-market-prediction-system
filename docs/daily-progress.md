@@ -476,3 +476,75 @@ Executed `scripts/verify_returns.py` on real `BHARTIARTL.NS` historical bars:
 ### Next Step
 Day 7: First market chart + data pipeline completion — implement price chart, volume chart, initial moving-average visualization, and end-to-end data pipeline completion.
 
+---
+
+## Day 7 - First Market Chart + Data Pipeline Completion
+
+### Goal
+Complete the Phase 1/Phase 2 historical market data foundation by building a reusable, unified market-data pipeline and generating publication-quality visual charts for `BHARTIARTL.NS`:
+1. Build a unified pipeline connecting the historical collector, data cleaning pipeline, and returns/volatility feature engine without duplicating logic.
+2. Implement headless chart generator for historical closing prices and daily percentage returns.
+3. Use real collected and cleaned market data only (zero synthetic or fabricated prices).
+4. Save charts to ignored output directory `data/processed/charts/` without polluting git tracking.
+5. Add deterministic offline unit tests for pipeline orchestration and chart generation (zero external network dependencies).
+6. Verify the end-to-end pipeline against real historical market data for `BHARTIARTL.NS`.
+
+### Implementation
+1. **Pipeline Orchestrator (`app/market/pipeline.py`):**
+   - Implemented `run_market_data_pipeline(symbol, start_date, end_date, provider=None, ...)` orchestrating collector, cleaner, and return/volatility feature computation.
+   - Implemented `process_market_data(raw_records, ...)` for deterministic offline pipeline processing.
+   - Defined immutable dataclass `MarketDataPipelineResult` maintaining raw records, cleaned records, cleaning summary, and features, with helper serialization methods.
+2. **Headless Market Visualizer (`app/market/visualizer.py`):**
+   - Configured Matplotlib headless `Agg` backend (`matplotlib.use("Agg")`).
+   - Implemented `plot_closing_prices(records, output_path, title=None)`: Line plot with markers, formatted INR y-axis, rotated date formatting, and light gridlines.
+   - Implemented `plot_daily_returns(features, output_path, title=None)`: Bar plot with positive (green) and negative (red) returns, percentage y-axis, and dashed zero baseline.
+   - Implemented `generate_market_charts(features, output_dir="data/processed/charts", symbol=None)`.
+3. **Package Exports (`app/market/__init__.py`):**
+   - Cleanly exported `MarketDataPipelineResult`, `process_market_data`, `run_market_data_pipeline`, `plot_closing_prices`, `plot_daily_returns`, `generate_market_charts`.
+4. **Real-Data Verification Script (`scripts/verify_pipeline.py`):**
+   - Orchestrates end-to-end pipeline and generates real PNG charts in `data/processed/charts/` for `BHARTIARTL.NS`.
+5. **Application Entry Point Update (`main.py`):**
+   - Added Day 7 readiness confirmation.
+6. **Dependencies (`requirements.txt`):**
+   - Added `matplotlib>=3.8.0`.
+
+### Real Data Verification
+Executed `scripts/verify_pipeline.py` on real `BHARTIARTL.NS` historical bars (2026-09-01 to 2026-09-08):
+- Input: 6 raw canonical bars from `YFinanceProvider`
+- Cleaning: 6 cleaned bars (0 missing, 0 invalid, 0 rejected)
+- Features: 6 feature records (5 daily returns, 3 3-session returns, 1 5-session return, 1 5-session volatility)
+- Charts Generated:
+  - Closing price chart: `data/processed/charts/bhartiartl_close_price.png` (98,198 bytes)
+  - Daily returns chart: `data/processed/charts/bhartiartl_daily_returns.png` (50,641 bytes)
+- Verification: Valid PNG signatures confirmed, 0 encoding errors, exit code 0.
+
+### Tests
+- **Unit Test Suites (`tests/test_pipeline.py` and `tests/test_visualization.py`):**
+  - Added 11 deterministic offline unit tests covering pipeline processing, empty inputs, mock provider orchestration, closing price image generation, daily return bar chart generation, batch chart output, and invalid/empty input handling.
+- **Full Test Suite Execution:**
+  - 76 passed in 1.78s (`pytest -v`). Zero external network dependencies.
+
+### Review
+- **CodeRabbit:** CodeRabbit local CLI unavailable. CodeRabbit standards maintained: exact row/header width alignment, explicit validation checks rather than assertions in verification script, and robust currency symbol encoding.
+- **Ralph Loop:** Ralph Loop unavailable — manual bounded cycle completed.
+- **Ponytail / Minimalism Review:** Minimal orchestration without speculative abstractions; Matplotlib scoped strictly to visualization with headless rendering.
+
+### Documentation
+- Updated `README.md` to Day 7 completion with 76 passing tests.
+- Updated `docs/architecture.md` with Section 4.6 detailing pipeline orchestration and visualization.
+- Updated `docs/decisions.md` with ADR 34.
+- Updated `docs/daily-progress.md` with Day 7 log and empirical verification results.
+
+### Git Commit
+- `feat: add historical market visualization pipeline`
+
+### GitHub
+- PUSHED to `origin/main`
+
+### Issues
+- None.
+
+### Next Step
+Phase 3: Technical Indicators & Feature Engineering (SMA, EMA, RSI, MACD, Bollinger Bands, ATR).
+
+

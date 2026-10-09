@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 6: Returns + Volatility Complete  
+> **Status:** Ongoing Project — Day 7: First Market Chart + Data Pipeline Completion  
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -43,7 +43,7 @@ When fully developed, the end-user workflow will operate as follows:
 - **`app/api/`**: FastAPI application endpoints and route handlers (planned).
 - **`app/core/`**: Centralized configuration (`config.py`), logging foundation (`logging_config.py`), and canonical schema contracts (`schemas.py`).
 - **`app/database/`**: Relational database persistence (SQLite initially, PostgreSQL migration path).
-- **`app/market/`**: Market data acquisition, cleaning, technical feature engineering, and market breadth.
+- **`app/market/`**: Market data acquisition, cleaning, technical feature engineering, market breadth, pipeline orchestration, and visualization.
 - **`app/news/`**: Financial news ingestion, deduplication, and entity linking.
 - **`app/nlp/`**: FinBERT sentiment scoring and textual analysis.
 - **`app/prediction/`**: Numerical ML predictor, LLM predictor, and ensemble synthesis.
@@ -52,9 +52,9 @@ When fully developed, the end-user workflow will operate as follows:
 
 ---
 
-## 4. Current Status: Day 6 (Returns + Volatility)
+## 4. Current Status: Day 7 (First Market Chart + Data Pipeline Completion)
 
-Day 6 delivers the point-in-time return and volatility feature calculation layer operating directly on cleaned historical market data (`MarketOHLCV`).
+Day 7 completes Phase 1 / Phase 2 market data foundation by delivering a unified market data pipeline and headless visualizer for historical price and return series.
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.
@@ -78,7 +78,15 @@ Day 6 delivers the point-in-time return and volatility feature calculation layer
   - Machine-readable feature container (`ReturnFeatures`) with `.to_dict()` serialization and type-safe convenience properties.
   - Safe zero/negative previous price handling (division-by-zero protection returning `None` rather than generating `inf` or crashing).
   - Multi-symbol grouping with isolated per-ticker chronological sorting.
-- 65 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, and returns/volatility calculations.
+- Market Data Pipeline Orchestrator (`app/market/pipeline.py`):
+  - Unified pipeline connecting provider retrieval, data cleaning, and return/volatility feature computation (`run_market_data_pipeline` and `process_market_data`).
+  - Immutable pipeline container (`MarketDataPipelineResult`) preserving raw records, cleaned records, cleaning summary, and features.
+- Historical Market Visualizer (`app/market/visualizer.py`):
+  - Headless Matplotlib rendering (`Agg` backend) generating publication-quality PNG charts.
+  - Historical closing price chart (`plot_closing_prices`) with formatted INR pricing and session date labels.
+  - Daily percentage returns chart (`plot_daily_returns`) with color-coded positive/negative bars and zero baseline.
+  - Batch chart generator (`generate_market_charts`) saving to `data/processed/charts/` (strictly ignored by `.gitignore`).
+- 76 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, and visualization.
 
 ---
 
