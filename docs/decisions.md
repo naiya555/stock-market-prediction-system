@@ -236,6 +236,34 @@ This document formalizes the architectural decisions made on Day 1. All future i
 - **Decision:** Raw collector outputs are never mutated. `clean_market_data` accepts inputs immutably and returns newly constructed, validated `MarketOHLCV` lists alongside structured `CleaningSummary` audit metrics.
 - **Consequences:** Preserves raw source provenance, maintains a complete audit trail from provider to cleaned dataset, and allows re-running updated cleaning rules without re-fetching data.
 
+---
 
+## ADR 30: Daily Simple Percentage Return Convention with Unavailable First Observation
+- **Status:** Accepted
+- **Context:** Financial return series can be calculated via simple percentage returns $((P_t / P_{t-1}) - 1)$ or log returns $(\ln(P_t / P_{t-1}))$. Additionally, the first observation has no prior closing price, and naive implementations risk fabricating artificial zero returns or dividing by zero.
+- **Decision:** The feature layer standardizes on simple percentage returns $R_t = (P_t / P_{t-1}) - 1$ using raw unadjusted close prices. The first observation explicitly yields `None` (unavailable). Any non-positive prior price ($P_{t-1} \le 0$) safely yields `None` rather than raising a division-by-zero error or generating infinity.
+- **Consequences:** Provides an interpretable, additive price-change metric aligned with canonical equity modeling without fabricating ungrounded initial data.
 
+---
 
+## ADR 31: Multi-Session Rolling Return Calculation with Strict Point-in-Time Guarantees
+- **Status:** Accepted
+- **Context:** Downstream models benefit from multi-day price momentum features over various horizons. If rolling calculations inadvertently use forward indexing (`shift(-1)`), future data leaks into current features.
+- **Decision:** Rolling returns are defined as $R_{t, w} = (P_t / P_{t-w}) - 1$ over configurable sessions (default 3-session and 5-session windows). Calculations are strictly point-in-time: at session $t$, only observations at or prior to $t$ are accessed. Observations where $t < w$ remain `None`.
+- **Consequences:** Completely eliminates lookahead bias in rolling feature creation, ensuring valid out-of-sample backtesting.
+
+---
+
+## ADR 32: Sample Standard Deviation with Bessel Correction (ddof=1) for Time-Series Volatility
+- **Status:** Accepted
+- **Context:** Standard deviation can be computed as population ($N$, `ddof=0`) or sample ($N-1$, `ddof=1`). Ambiguity across libraries leads to subtle feature discrepancies between training and inference.
+- **Decision:** All return standard deviation and realized volatility calculations strictly use sample standard deviation with Bessel correction ($ddof=1$) computed via Python standard library mathematics. If valid samples $\le ddof$, the statistic yields `None`.
+- **Consequences:** Provides an unbiased estimate of historical return dispersion and maintains mathematical consistency with standard econometric libraries.
+
+---
+
+## ADR 33: Raw Realized Volatility Basis with Explicit Annualization Scaling for Indian Equities
+- **Status:** Accepted
+- **Context:** Volatility is often cited in annualized terms, but mixing raw daily return volatility with annualized figures causes scale mismatch in machine learning feature sets.
+- **Decision:** The primary realized volatility metric is raw rolling daily return standard deviation. When annualized volatility is required, it is computed in an explicitly distinct attribute (`annualized_volatility`) scaled by $\sqrt{252}$ reflecting the ~252 annual trading sessions in the Indian market (NSE/BSE).
+- **Consequences:** Prevents confusion between daily standard deviations and annualized figures while ensuring proper feature scaling for downstream gradient-boosted models.

@@ -388,6 +388,84 @@ Executed `scripts/verify_cleaner.py`:
 ### Next Step
 Day 6: Returns + Volatility — implement continuous log returns, simple percentage returns, rolling realized volatility, and statistical spread features.
 
+---
 
+## Day 6 - Returns + Volatility
 
+### Goal
+Build the point-in-time return and volatility feature layer on top of cleaned historical market data (`MarketOHLCV`):
+1. Daily simple percentage returns.
+2. Multi-session rolling returns (3-session and 5-session windows).
+3. Sample standard deviation ($ddof=1$).
+4. Rolling realized volatility (raw daily stdev and annualized volatility with factor $\sqrt{252}$).
+5. Point-in-time temporal integrity and zero lookahead data leakage.
+6. Safe division-by-zero handling.
+7. Validation and unit testing on mathematical and time-series edge cases.
+8. Real-data verification on cleaned `BHARTIARTL.NS` historical bars.
 
+### Return Convention
+- **Daily simple percentage return:** $R_t = \frac{P_t}{P_{t-1}} - 1$.
+- **First observation:** Explicitly yields `None` (unavailable); zero artificial 0% fabrication or forward-filling.
+- **Division-by-zero safety:** Non-positive prior prices ($P_{t-1} \le 0$) safely yield `None` rather than generating infinity or raising an exception.
+- **Consistent price basis:** Uses raw unadjusted close prices from canonical `MarketOHLCV` (aligned with ADR 24).
+- **Rolling returns:** Multi-session cumulative return $R_{t, w} = \frac{P_t}{P_{t-w}} - 1$ over configurable session windows (default 3-session and 5-session). Points with $t < w$ return `None`. Point-in-time calculation with zero future observations.
+
+### Volatility Convention
+- **Sample standard deviation:** Sample standard deviation with Bessel correction ($ddof=1$) on valid return series: $\sigma = \sqrt{\frac{1}{N - 1} \sum (R_i - \bar{R})^2}$.
+- **Rolling realized volatility:** Computed across rolling windows of daily returns (default 5-session window). Requires $w$ valid returns in the window. If any value is `None` (including initial observations), rolling volatility returns `None`.
+- **Primary metric:** Raw daily return standard deviation (`volatility_5d`).
+- **Annualized volatility:** Explicitly scaled via factor $\sqrt{252}$ (`annualized_volatility_5d`) reflecting 252 annual trading sessions in Indian markets (NSE/BSE).
+
+### Implementation
+1. **Returns & Volatility Feature Engine (`app/market/returns.py`):**
+   - Implemented `calculate_daily_returns(prices) -> List[Optional[float]]`.
+   - Implemented `calculate_rolling_returns(prices, window) -> List[Optional[float]]`.
+   - Implemented `calculate_standard_deviation(values, ddof=1) -> Optional[float]`.
+   - Implemented `calculate_rolling_volatility(daily_returns, window, ddof=1, annualized=False, trading_days=252) -> List[Optional[float]]`.
+   - Implemented `compute_market_returns(records, rolling_return_windows=(3, 5), volatility_windows=(5,), trading_days=252) -> List[ReturnFeatures]`.
+   - Defined immutable dataclass `ReturnFeatures` with `.to_dict()` and property accessors (`rolling_return_3d`, `rolling_return_5d`, `volatility_5d`, `annualized_volatility_5d`).
+2. **Market Package Exports (`app/market/__init__.py`):**
+   - Cleanly exported `ReturnFeatures`, `compute_market_returns`, and calculation functions.
+3. **Application Entry Point Update (`main.py`):**
+   - Added Day 6 readiness confirmation check.
+4. **Real-Data Verification Script (`scripts/verify_returns.py`):**
+   - Validates end-to-end integration: `YFinanceProvider` -> `clean_market_data` -> `compute_market_returns`.
+
+### Real Data Verification
+Executed `scripts/verify_returns.py` on real `BHARTIARTL.NS` historical bars:
+- Input Clean Record Count: 6 bars (2026-09-01 to 2026-09-08)
+- Daily Returns Produced: 5 valid daily returns (first observation strictly `None`)
+- 3-Session Rolling Returns: 3 available
+- 5-Session Rolling Returns: 1 available (at final session 2026-09-08: -1.7686%)
+- 5-Session Rolling Volatility: 1 available (at final session 2026-09-08: 0.009157 raw daily stdev)
+- Timestamp Alignment: 100% (6/6 records matched 1:1 with input timestamps and prices)
+- Chronological Sorting: Verified ascending order across all sessions
+
+### Tests
+- **Unit Test Suite (`tests/test_returns.py`):**
+  - Added 21 deterministic unit tests covering daily returns (positive, negative, zero, first observation, chronological order), rolling returns (known windows, insufficient history, no future leakage), standard deviation (known calculation, zero variance, insufficient samples), rolling volatility (correctness, insufficient history, consistent series), and validation edge cases (unsorted input, zero/negative prices, timestamp alignment, empty/single input, multi-symbol separation, property accessors, invalid window arguments).
+- **Full Test Suite Execution:**
+  - 65 passed in 0.85s (`pytest -v`). Zero external network dependencies.
+
+### Review
+- **CodeRabbit:** CodeRabbit unavailable — review not run.
+- **Ralph Loop:** Ralph Loop unavailable — manual bounded cycle completed.
+- **Ponytail / Minimalism Review:** Pure standard library implementation (`math`, `typing`, `dataclasses`, `collections`, `datetime`). Zero third-party mathematical or ML dependencies added. Zero speculative abstractions.
+
+### Documentation
+- Updated `README.md` to Day 6 completion with 65 passing tests.
+- Updated `docs/architecture.md` with Section 4.5 detailing the returns & volatility feature pipeline.
+- Updated `docs/decisions.md` with ADRs 30 through 33.
+- Updated `docs/daily-progress.md` with Day 6 audit log and verification results.
+
+### Git Commit
+- `feat: add returns and volatility features`
+
+### GitHub
+- PUSHED to `origin/main`
+
+### Issues
+- Windows cp1252 stdout currency symbol encoding in `verify_returns.py` resolved by standardizing on `INR`.
+
+### Next Step
+Day 7: First market chart + data pipeline completion — implement price chart, volume chart, initial moving-average visualization, and end-to-end data pipeline completion.

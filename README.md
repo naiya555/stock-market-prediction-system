@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 5: Data Cleaning Complete  
+> **Status:** Ongoing Project — Day 6: Returns + Volatility Complete  
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -52,9 +52,9 @@ When fully developed, the end-user workflow will operate as follows:
 
 ---
 
-## 4. Current Status: Day 5 (Data Cleaning)
+## 4. Current Status: Day 6 (Returns + Volatility)
 
-Day 5 delivers the deterministic data-cleaning pipeline for historical market data produced by the collector.
+Day 6 delivers the point-in-time return and volatility feature calculation layer operating directly on cleaned historical market data (`MarketOHLCV`).
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.
@@ -70,7 +70,15 @@ Day 5 delivers the deterministic data-cleaning pipeline for historical market da
   - Timezone normalization to `Asia/Kolkata` with calendar session date preservation.
   - Chronological ascending sorting by `(symbol, timestamp)`.
   - Comprehensive audit summary metrics (`CleaningSummary`).
-- 44 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, and data cleaning.
+- Returns and Volatility feature engine (`app/market/returns.py`):
+  - Daily simple percentage return calculation ($R_t = P_t / P_{t-1} - 1$) with explicit `None` for unavailable initial observation.
+  - Multi-session rolling return calculations (3-session and 5-session default windows) with strict point-in-time boundaries (zero lookahead leakage).
+  - Sample standard deviation ($ddof=1$) calculation using built-in standard library mathematics.
+  - Rolling realized volatility metrics: raw daily return standard deviation and annualized volatility scaled by $\sqrt{252}$ (252 trading sessions per year in Indian markets).
+  - Machine-readable feature container (`ReturnFeatures`) with `.to_dict()` serialization and type-safe convenience properties.
+  - Safe zero/negative previous price handling (division-by-zero protection returning `None` rather than generating `inf` or crashing).
+  - Multi-symbol grouping with isolated per-ticker chronological sorting.
+- 65 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, and returns/volatility calculations.
 
 ---
 

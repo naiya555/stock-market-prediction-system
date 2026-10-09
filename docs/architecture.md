@@ -179,7 +179,7 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
           ↓
   Validated/Clean Market Data (MarketOHLCV)
           ↓
-  Future Feature Engineering (Day 6 Returns + Volatility)
+  Feature Layer (Day 6 Returns + Volatility)
   ```
 - **Provider Interface & Collector (`app/market/providers/`):** `BaseMarketDataProvider` contract implemented by `YFinanceProvider` for Indian cash equities (`.NS` / `.BO`). Encapsulates all third-party DataFrame manipulations and returns canonical `MarketOHLCV` records using raw unadjusted prices (`auto_adjust=False`).
 - **Data Cleaning Layer (`app/market/cleaner.py`):**
@@ -189,11 +189,33 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   - **Timezone Normalization:** Enforces standard `Asia/Kolkata` timezone while preserving the exact trading-session calendar date.
   - **Chronological Sorting:** Ensures records are strictly ordered by `(symbol, timestamp)` ascending.
   - **Auditable Summary:** Yields `CleaningResult` pairing cleaned records with `CleaningSummary` audit metrics.
+
+### 4.5. Returns & Volatility Feature Engine (`app/market/returns.py`)
+- **Feature Pipeline Flow:**
+  ```text
+  Clean Market Data
+        ↓
+  Return Calculations
+        ↓
+  Rolling Returns
+        ↓
+  Volatility Metrics
+        ↓
+  Future ML Feature Engine
+  ```
+- **Daily Returns:** Simple percentage return $R_t = (P_t / P_{t-1}) - 1$. First observation ($t=0$) is strictly `None` (unavailable). Safe division-by-zero protection marks return as `None` if $P_{t-1} \le 0$.
+- **Rolling Returns:** Multi-session cumulative simple returns $R_{t, w} = (P_t / P_{t-w}) - 1$ over configurable windows (default 3 and 5 sessions). Points with $t < w$ remain `None`. Zero future observations are included.
+- **Sample Standard Deviation:** Standard deviation computed with Bessel correction ($ddof=1$) on valid daily returns using Python standard library mathematics.
+- **Rolling Realized Volatility:** Sample standard deviation of daily returns across rolling session windows (default 5 sessions). Raw daily standard deviation is the primary feature; annualized volatility is computed with explicit factor $\sqrt{252}$ for Indian equity markets.
+- **Canonical Feature Container:** `ReturnFeatures` immutable dataclass with `.to_dict()` serialization and type-safe property accessors.
+- **Future Indicators Boundary (Out of Scope for Day 6):** Technical indicators (SMA, EMA, RSI, MACD, Bollinger Bands, ATR) and candlestick patterns belong strictly to subsequent roadmap phases and are NOT part of the Day 6 baseline.
+
 - **Strict Development Schedule Boundaries:**
   - **Day 4 (Complete):** Concrete historical market data collector adapter and empirical verification.
-  - **Day 5 (Current):** Data cleaning layer (missing values, duplicates, physical anomalies, date normalization, chronological sorting).
-  - **Day 6 (Planned):** Continuous returns and rolling realized volatility calculations.
+  - **Day 5 (Complete):** Data cleaning layer (missing values, duplicates, physical anomalies, date normalization, chronological sorting).
+  - **Day 6 (Complete):** Returns and rolling realized volatility feature calculations.
   - **Day 7 (Planned):** First market charting and full data pipeline completion.
+
 
 
 
