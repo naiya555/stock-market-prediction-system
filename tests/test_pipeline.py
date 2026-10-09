@@ -90,7 +90,13 @@ def test_process_market_data_end_to_end():
     assert features[5].rolling_return_5d is not None
     assert features[5].volatility_5d is not None
 
-
+    # Verify indicators
+    indicators = result.indicators
+    assert len(indicators) == 6
+    assert indicators[0].sma_5 is None
+    assert indicators[4].sma_5 == pytest.approx(110.0)  # (100+105+110+115+120)/5 = 110
+    assert indicators[5].sma_5 == pytest.approx(115.0)  # (105+110+115+120+125)/5 = 115
+    assert indicators[5].sma_10 is None  # 6 bars < 10 window
 def test_process_market_data_empty():
     """Verify pipeline behavior on empty input sequence."""
     result = process_market_data([])
@@ -123,12 +129,18 @@ def test_pipeline_serialization():
     assert summary_dict["raw_count"] == 2
     assert summary_dict["cleaned_count"] == 2
     assert summary_dict["feature_count"] == 2
+    assert summary_dict["indicator_count"] == 2
     assert "cleaning_summary" in summary_dict
 
     feature_dicts = result.to_feature_dicts()
     assert len(feature_dicts) == 2
     assert feature_dicts[0]["daily_return"] is None
     assert feature_dicts[1]["daily_return"] == pytest.approx(0.05)
+
+    indicator_dicts = result.to_indicator_dicts()
+    assert len(indicator_dicts) == 2
+    assert indicator_dicts[0]["symbol"] == "BHARTIARTL"
+    assert indicator_dicts[0]["close"] == 100.0
 
 
 def test_run_market_data_pipeline_with_mock_provider():
@@ -151,3 +163,9 @@ def test_run_market_data_pipeline_with_mock_provider():
     assert result.record_count == 3
     assert result.features[0].daily_return is None
     assert result.features[1].daily_return == pytest.approx((1820.0 / 1800.0) - 1.0)
+    assert len(result.indicators) == 3
+    assert result.indicators[0].sma_5 is None  # 3 bars < 5 window
+    indicator_dicts = result.to_indicator_dicts()
+    assert len(indicator_dicts) == 3
+    assert "sma_5" in indicator_dicts[0]
+    assert "ema_5" in indicator_dicts[0]

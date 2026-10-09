@@ -276,3 +276,17 @@ This document formalizes the architectural decisions made on Day 1. All future i
 - **Decision:** Adopt Matplotlib as a lightweight visualization dependency using the headless `Agg` backend (`matplotlib.use("Agg")`). All generated chart files are written to `data/processed/charts/` which is ignored by version control.
 - **Consequences:** Enables reliable automated chart generation across headless OS environments and keeps git repositories free of binary bloat.
 
+---
+
+## ADR 35: Moving Average Technical Indicators, Price Basis, and Point-in-Time Integrity
+- **Status:** Accepted
+- **Context:** Downstream predictive models and market regime analyzers require trend-following and momentum features like Simple Moving Averages (SMA) and Exponential Moving Averages (EMA). Naive implementations risk subtle future data leakage (lookahead bias), improper handling of early sessions where historical bars are fewer than the window size ($t < W$), or mutating source OHLCV data.
+- **Decision:**
+  1. **Price Basis:** Moving averages are strictly computed using raw, unadjusted closing prices (`close` from canonical `MarketOHLCV`).
+  2. **Window Selection & Extensibility:** Default windows are configured for 5 sessions (`sma_5`, `ema_5`) and 10 sessions (`sma_10`, `ema_10`), with arbitrary positive integer window support.
+  3. **Zero Future Leakage:** For any session $t$, the calculation window spans strictly $[t - W + 1, t]$. Future observations are never accessed.
+  4. **Insufficient History Handling:** Sessions prior to full window warmup ($t < W - 1$) return `None`. No arbitrary synthetic zeros or partial-window distortions are introduced into standard SMA.
+  5. **EMA Recursive Formulation:** EMA applies smoothing factor $\alpha = \frac{2}{W + 1}$ initialized with the first SMA or historical seed and suppresses outputs (`None`) until $W$ sessions have elapsed, matching point-in-time warmup expectations.
+  6. **Non-Destructive Feature Container:** Raw market records are never modified. Results are encapsulated in `MovingAverageFeatures` dataclasses with `.to_dict()` tabular serialization.
+- **Consequences:** Guarantees deterministic, reproducible, leak-free indicator generation that integrates seamlessly with existing pipeline and future machine learning models.
+

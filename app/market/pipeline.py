@@ -1,17 +1,18 @@
 """Market Data Pipeline Orchestration Layer.
 
-Connects the historical market data provider, data cleaning layer, and
-returns/volatility feature engine into a unified, deterministic, and
-auditable end-to-end pipeline for Indian equities.
+Connects the historical market data provider, data cleaning layer,
+returns/volatility feature engine, and technical indicator engine into a unified,
+deterministic, and auditable end-to-end pipeline for Indian equities.
 """
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence
 
 from app.core.logging_config import get_logger
 from app.core.schemas import MarketOHLCV
 from app.market.cleaner import CleaningSummary, clean_market_data
+from app.market.indicators import MovingAverageFeatures, compute_moving_averages
 from app.market.providers.base import BaseMarketDataProvider
 from app.market.providers.yfinance_provider import YFinanceProvider
 from app.market.returns import ReturnFeatures, compute_market_returns
@@ -28,6 +29,7 @@ class MarketDataPipelineResult:
     cleaned_records: List[MarketOHLCV]
     cleaning_summary: CleaningSummary
     features: List[ReturnFeatures]
+    indicators: List[MovingAverageFeatures] = field(default_factory=list)
 
     @property
     def is_empty(self) -> bool:
@@ -43,6 +45,10 @@ class MarketDataPipelineResult:
         """Convert computed return and volatility features to flat dictionary list."""
         return [f.to_dict() for f in self.features]
 
+    def to_indicator_dicts(self) -> List[Dict[str, Any]]:
+        """Convert computed moving average features to flat dictionary list."""
+        return [ind.to_dict() for ind in self.indicators]
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert entire pipeline summary to dictionary for logging and audits."""
         return {
@@ -50,6 +56,7 @@ class MarketDataPipelineResult:
             "raw_count": len(self.raw_records),
             "cleaned_count": len(self.cleaned_records),
             "feature_count": len(self.features),
+            "indicator_count": len(self.indicators),
             "cleaning_summary": self.cleaning_summary.to_dict(),
         }
 
@@ -59,8 +66,10 @@ def process_market_data(
     rolling_return_windows: Sequence[int] = (3, 5),
     volatility_windows: Sequence[int] = (5,),
     trading_days: int = 252,
+    sma_windows: Sequence[int] = (5, 10),
+    ema_windows: Sequence[int] = (5, 10),
 ) -> MarketDataPipelineResult:
-    """Process an existing sequence of raw MarketOHLCV records through cleaning and feature generation.
+    """Process an existing sequence of raw MarketOHLCV records through cleaning, returns, and indicators.
 
     Offline operation: Does not perform any network calls. Safe for unit testing
     and deterministic replay.
@@ -70,10 +79,12 @@ def process_market_data(
         rolling_return_windows: Multi-session windows for rolling returns (default (3, 5)).
         volatility_windows: Multi-session windows for rolling volatility (default (5,)).
         trading_days: Annual trading session count (default 252 for Indian equities).
+        sma_windows: Multi-session windows for Simple Moving Average (default (5, 10)).
+        ema_windows: Multi-session windows for Exponential Moving Average (default (5, 10)).
 
     Returns:
         MarketDataPipelineResult containing raw records, cleaned records, cleaning summary,
-        and computed return/volatility features.
+        computed return/volatility features, and moving average technical indicators.
     """
     raw_list = list(raw_records)
     symbol = raw_list[0].symbol if raw_list else ""
@@ -91,12 +102,19 @@ def process_market_data(
         trading_days=trading_days,
     )
 
+    indicators = compute_moving_averages(
+        cleaned_list,
+        sma_windows=sma_windows,
+        ema_windows=ema_windows,
+    )
+
     logger.info(
-        "Pipeline completed for %s: %d raw -> %d clean -> %d feature records",
+        "Pipeline completed for %s: %d raw -> %d clean -> %d feature records -> %d indicator records",
         symbol or "EMPTY",
         len(raw_list),
         len(cleaned_list),
         len(features),
+        len(indicators),
     )
 
     return MarketDataPipelineResult(
@@ -105,6 +123,7 @@ def process_market_data(
         cleaned_records=cleaned_list,
         cleaning_summary=cleaning_sum,
         features=features,
+        indicators=indicators,
     )
 
 
@@ -117,13 +136,16 @@ def run_market_data_pipeline(
     rolling_return_windows: Sequence[int] = (3, 5),
     volatility_windows: Sequence[int] = (5,),
     trading_days: int = 252,
+    sma_windows: Sequence[int] = (5, 10),
+    ema_windows: Sequence[int] = (5, 10),
 ) -> MarketDataPipelineResult:
-    """Execute end-to-end market data acquisition, cleaning, and feature engineering.
+    """Execute end-to-end market data acquisition, cleaning, feature engineering, and indicator computation.
 
     Orchestrates:
     1. Historical data acquisition via BaseMarketDataProvider (defaults to YFinanceProvider)
     2. Data cleaning, duplicate resolution, and domain validation via clean_market_data
     3. Return and volatility feature computation via compute_market_returns
+    4. Moving average technical indicator computation via compute_moving_averages
 
     Args:
         symbol: Market ticker symbol (e.g. 'BHARTIARTL').
@@ -134,6 +156,8 @@ def run_market_data_pipeline(
         rolling_return_windows: Multi-session windows for rolling returns (default (3, 5)).
         volatility_windows: Multi-session windows for rolling volatility (default (5,)).
         trading_days: Annual trading session count (default 252).
+        sma_windows: Multi-session windows for Simple Moving Average (default (5, 10)).
+        ema_windows: Multi-session windows for Exponential Moving Average (default (5, 10)).
 
     Returns:
         MarketDataPipelineResult with all pipeline stage artifacts.
@@ -160,4 +184,6 @@ def run_market_data_pipeline(
         rolling_return_windows=rolling_return_windows,
         volatility_windows=volatility_windows,
         trading_days=trading_days,
+        sma_windows=sma_windows,
+        ema_windows=ema_windows,
     )

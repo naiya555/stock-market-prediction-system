@@ -231,12 +231,33 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   - `plot_daily_returns`: Session return bar chart with green/red positive/negative color coding and zero baseline.
   - `generate_market_charts`: Batch chart generator outputting to `data/processed/charts/` (git-ignored).
 
+### 4.7. Moving Average Technical Indicators (`app/market/indicators.py`)
+- **Technical Feature Flow:**
+  ```text
+  Clean Market Records (MarketOHLCV)
+             ↓
+  Extract Chronological Series (Close Prices)
+             ↓
+  Compute Simple Moving Averages (SMA: 5-day, 10-day, configurable)
+             ↓
+  Compute Exponential Moving Averages (EMA: 5-day, 10-day, configurable)
+             ↓
+  MovingAverageFeatures Dataclass (.to_dict() tabular export)
+  ```
+- **Price Basis:** Indicators are strictly computed using raw, unadjusted closing prices (`close`).
+- **Mathematical Formulations:**
+  - **Simple Moving Average (SMA):** $SMA_{t, W} = \frac{1}{W} \sum_{i=0}^{W-1} P_{t-i}$. Sessions where $t < W - 1$ return `None`.
+  - **Exponential Moving Average (EMA):** $EMA_t = \alpha P_t + (1 - \alpha) EMA_{t-1}$ where $\alpha = \frac{2}{W + 1}$. Early un-warmed sessions ($t < W - 1$) return `None`.
+- **Zero Future-Data Leakage:** Point-in-time calculation strictly bounds inputs to observations up to and including the evaluated session timestamp.
+- **Pipeline Integration:** Orchestrated within `MarketDataPipelineResult` alongside return and volatility features.
+
 - **Strict Development Schedule Boundaries:**
   - **Day 4 (Complete):** Concrete historical market data collector adapter and empirical verification.
   - **Day 5 (Complete):** Data cleaning layer (missing values, duplicates, physical anomalies, date normalization, chronological sorting).
   - **Day 6 (Complete):** Returns and rolling realized volatility feature calculations.
   - **Day 7 (Complete):** First market charting and full data pipeline completion.
-  - **Day 8 (Planned):** Next scheduled milestone phase.
+  - **Day 8 (Complete):** Moving average technical indicators (SMA & EMA, configurable windows, point-in-time guarantees).
+  - **Day 9 (Planned):** Next scheduled technical indicators / milestone phase.
 
 
 

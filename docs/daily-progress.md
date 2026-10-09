@@ -547,4 +547,103 @@ Executed `scripts/verify_pipeline.py` on real `BHARTIARTL.NS` historical bars (2
 ### Next Step
 Phase 3: Technical Indicators & Feature Engineering (SMA, EMA, RSI, MACD, Bollinger Bands, ATR).
 
+---
+
+## Day 8 - Technical Indicators: Moving Averages
+
+### Goal
+Integrate Simple Moving Average (SMA) and Exponential Moving Average (EMA) calculations into the existing market-feature workflow:
+1. Configurable moving-average windows, including 5-session and 10-session windows.
+2. Chronological market data using raw unadjusted close price basis.
+3. Strict prevention of future-data leakage (point-in-time calculation).
+4. Deterministic behavior for insufficient history, missing values, and invalid inputs.
+5. Non-destructive pipeline integration preserving raw historical records.
+6. Empirical verification against real `BHARTIARTL.NS` historical market data.
+
+### Implementation
+1. **Moving Average Technical Indicators (`app/market/indicators.py`):**
+   - Implemented `calculate_sma(prices, window)`: Simple Moving Average over configurable positive window $W$ ($SMA_{t} = \frac{1}{W} \sum_{i=0}^{W-1} P_{t-i}$). Returns `None` for early un-warmed sessions ($t < W - 1$) and handles empty or invalid price lists.
+   - Implemented `calculate_ema(prices, window)`: Exponential Moving Average using recursive smoothing multiplier $\alpha = \frac{2}{W + 1}$ initialized with seed SMA. Suppresses un-warmed values prior to window $W$ ($t < W - 1$).
+   - Implemented `MovingAverageFeatures` dataclass: Encapsulates `symbol`, `timestamp`, `close`, `smas: Dict[int, Optional[float]]`, `emas: Dict[int, Optional[float]]`, with convenience properties (`sma_5`, `sma_10`, `ema_5`, `ema_10`) and `.to_dict()` tabular serialization.
+   - Implemented `compute_moving_averages(records, sma_windows=(5, 10), ema_windows=(5, 10))`: Multi-symbol, chronological indicator engine producing aligned feature dataclasses without mutating input bars.
+2. **Package Exports (`app/market/__init__.py`):**
+   - Cleanly exported `MovingAverageFeatures`, `calculate_sma`, `calculate_ema`, `compute_moving_averages`.
+3. **Pipeline Orchestrator Integration (`app/market/pipeline.py`):**
+   - Extended `MarketDataPipelineResult` with `indicators: List[MovingAverageFeatures]` and `to_indicator_dicts()` serialization.
+   - Updated `process_market_data()` and `run_market_data_pipeline()` to orchestrate provider collection, cleaning, return/volatility feature computation, and moving average calculation in a unified flow.
+4. **Dependencies (`requirements.txt`):**
+   - Added `pandas>=2.0.0` for technical indicators and rolling series support.
+5. **Real-Data Verification Script (`scripts/verify_indicators.py`):**
+   - End-to-end verification script executing `run_market_data_pipeline` on `BHARTIARTL.NS` (2026-09-01 to 2026-09-08).
+   - Validates chronological ordering, point-in-time boundaries, mathematical correctness, window warmup, and insufficient history handling.
+   - Outputs an aligned table with matched column widths and Windows UTF-8 / currency safe encoding.
+6. **Application Entry Point Update (`main.py`):**
+   - Added `print("Day 8 moving averages ready")`.
+
+### Indicator Definitions & Specifications
+- **Price Basis:** Raw unadjusted close price (`close` attribute from `MarketOHLCV`).
+- **Configured Windows:** Default 5-session (`sma_5`, `ema_5`) and 10-session (`sma_10`, `ema_10`) windows; extensible to any positive integer window.
+- **Insufficient History & Missing Data Policy:**
+  - For $t < W - 1$, returns strictly `None`. Zero synthetic padding or partial-window distortion.
+  - When total available sessions $< W$ (e.g. 6 sessions available for a 10-session window), all values for window $W$ evaluate to `None`.
+  - Empty or invalid inputs (e.g., non-positive prices) return empty lists or `None` without crashing.
+- **Future-Data Leakage Prevention:**
+  - Calculation at session $t$ strictly indexes prices up to $t$.
+  - Unit tests verify that altering future prices has zero impact on indicators at prior sessions.
+
+### Real Data Verification
+Executed `scripts/verify_indicators.py` on real `BHARTIARTL.NS` historical bars (2026-09-01 to 2026-09-08):
+- Input: 6 raw canonical bars collected via `YFinanceProvider`
+- Cleaning: 6 cleaned bars (0 missing, 0 invalid, 0 rejected)
+- Features: 6 feature records + 6 moving average indicator records
+- Results Table:
+  ```text
+  ---------------------------------------------------------------------------------------
+  Date         Close (₹)      SMA-5          EMA-5          SMA-10         EMA-10        
+  ---------------------------------------------------------------------------------------
+  2026-09-01   1877.20        None (<5d)     None (<5d)     None (<10d)    None (<10d)   
+  2026-09-02   1862.80        None (<5d)     None (<5d)     None (<10d)    None (<10d)   
+  2026-09-03   1869.00        None (<5d)     None (<5d)     None (<10d)    None (<10d)   
+  2026-09-04   1840.00        None (<5d)     None (<5d)     None (<10d)    None (<10d)   
+  2026-09-07   1854.00        1860.60        1858.56        None (<10d)    None (<10d)   
+  2026-09-08   1844.00        1853.96        1853.71        None (<10d)    None (<10d)   
+  ---------------------------------------------------------------------------------------
+  ```
+- Summary Metrics:
+  - 1:1 bar alignment: 6/6 records matched
+  - SMA-5 available: 2 sessions (sessions 5 and 6)
+  - EMA-5 available: 2 sessions (sessions 5 and 6)
+  - SMA-10 / EMA-10: 0 available (correctly `None` due to 6 available sessions $< 10$)
+  - Verification exit code: 0
+
+### Tests
+- **Unit Test Suites (`tests/test_indicators.py` and `tests/test_pipeline.py`):**
+  - Added 19 comprehensive unit tests covering:
+    - Known mathematical calculations for SMA and EMA against manual floating-point baselines.
+    - Window 1 trivial identity.
+    - Invalid window parameter validation ($W \le 0$).
+    - Empty input handling.
+    - Insufficient history / warmup `None` yields.
+    - Zero future-data leakage verification.
+    - Multi-symbol grouping isolation.
+    - Unsorted input handling and automatic chronological sorting.
+    - Pipeline integration and dictionary serialization.
+- **Full Test Suite Execution:**
+  - 95 passed in 4.22s (`pytest -v`). Zero external network dependencies.
+
+### Review
+- **CodeRabbit:** CodeRabbit CLI is not installed/configured in this environment. CodeRabbit design rules were proactively maintained: exact header/row table width matching, explicit non-assert validation checks in verification scripts with stderr diagnostic output, and safe Windows UTF-8 / currency fallback encoding.
+- **Roo Code:** Remains disabled as required.
+- **Ponytail / Minimalism Review:** Efficient vectorization via Pandas, minimal footprint, pure functions with point-in-time guarantees, zero speculative abstractions.
+
+### Documentation
+- Updated `README.md` to Day 8 status with 95 passing tests.
+- Updated `docs/architecture.md` with Section 4.7 detailing moving average technical indicators.
+- Updated `docs/decisions.md` with ADR 35 (Moving Average Technical Indicators, Price Basis, and Point-in-Time Integrity).
+- Updated `docs/daily-progress.md` with Day 8 implementation, formulas, and verification results.
+
+### Known Limitations & Next Steps
+- Current test range (2026-09-01 to 2026-09-08) contains 6 trading sessions, leaving 10-session moving averages un-warmed (`None`). Longer historical windows will naturally populate 10-session, 20-session, 50-session, and 200-session moving averages when multi-month historical data ranges are queried.
+- Next scheduled scope (Day 9): Additional technical indicators (RSI, MACD, Bollinger Bands, ATR) building on this foundation.
+
 

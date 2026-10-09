@@ -24,6 +24,7 @@ def main() -> int:
     print("Day 5 data cleaning ready")
     print("Day 6 returns and volatility ready")
     print("Day 7 visualization pipeline ready")
+    print("Day 8 moving averages ready")
     print(f"Python runtime: {sys.version.split()[0]}")
     print(f"Environment: {settings.environment}")
     print(f"Project root: {Path(__file__).resolve().parent}")

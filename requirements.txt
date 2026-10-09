@@ -7,3 +7,6 @@ yfinance>=1.7.0
 
 # Day 7 Historical Market Visualization Pipeline
 matplotlib>=3.8.0
+
+# Day 8 Technical Indicators
+pandas>=2.0.0

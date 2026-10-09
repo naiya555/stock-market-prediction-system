@@ -5,6 +5,12 @@ Provides abstractions and adapters for market data acquisition, normalization, a
 
 from app.core.schemas import DataSourceMetadata, MarketOHLCV, MarketQuote
 from app.market.cleaner import CleaningResult, CleaningSummary, clean_market_data
+from app.market.indicators import (
+    MovingAverageFeatures,
+    calculate_ema,
+    calculate_sma,
+    compute_moving_averages,
+)
 from app.market.pipeline import (
     MarketDataPipelineResult,
     process_market_data,
@@ -41,6 +47,10 @@ __all__ = [
     "calculate_standard_deviation",
     "calculate_rolling_volatility",
     "compute_market_returns",
+    "MovingAverageFeatures",
+    "calculate_sma",
+    "calculate_ema",
+    "compute_moving_averages",
     "MarketDataPipelineResult",
     "process_market_data",
     "run_market_data_pipeline",
