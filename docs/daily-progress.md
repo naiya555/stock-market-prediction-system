@@ -646,4 +646,104 @@ Executed `scripts/verify_indicators.py` on real `BHARTIARTL.NS` historical bars 
 - Current test range (2026-09-01 to 2026-09-08) contains 6 trading sessions, leaving 10-session moving averages un-warmed (`None`). Longer historical windows will naturally populate 10-session, 20-session, 50-session, and 200-session moving averages when multi-month historical data ranges are queried.
 - Next scheduled scope (Day 9): Additional technical indicators (RSI, MACD, Bollinger Bands, ATR) building on this foundation.
 
+---
+
+## Day 9 - Expand Historical Data & RSI Technical Indicator
+
+### Goal
+1. Investigate and resolve the Day 8 six-record historical data limitation.
+2. Enable collection of longer historical periods (targeting 6–12 months of daily OHLCV data).
+3. Verify moving averages (SMA-5, EMA-5, SMA-10, EMA-10) with sufficient data.
+4. Implement Wilder's Relative Strength Index (RSI) with configurable periods, robust edge-case handling, and zero future leakage.
+5. Add unit tests and regression tests for both the 6-record case and expanded history case.
+6. Verify against real historical market data for `BHARTIARTL.NS`.
+
+### Investigation & Root Cause of Six-Record Limitation
+- **Investigation:** Examined `YFinanceProvider`, `clean_market_data()`, `run_market_data_pipeline()`, and historical verification scripts.
+- **Root Cause Verified:**
+  The provider (`YFinanceProvider`) and collection logic were fully functional and capable of fetching hundreds of historical bars over multi-year ranges. The 6-record result occurred because verification scripts (`scripts/verify_collector.py`, `scripts/verify_returns.py`, `scripts/verify_pipeline.py`, `scripts/verify_indicators.py`) explicitly hardcoded an 8-calendar-day window:
+  `start_dt = datetime(2026, 9, 1)` and `end_dt = datetime(2026, 9, 8)`.
+  In that calendar span, there were only 6 NSE trading sessions (Sept 1, 2, 3, 4, 7, 8; Sept 5 and 6 were weekends).
+  Because `run_market_data_pipeline()` required mandatory `start_date` and `end_date` parameters, callers lacked an ergonomic mechanism to request standard lookback periods.
+- **Implemented Fix:**
+  Enhanced `run_market_data_pipeline()` in `app/market/pipeline.py` to support `lookback_days` (defaulting to 180 calendar days / ~6 months, or 365 calendar days / ~12 months) when `start_date` is omitted, while preserving exact explicit date handling when provided.
+
+### Implementation
+1. **Relative Strength Index (`calculate_rsi` in `app/market/indicators.py`):**
+   - Implemented J. Welles Wilder's smoothing formulation ($\alpha = 1 / W$).
+   - Seeded initial averages at $t = period$ via arithmetic mean over the first $period$ price changes ($period + 1$ prices).
+   - Applied recursive Wilder smoothing for $t > period$:
+     $$AvgGain_t = \frac{AvgGain_{t-1} \times (W - 1) + Gain_t}{W}, \quad AvgLoss_t = \frac{AvgLoss_{t-1} \times (W - 1) + Loss_t}{W}$$
+     $$RSI = 100 \times \frac{AvgGain}{AvgGain + AvgLoss}$$
+   - Explicit edge-case handling:
+     - Flat prices ($AvgGain = 0$ and $AvgLoss = 0$): returns `50.0` (neutral baseline).
+     - Pure gains ($AvgLoss = 0$ and $AvgGain > 0$): returns `100.0`.
+     - Pure losses ($AvgGain = 0$ and $AvgLoss > 0$): returns `0.0`.
+     - Output is bounded strictly in $[0.0, 100.0]$ when defined.
+     - Un-warmed sessions ($t < period$): returns `None`.
+     - Zero future-data leakage (temporal point-in-time preservation).
+   - Documented explicit disclaimer that RSI is a momentum indicator and not a guaranteed price-direction predictor.
+2. **Feature Dataclass & Container Updates (`MovingAverageFeatures`):**
+   - Added `rsi: Dict[int, Optional[float]] = field(default_factory=dict)` and convenience property `rsi_14`.
+   - Updated `.to_dict()` to serialize `rsi_{period}` fields for tabular ML consumption.
+3. **Indicator Orchestration (`compute_moving_averages` / `compute_technical_indicators`):**
+   - Added `rsi_periods: Sequence[int] = (14,)` parameter to compute multi-period RSI alongside SMAs and EMAs.
+   - Defined `compute_technical_indicators = compute_moving_averages` alias.
+4. **Pipeline Orchestrator (`app/market/pipeline.py`):**
+   - Extended `process_market_data` and `run_market_data_pipeline` with `rsi_periods=(14,)` and `lookback_days`.
+5. **Exports (`app/market/__init__.py`):**
+   - Exported `calculate_rsi` and `compute_technical_indicators`.
+6. **Real-Data Verification Script (`scripts/verify_indicators.py`):**
+   - Updated to verify both the expanded 180-day historical range and the 6-record regression fixture.
+7. **Application Entry Point Update (`main.py`):**
+   - Added `print("Day 9 technical indicators (RSI & expanded history) ready")`.
+
+### Real Data Verification
+Executed `scripts/verify_indicators.py` on real `BHARTIARTL.NS` historical data:
+- **Part 1: Expanded Historical Range (lookback_days=180, ~6 months):**
+  - Date Range: 2026-04-13 to 2026-10-09 (124 sessions)
+  - SMA-5 available: 120 / 124 sessions (warmed up at session 5)
+  - EMA-5 available: 120 / 124 sessions (warmed up at session 5)
+  - SMA-10 available: 115 / 124 sessions (warmed up at session 10)
+  - EMA-10 available: 115 / 124 sessions (warmed up at session 10)
+  - RSI-14 available: 110 / 124 sessions (warmed up at session 15 / 14 price changes)
+  - Latest Observation (2026-10-09): Close=1805.10, SMA-5=1806.80, EMA-5=1802.94, SMA-10=1786.01, EMA-10=1800.50, RSI-14=46.63
+- **Part 2: Regression Verification (original 6-session range 2026-09-01 to 2026-09-08):**
+  - Bars: 6
+  - SMA-5: 2 values
+  - SMA-10: 0 values (all `None`)
+  - RSI-14: 0 values (all `None`)
+- Verification Status: Exit code 0, 1:1 bar alignment, zero encoding errors.
+
+### Tests
+- **Unit Test Suite (`tests/test_indicators.py` and `tests/test_pipeline.py`):**
+  - Added 12 new automated tests covering:
+    - Textbook manual calculation verification (period=3, prices=[100, 102, 101, 104, 103])
+    - Standard 14-period RSI on strictly increasing (100.0), decreasing (0.0), and flat (50.0) series
+    - Insufficient history / warmup behavior
+    - Strict boundedness within $[0.0, 100.0]$
+    - Point-in-time invariant (zero future price leakage)
+    - Non-positive / invalid price handling
+    - MovingAverageFeatures integration with `rsi_14` property and dictionary serialization
+    - Regression test for the 6-record case
+    - Expanded history test (20 bars verifying sequential warmups)
+    - Pipeline execution with `lookback_days`
+- **Full Test Suite Execution:**
+  - **107 passed in 4.26s** (`pytest -v`). Zero external network dependencies.
+
+### Review
+- **CodeRabbit:** CodeRabbit local CLI is not available in this environment. Proactively enforced CodeRabbit formatting standards (aligned column widths, explicit non-assert validation checks with exit codes, and safe UTF-8 / currency symbol handling).
+- **Roo Code:** Remained disabled.
+- **Ponytail / Minimalism Review:** Minimal, clean Wilder smoothing loop, seamless backward compatibility with existing interfaces, zero unnecessary dependencies.
+
+### Documentation
+- Updated `README.md` to Day 9 status with 107 passing tests.
+- Updated `docs/architecture.md` with Section 4.7 covering technical indicators, momentum oscillators, and milestone updates.
+- Updated `docs/decisions.md` with ADR 36 (RSI Smoothing, Edge-Case Handling, and Flexible Historical Lookbacks).
+- Updated `docs/daily-progress.md` with Day 9 progress journal.
+
+### Known Limitations & Next Steps
+- Historical data lookback is configured by default to 180 days (~6 months / ~124 sessions), which easily satisfies 5, 10, 14, 20, and 50-session indicators. Long-term indicators like 200-day SMA will require passing `lookback_days=365` or greater.
+- Next scheduled scope (Day 10): Additional technical indicators (MACD, Bollinger Bands, ATR) and indicator feature matrix assembly.
+
 

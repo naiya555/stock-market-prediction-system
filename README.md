@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 8: Technical Indicators (Moving Averages)  
+> **Status:** Ongoing Project — Day 9: Expand Historical Data & RSI Technical Indicator  
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -43,7 +43,7 @@ When fully developed, the end-user workflow will operate as follows:
 - **`app/api/`**: FastAPI application endpoints and route handlers (planned).
 - **`app/core/`**: Centralized configuration (`config.py`), logging foundation (`logging_config.py`), and canonical schema contracts (`schemas.py`).
 - **`app/database/`**: Relational database persistence (SQLite initially, PostgreSQL migration path).
-- **`app/market/`**: Market data acquisition, cleaning, technical feature engineering (returns, volatility, moving averages), market breadth, pipeline orchestration, and visualization.
+- **`app/market/`**: Market data acquisition, cleaning, technical feature engineering (returns, volatility, moving averages, RSI), market breadth, pipeline orchestration, and visualization.
 - **`app/news/`**: Financial news ingestion, deduplication, and entity linking.
 - **`app/nlp/`**: FinBERT sentiment scoring and textual analysis.
 - **`app/prediction/`**: Numerical ML predictor, LLM predictor, and ensemble synthesis.
@@ -52,9 +52,9 @@ When fully developed, the end-user workflow will operate as follows:
 
 ---
 
-## 4. Current Status: Day 8 (Technical Indicators: Moving Averages)
+## 4. Current Status: Day 9 (Expand Historical Data & RSI Technical Indicator)
 
-Day 8 initiates Phase 3 (Technical Indicators & Feature Engineering) by delivering Simple Moving Average (SMA) and Exponential Moving Average (EMA) feature calculations integrated with the market data pipeline.
+Day 9 resolves the Day 8 six-session historical data limitation by enabling flexible 6–12 month historical window lookbacks (`lookback_days`), confirms full warmup of SMA-5, EMA-5, SMA-10, and EMA-10, and delivers Wilder's Relative Strength Index (RSI) calculation.
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.
@@ -78,23 +78,25 @@ Day 8 initiates Phase 3 (Technical Indicators & Feature Engineering) by deliveri
   - Machine-readable feature container (`ReturnFeatures`) with `.to_dict()` serialization and type-safe convenience properties.
   - Safe zero/negative previous price handling (division-by-zero protection returning `None` rather than generating `inf` or crashing).
   - Multi-symbol grouping with isolated per-ticker chronological sorting.
-- Moving Average Technical Indicators (`app/market/indicators.py`):
+- Technical Indicators & Momentum Engine (`app/market/indicators.py`):
   - Simple Moving Average (`calculate_sma`) with configurable session windows (default 5 and 10 sessions).
   - Exponential Moving Average (`calculate_ema`) with recursive smoothing factor $\alpha = \frac{2}{W + 1}$.
-  - Multi-session indicator orchestrator (`compute_moving_averages`) producing immutable `MovingAverageFeatures` dataclasses.
+  - Relative Strength Index (`calculate_rsi`) using Wilder's smoothing method ($\alpha = 1 / W$) with configurable periods (standard 14-session default).
+  - Explicit RSI edge-case handling: neutral 50.0 for flat prices, 100.0 for pure gains, 0.0 for pure losses; bounded strictly within $[0.0, 100.0]$.
+  - Multi-session indicator orchestrator (`compute_moving_averages` / `compute_technical_indicators`) producing immutable `MovingAverageFeatures` dataclasses with `rsi_14` property and flat `.to_dict()` export.
   - Strict point-in-time guarantees preventing future-data leakage.
-  - Un-warmed window sessions ($t < W - 1$) and insufficient histories safely return `None`.
+  - Un-warmed window sessions ($t < W - 1$ for MAs, $t < W$ for RSI) and insufficient histories safely return `None`.
   - Raw price basis: strictly unadjusted closing prices (`close`).
-  - Flat `.to_dict()` export for downstream ML tabular models.
 - Market Data Pipeline Orchestrator (`app/market/pipeline.py`):
-  - Unified pipeline connecting provider retrieval, data cleaning, return/volatility feature computation, and moving average calculation (`run_market_data_pipeline` and `process_market_data`).
-  - Immutable pipeline container (`MarketDataPipelineResult`) preserving raw records, cleaned records, cleaning summary, return features, and moving average indicators.
+  - Unified pipeline connecting provider retrieval, data cleaning, return/volatility feature computation, and technical indicators (`run_market_data_pipeline` and `process_market_data`).
+  - Supports flexible historical range lookbacks via `lookback_days` (defaulting to 180 days / ~6 months, or 365 days / ~12 months) when `start_date` is omitted, while retaining deterministic explicit date support.
+  - Immutable pipeline container (`MarketDataPipelineResult`) preserving raw records, cleaned records, cleaning summary, return features, and technical indicators.
 - Historical Market Visualizer (`app/market/visualizer.py`):
   - Headless Matplotlib rendering (`Agg` backend) generating publication-quality PNG charts.
   - Historical closing price chart (`plot_closing_prices`) with formatted INR pricing and session date labels.
   - Daily percentage returns chart (`plot_daily_returns`) with color-coded positive/negative bars and zero baseline.
   - Batch chart generator (`generate_market_charts`) saving to `data/processed/charts/` (strictly ignored by `.gitignore`).
-- 95 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, and visualization.
+- 107 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, and visualizer.
 
 ---
 

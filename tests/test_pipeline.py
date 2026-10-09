@@ -169,3 +169,23 @@ def test_run_market_data_pipeline_with_mock_provider():
     assert len(indicator_dicts) == 3
     assert "sma_5" in indicator_dicts[0]
     assert "ema_5" in indicator_dicts[0]
+    assert "rsi_14" in indicator_dicts[0]
+
+
+def test_run_market_data_pipeline_with_default_lookback():
+    """Verify run_market_data_pipeline calculates start_date from lookback_days when omitted."""
+    bars = [
+        _make_bar(day=1, close=1800.0),
+        _make_bar(day=2, close=1820.0),
+    ]
+    mock_provider = MockMarketDataProvider(bars)
+
+    result = run_market_data_pipeline(
+        symbol="BHARTIARTL",
+        lookback_days=180,
+        provider=mock_provider,
+    )
+
+    assert result.symbol == "BHARTIARTL"
+    assert result.record_count == 2
+    assert len(result.indicators) == 2

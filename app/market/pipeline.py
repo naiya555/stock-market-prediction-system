@@ -6,7 +6,7 @@ deterministic, and auditable end-to-end pipeline for Indian equities.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence
 
 from app.core.logging_config import get_logger
@@ -68,6 +68,7 @@ def process_market_data(
     trading_days: int = 252,
     sma_windows: Sequence[int] = (5, 10),
     ema_windows: Sequence[int] = (5, 10),
+    rsi_periods: Sequence[int] = (14,),
 ) -> MarketDataPipelineResult:
     """Process an existing sequence of raw MarketOHLCV records through cleaning, returns, and indicators.
 
@@ -81,10 +82,11 @@ def process_market_data(
         trading_days: Annual trading session count (default 252 for Indian equities).
         sma_windows: Multi-session windows for Simple Moving Average (default (5, 10)).
         ema_windows: Multi-session windows for Exponential Moving Average (default (5, 10)).
+        rsi_periods: Multi-session windows for Relative Strength Index (default (14,)).
 
     Returns:
         MarketDataPipelineResult containing raw records, cleaned records, cleaning summary,
-        computed return/volatility features, and moving average technical indicators.
+        computed return/volatility features, and technical indicators.
     """
     raw_list = list(raw_records)
     symbol = raw_list[0].symbol if raw_list else ""
@@ -106,6 +108,7 @@ def process_market_data(
         cleaned_list,
         sma_windows=sma_windows,
         ema_windows=ema_windows,
+        rsi_periods=rsi_periods,
     )
 
     logger.info(
@@ -129,8 +132,9 @@ def process_market_data(
 
 def run_market_data_pipeline(
     symbol: str,
-    start_date: datetime,
-    end_date: datetime,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    lookback_days: Optional[int] = None,
     provider: Optional[BaseMarketDataProvider] = None,
     interval: str = "1d",
     rolling_return_windows: Sequence[int] = (3, 5),
@@ -138,6 +142,7 @@ def run_market_data_pipeline(
     trading_days: int = 252,
     sma_windows: Sequence[int] = (5, 10),
     ema_windows: Sequence[int] = (5, 10),
+    rsi_periods: Sequence[int] = (14,),
 ) -> MarketDataPipelineResult:
     """Execute end-to-end market data acquisition, cleaning, feature engineering, and indicator computation.
 
@@ -145,12 +150,13 @@ def run_market_data_pipeline(
     1. Historical data acquisition via BaseMarketDataProvider (defaults to YFinanceProvider)
     2. Data cleaning, duplicate resolution, and domain validation via clean_market_data
     3. Return and volatility feature computation via compute_market_returns
-    4. Moving average technical indicator computation via compute_moving_averages
+    4. Technical indicator computation (SMA, EMA, RSI) via compute_moving_averages
 
     Args:
         symbol: Market ticker symbol (e.g. 'BHARTIARTL').
-        start_date: Inclusive start datetime for historical range.
-        end_date: Historical range end datetime.
+        start_date: Inclusive start datetime for historical range (optional; defaults to end_date - lookback_days).
+        end_date: Historical range end datetime (optional; defaults to now).
+        lookback_days: Number of calendar days of historical lookback when start_date is omitted (default 180).
         provider: Provider instance implementing BaseMarketDataProvider.
         interval: Bar resolution (default '1d').
         rolling_return_windows: Multi-session windows for rolling returns (default (3, 5)).
@@ -158,24 +164,32 @@ def run_market_data_pipeline(
         trading_days: Annual trading session count (default 252).
         sma_windows: Multi-session windows for Simple Moving Average (default (5, 10)).
         ema_windows: Multi-session windows for Exponential Moving Average (default (5, 10)).
+        rsi_periods: Multi-session windows for Relative Strength Index (default (14,)).
 
     Returns:
         MarketDataPipelineResult with all pipeline stage artifacts.
     """
     active_provider = provider or YFinanceProvider()
 
+    active_end = end_date or datetime.now()
+    if start_date is not None:
+        active_start = start_date
+    else:
+        days = lookback_days if lookback_days is not None else 180
+        active_start = active_end - timedelta(days=days)
+
     logger.info(
         "Starting end-to-end pipeline: %s [%s to %s] via %s",
         symbol,
-        start_date.date(),
-        end_date.date(),
+        active_start.date(),
+        active_end.date(),
         active_provider.name,
     )
 
     raw_records = active_provider.fetch_historical_ohlcv(
         symbol=symbol,
-        start_date=start_date,
-        end_date=end_date,
+        start_date=active_start,
+        end_date=active_end,
         interval=interval,
     )
 
@@ -186,4 +200,5 @@ def run_market_data_pipeline(
         trading_days=trading_days,
         sma_windows=sma_windows,
         ema_windows=ema_windows,
+        rsi_periods=rsi_periods,
     )

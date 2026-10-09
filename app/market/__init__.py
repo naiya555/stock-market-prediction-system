@@ -8,8 +8,10 @@ from app.market.cleaner import CleaningResult, CleaningSummary, clean_market_dat
 from app.market.indicators import (
     MovingAverageFeatures,
     calculate_ema,
+    calculate_rsi,
     calculate_sma,
     compute_moving_averages,
+    compute_technical_indicators,
 )
 from app.market.pipeline import (
     MarketDataPipelineResult,
@@ -50,7 +52,9 @@ __all__ = [
     "MovingAverageFeatures",
     "calculate_sma",
     "calculate_ema",
+    "calculate_rsi",
     "compute_moving_averages",
+    "compute_technical_indicators",
     "MarketDataPipelineResult",
     "process_market_data",
     "run_market_data_pipeline",

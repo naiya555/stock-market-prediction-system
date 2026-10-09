@@ -290,3 +290,26 @@ This document formalizes the architectural decisions made on Day 1. All future i
   6. **Non-Destructive Feature Container:** Raw market records are never modified. Results are encapsulated in `MovingAverageFeatures` dataclasses with `.to_dict()` tabular serialization.
 - **Consequences:** Guarantees deterministic, reproducible, leak-free indicator generation that integrates seamlessly with existing pipeline and future machine learning models.
 
+---
+
+## ADR 36: Relative Strength Index (RSI) Smoothing, Edge-Case Handling, and Flexible Historical Lookbacks
+- **Status:** Accepted
+- **Context:**
+  1. The Day 8 historical verification returned only 6 sessions because verification scripts hardcoded a bounded 8-calendar-day range (`2026-09-01` to `2026-09-08`). As a consequence, 10-session MAs could not warm up, and longer indicators like 14-period RSI were uncomputable. Callers required a flexible historical lookback parameter without breaking existing explicit date contracts.
+  2. Momentum feature engineering requires the Relative Strength Index (RSI). Ambiguity in smoothing methods (Wilder's vs simple EMA vs SMA-based RS) and undefined divisions (flat prices, zero losses, zero gains) can cause numerical instabilities or leakage between training and inference.
+- **Decision:**
+  1. **Flexible Pipeline Lookback:** `run_market_data_pipeline` supports `lookback_days` (defaulting to 180 calendar days / ~120 trading sessions when `start_date` is omitted), while preserving explicit `start_date` and `end_date` parameters for deterministic testing.
+  2. **Wilder's Smoothing Formulation:** RSI adopts J. Welles Wilder's recursive smoothing method with multiplier $\alpha = 1 / W$. The first $W$ price changes (at index $W$, requiring $W+1$ prices) are seeded via simple arithmetic mean:
+     $$AvgGain_{W} = \frac{1}{W} \sum_{i=1}^{W} U_i, \quad AvgLoss_{W} = \frac{1}{W} \sum_{i=1}^{W} D_i$$
+     Subsequent sessions apply Wilder's recursive smoothing:
+     $$AvgGain_t = \frac{AvgGain_{t-1} \times (W - 1) + U_t}{W}, \quad AvgLoss_t = \frac{AvgLoss_{t-1} \times (W - 1) + D_t}{W}$$
+  3. **Edge-Case Resolution & Boundedness:**
+     $$RSI = 100 \times \frac{AvgGain}{AvgGain + AvgLoss}$$
+     - Flat prices ($AvgGain = 0$ and $AvgLoss = 0$): returns `50.0` (neutral baseline).
+     - Gains without losses ($AvgGain > 0$ and $AvgLoss = 0$): returns `100.0`.
+     - Losses without gains ($AvgLoss > 0$ and $AvgGain = 0$): returns `0.0`.
+     - Output is bounded strictly in $[0.0, 100.0]$ when defined.
+  4. **Warmup & Insufficient History:** For sessions $t < W$ (fewer than $W$ price changes), RSI evaluates strictly to `None`. No synthetic padding is introduced.
+  5. **Non-Predictive Disclaimer:** RSI is strictly treated as an empirical momentum feature and input to downstream ML models, never as a guaranteed standalone predictor of price direction.
+- **Consequences:** Provides robust, leak-free momentum indicator calculation and allows collecting 6 to 12 months of clean historical data for comprehensive feature evaluation.
+
