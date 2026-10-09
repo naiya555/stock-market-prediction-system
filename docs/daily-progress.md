@@ -448,7 +448,10 @@ Executed `scripts/verify_returns.py` on real `BHARTIARTL.NS` historical bars:
   - 65 passed in 0.85s (`pytest -v`). Zero external network dependencies.
 
 ### Review
-- **CodeRabbit:** CodeRabbit unavailable — review not run.
+- **CodeRabbit Review Remediation:**
+  1. *Row width alignment:* Resolved column width mismatch between table headers and data rows in `scripts/verify_returns.py` (standardized widths: 12, 12, 14, 14, 14, 14).
+  2. *Verification assertion replacement:* Replaced `assert` statements in `scripts/verify_returns.py` with explicit conditional validation checks that output descriptive errors to `sys.stderr` and return exit code 1.
+  3. *Windows currency encoding robustness:* Configured `sys.stdout.reconfigure(encoding="utf-8")` when available, with dynamic detection and safe `INR` fallback if `₹` cannot be encoded by the terminal stream.
 - **Ralph Loop:** Ralph Loop unavailable — manual bounded cycle completed.
 - **Ponytail / Minimalism Review:** Pure standard library implementation (`math`, `typing`, `dataclasses`, `collections`, `datetime`). Zero third-party mathematical or ML dependencies added. Zero speculative abstractions.
 
@@ -456,16 +459,20 @@ Executed `scripts/verify_returns.py` on real `BHARTIARTL.NS` historical bars:
 - Updated `README.md` to Day 6 completion with 65 passing tests.
 - Updated `docs/architecture.md` with Section 4.5 detailing the returns & volatility feature pipeline.
 - Updated `docs/decisions.md` with ADRs 30 through 33.
-- Updated `docs/daily-progress.md` with Day 6 audit log and verification results.
+- Updated `docs/daily-progress.md` with Day 6 audit log and CodeRabbit remediation details.
 
 ### Git Commit
-- `feat: add returns and volatility features`
+- **Feature Commit:** `25b6cb7` — `feat: add returns and volatility features`
+- **Remediation Commit:** `fix: address returns verification review findings`
 
 ### GitHub
 - PUSHED to `origin/main`
 
 ### Issues
-- Windows cp1252 stdout currency symbol encoding in `verify_returns.py` resolved by standardizing on `INR`.
+- CodeRabbit finding on table row width mismatch — Resolved.
+- CodeRabbit finding on `assert` statements in verification script — Resolved.
+- Windows console currency symbol encoding — Resolved via dynamic UTF-8 reconfiguration and safe `INR` fallback.
 
 ### Next Step
 Day 7: First market chart + data pipeline completion — implement price chart, volume chart, initial moving-average visualization, and end-to-end data pipeline completion.
+

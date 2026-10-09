@@ -7,8 +7,15 @@ metrics on real cleaned historical bars for BHARTIARTL.NS.
 """
 
 from datetime import datetime
-import sys
 from pathlib import Path
+import sys
+
+# Attempt to configure UTF-8 encoding on Windows if supported
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 # Add project root to sys.path
 project_root = Path(__file__).resolve().parent.parent
@@ -19,6 +26,16 @@ from app.core.schemas import MarketOHLCV
 from app.market.cleaner import clean_market_data
 from app.market.providers.yfinance_provider import YFinanceProvider
 from app.market.returns import ReturnFeatures, compute_market_returns
+
+
+def _get_currency_symbol() -> str:
+    """Determine currency symbol, falling back to 'INR' if console cannot encode rupee."""
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        "\u20b9".encode(encoding)
+        return "\u20b9"
+    except (UnicodeEncodeError, LookupError):
+        return "INR"
 
 
 def main() -> int:
@@ -40,7 +57,7 @@ def main() -> int:
             interval="1d",
         )
     except Exception as exc:
-        print(f"ERROR: Provider collection failed: {exc}")
+        print(f"ERROR: Provider collection failed: {exc}", file=sys.stderr)
         return 1
 
     print(f"  [OK] Collected {len(raw_records)} raw canonical bars.")
@@ -49,7 +66,9 @@ def main() -> int:
     cleaning_result = clean_market_data(raw_records)
     clean_records = cleaning_result.records
     print(f"  [OK] Cleaned bars count: {len(clean_records)}")
-    assert len(clean_records) > 0, "No cleaned records available"
+    if not clean_records:
+        print("ERROR: No cleaned records produced by cleaning pipeline.", file=sys.stderr)
+        return 1
 
     print("\nStep 3: Computing Day 6 returns and volatility features...")
     # Rolling windows: 3-session and 5-session rolling returns; 5-session rolling volatility
@@ -62,19 +81,36 @@ def main() -> int:
 
     print(f"  [OK] Computed features for {len(features)} records.")
 
-    # Invariant assertions
-    assert len(features) == len(clean_records), "Feature count must match clean records count"
-    assert features[0].daily_return is None, "First observation daily return must be None"
+    # Explicit verification checks
+    if len(features) != len(clean_records):
+        print(
+            f"ERROR: Feature count ({len(features)}) does not match cleaned records count ({len(clean_records)}).",
+            file=sys.stderr,
+        )
+        return 1
+
+    if features[0].daily_return is not None:
+        print(
+            f"ERROR: First observation daily return must be None, got {features[0].daily_return}.",
+            file=sys.stderr,
+        )
+        return 1
 
     daily_rets_count = sum(1 for f in features if f.daily_return is not None)
     rolling_3_count = sum(1 for f in features if f.rolling_return_3d is not None)
     rolling_5_count = sum(1 for f in features if f.rolling_return_5d is not None)
     vol_5_count = sum(1 for f in features if f.volatility_5d is not None)
 
+    currency = _get_currency_symbol()
+    close_header = f"Close ({currency})"
+
     print("\nStep 4: Inspection of Calculated Features across Sessions:")
-    print("-----------------------------------------------------------------------------------------")
-    print(f"{'Date':<12} {'Close (INR)':<12} {'Daily Ret':<14} {'Roll Ret 3d':<14} {'Roll Ret 5d':<14} {'Vol 5d (raw)':<14}")
-    print("-----------------------------------------------------------------------------------------")
+    divider = "-" * 85
+    print(divider)
+    print(
+        f"{'Date':<12} {close_header:<12} {'Daily Ret':<14} {'Roll Ret 3d':<14} {'Roll Ret 5d':<14} {'Vol 5d (raw)':<14}"
+    )
+    print(divider)
 
     for f in features:
         d_str = f.timestamp.strftime("%Y-%m-%d")
@@ -83,10 +119,10 @@ def main() -> int:
         r3_str = f"{f.rolling_return_3d:+.4%}" if f.rolling_return_3d is not None else "None (<3d)"
         r5_str = f"{f.rolling_return_5d:+.4%}" if f.rolling_return_5d is not None else "None (<5d)"
         v5_str = f"{f.volatility_5d:.6f}" if f.volatility_5d is not None else "None (<5d)"
-        print(f"{d_str:<12} {c_str:<10} {dr_str:<12} {r3_str:<14} {r5_str:<14} {v5_str:<14}")
+        print(f"{d_str:<12} {c_str:<12} {dr_str:<14} {r3_str:<14} {r5_str:<14} {v5_str:<14}")
 
-    print("-----------------------------------------------------------------------------------------")
-    print(f"Summary Metrics:")
+    print(divider)
+    print("Summary Metrics:")
     print(f"  Clean Record Count:               {len(clean_records)}")
     print(f"  Daily Returns Available:          {daily_rets_count} (of {len(features)})")
     print(f"  First Daily Return:               {features[0].daily_return} (strictly None)")
@@ -95,13 +131,32 @@ def main() -> int:
     print(f"  5-Session Rolling Volatility:     {vol_5_count} available")
     print(f"  Timestamp Alignment 1:1:          All {len(features)} records aligned perfectly")
 
-    # Verify chronological sorting and timestamp alignment
+    # Verify chronological sorting and timestamp alignment with explicit checks
     for i in range(len(features)):
-        assert features[i].timestamp == clean_records[i].timestamp
-        assert features[i].close == clean_records[i].close
-        assert features[i].symbol == clean_records[i].symbol
-        if i > 0:
-            assert features[i].timestamp > features[i - 1].timestamp
+        if features[i].timestamp != clean_records[i].timestamp:
+            print(
+                f"ERROR: Timestamp mismatch at index {i}: {features[i].timestamp} != {clean_records[i].timestamp}",
+                file=sys.stderr,
+            )
+            return 1
+        if features[i].close != clean_records[i].close:
+            print(
+                f"ERROR: Close price mismatch at index {i}: {features[i].close} != {clean_records[i].close}",
+                file=sys.stderr,
+            )
+            return 1
+        if features[i].symbol != clean_records[i].symbol:
+            print(
+                f"ERROR: Symbol mismatch at index {i}: {features[i].symbol} != {clean_records[i].symbol}",
+                file=sys.stderr,
+            )
+            return 1
+        if i > 0 and features[i].timestamp <= features[i - 1].timestamp:
+            print(
+                f"ERROR: Chronological sorting violated at index {i}: {features[i].timestamp} <= {features[i-1].timestamp}",
+                file=sys.stderr,
+            )
+            return 1
 
     print("\n[SUCCESS] Day 6 returns and volatility pipeline verified on real BHARTIARTL.NS data.")
     print("==================================================")
