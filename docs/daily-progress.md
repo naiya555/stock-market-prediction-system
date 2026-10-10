@@ -858,5 +858,127 @@ Executed `scripts/verify_indicators.py` on real `BHARTIARTL.NS` data:
 - Indicator features are computed per symbol in isolation; cross-sectional features (e.g. index-relative strength) will be implemented in future feature-engineering phases.
 - Next roadmap step (Day 11): Additional volatility indicators (Bollinger Bands) or technical feature matrix assembly for machine learning dataset preparation.
 
+---
 
+## Day 11: Bollinger Bands Technical Indicator Implementation & Real-Data Verification
+
+### Goal
+Implement Bollinger Bands technical indicator (Middle Band, Upper Band, Lower Band, Band Width, Percent B) with canonical defaults (window=20, multiplier=2.0, population standard deviation $ddof=0$), ensure point-in-time integrity, safe zero-denominator handling for flat series, expand unit tests, update documentation, and empirically verify on real `BHARTIARTL.NS` historical data.
+
+### Pre-Checks
+- Current branch: `main`, clean working tree.
+- Prior commit: `6c25ec37f8c5fded909a62cd09b2c39d63eb6d8a` ("feat: add MACD technical indicator").
+- Existing test baseline verified: 118 passing tests.
+- Roo Code remained disabled.
+
+### What Was Built
+1. **Bollinger Bands Calculation (`calculate_bollinger_bands` in `app/market/indicators.py`):**
+   - Default parameters: `window=20`, `multiplier=2.0` (accepts `num_std` alias), `ddof=0` (canonical population standard deviation).
+   - Parameter validation: `window` must be an integer $\ge 1$, `multiplier` must be a positive finite float ($> 0$), `ddof` must satisfy $0 \le ddof < window$.
+   - Mathematical definitions:
+     - $Middle_t = SMA_{t, W}(prices)$ (20-session rolling arithmetic mean).
+     - $\sigma_{t, W} = \sqrt{\frac{1}{W - ddof} \sum_{i=0}^{W-1} (P_{t-i} - Middle_t)^2}$ (rolling standard deviation).
+     - $Upper_t = Middle_t + multiplier \times \sigma_{t, W}$.
+     - $Lower_t = Middle_t - multiplier \times \sigma_{t, W}$.
+     - $BandWidth_t = \frac{Upper_t - Lower_t}{Middle_t}$ when $Middle_t > 0$.
+     - $\%B_t = \frac{Close_t - Lower_t}{Upper_t - Lower_t}$ when $Upper_t > Lower_t$.
+   - Warm-up & Missing Observation Policy:
+     - Early sessions prior to window completion ($t < W - 1$, indices 0..18 for $W=20$) return `None` across all 5 outputs.
+     - Sessions with missing, NaN, or non-positive price observations invalidate the rolling window, returning `None`.
+     - Zero synthetic values or artificial zero padding are introduced.
+   - Zero-Denominator & Flat-Series Safety:
+     - When all prices in the window are identical ($Upper == Lower == Middle$), $\sigma = 0.0$.
+     - Band Width numerator is 0.0, evaluating safely to `0.0` when $Middle > 0$.
+     - %B denominator is $(Upper - Lower) = 0.0$, evaluating safely to `None` without division-by-zero errors.
+     - Non-positive middle band ($Middle \le 0$) yields `None` for Band Width.
+   - Point-in-time invariant: Calculation at time $t$ strictly uses observations up to and including $t$; changing future prices never leaks into earlier band values.
+   - Non-predictive disclaimer: Band touches and squeezes are quantitative descriptive features, never guaranteed buy or sell signals.
+2. **Dedicated Immutable Container (`BollingerBandsSeries`):**
+   - `@dataclass(frozen=True)` holding `middle`, `upper`, `lower`, `bandwidth`, and `percent_b` lists.
+   - Implements sequence protocol `__iter__` to allow 5-tuple sequence unpacking:
+     `middle, upper, lower, bw, pb = calculate_bollinger_bands(prices)`
+     as well as attribute access and `.band_width` alias.
+3. **Feature Container Integration (`MovingAverageFeatures`):**
+   - Added fields `bb_middle`, `bb_upper`, `bb_lower`, `bb_bandwidth`, `bb_percent_b`.
+   - Added convenience properties `bollinger_middle`, `bollinger_upper`, `bollinger_lower`, `bollinger_bandwidth`, `bollinger_band_width`, `bollinger_percent_b`.
+   - Updated `.to_dict()` to export both short keys (`bb_middle`, `bb_upper`, `bb_lower`, `bb_bandwidth`, `bb_percent_b`) and descriptive keys (`bollinger_middle`, etc.) for tabular and ML downstream models.
+4. **Indicator Orchestration (`compute_moving_averages` / `compute_technical_indicators`):**
+   - Added `bb_window=20`, `bb_multiplier=2.0`, `bb_ddof=0` parameters.
+   - Computes Bollinger Bands per ticker with complete multi-symbol isolation and chronological sorting.
+5. **Pipeline Integration (`app/market/pipeline.py`):**
+   - Added `bb_window`, `bb_multiplier`, `bb_ddof` parameters to `process_market_data` and `run_market_data_pipeline`.
+6. **Package Exports (`app/market/__init__.py`):**
+   - Exported `BollingerBandsSeries` and `calculate_bollinger_bands`.
+7. **Application Entry Point Update (`main.py`):**
+   - Added Day 11 status readiness confirmation (`print("Day 11 Bollinger Bands ready")`).
+8. **Real-Data Verification Script (`scripts/verify_indicators.py`):**
+   - Extended to verify Bollinger Bands warmup, mathematical relationships, table inspection, summary metrics, and 6-session regression fixture.
+
+### Real Data Verification
+Executed `scripts/verify_indicators.py` on real `BHARTIARTL.NS` historical data:
+- **Part 1: Expanded Historical Range (lookback_days=180, ~6 months):**
+  - Raw bars collected: 124
+  - Cleaned bars produced: 124
+  - Indicator records: 124
+  - Date Range: 2026-04-13 to 2026-10-09 (124 trading sessions)
+  - SMA-5 available: 120 / 124 sessions
+  - EMA-5 available: 120 / 124 sessions
+  - SMA-10 available: 115 / 124 sessions
+  - EMA-10 available: 115 / 124 sessions
+  - RSI-14 available: 110 / 124 sessions
+  - MACD Line available: 99 / 124 sessions
+  - Signal Line available: 91 / 124 sessions
+  - Histogram available: 91 / 124 sessions
+  - Bollinger Bands available: 105 / 124 sessions (warmed up at session 20 / index 19)
+  - Mathematical identities verified:
+    - $Upper \ge Middle \ge Lower$ across all sessions
+    - Band symmetry: $(Upper - Middle) == (Middle - Lower)$ within floating-point tolerance
+    - Band Width identity: $BandWidth == (Upper - Lower) / Middle$ strictly verified
+    - Percent B identity: $\%B == (Close - Lower) / (Upper - Lower)$ strictly verified
+  - Latest Observation (2026-10-09): Close=₹1805.10, Middle=₹1810.06, Upper=₹1879.10, Lower=₹1741.03, BandWidth=0.0763, %B=0.4640
+- **Part 2: Regression Verification (original 6-session range 2026-09-01 to 2026-09-08):**
+  - Clean bars: 6
+  - SMA-5: 2 values
+  - SMA-10: 0 values (all `None`)
+  - RSI-14: 0 values (all `None`)
+  - MACD Line: 0 values (all `None`)
+  - Signal Line: 0 values (all `None`)
+  - Histogram: 0 values (all `None`)
+  - Bollinger Bands: 0 values (all `None`, warmup requires 20 bars)
+- Verification Status: Exit code 0, 1:1 bar alignment, zero encoding errors.
+
+### Tests
+- **Unit Test Suite (`tests/test_indicators.py` and `tests/test_pipeline.py`):**
+  - Added 12 new tests covering:
+    - Known calculation trace on manual 5-session prices with $W=3, M=2.0$ against exact manual calculations
+    - Verification of sample standard deviation ($ddof=1$) convention
+    - Configurable window ($W=5$) and multiplier ($M=1.5$)
+    - Insufficient history and warm-up policies (20-bar warmup at index 19)
+    - Parameter validation: non-positive window, non-positive or non-finite multiplier, $ddof \ge window$, type errors
+    - Empty input sequence handling
+    - Point-in-time invariant (future price mutation does not change earlier band values)
+    - Invalid price handling (masking affected rolling windows with `None`)
+    - Zero-denominator and flat series handling (band width evaluates to `0.0`, %B evaluates to `None`)
+    - Multi-symbol grouping, ticker isolation, and chronological sorting
+    - Feature dataclass `.to_dict()` and property serialization
+    - Pipeline integration and dictionary serialization
+    - Regression updates for 6-record case and expanded 40-record case
+- **Full Test Suite Execution:**
+  - **130 passed in 1.44s** (`pytest -v`). Zero external network dependencies.
+
+### Review
+- **CodeRabbit:** CodeRabbit CLI / review integration is not available in this local environment; noted explicitly. Proactively adhered to strict clean-code principles: type annotations, domain parameter validation, safe division handling, and mathematical identity verification.
+- **Roo Code:** Remained disabled.
+- **Ponytail / Senior Dev Mode:** Reused existing pandas/numpy rolling and standard deviation calculations, avoided unnecessary helper wrappers, implemented minimal clean diff, zero new external dependencies.
+
+### Documentation
+- Updated `README.md` to Day 11 status with 130 passing tests.
+- Updated `docs/architecture.md` Section 4.7 covering Bollinger Bands formulation, pipeline integration, and development schedule.
+- Updated `docs/decisions.md` with ADR 38 (Bollinger Bands architecture, degrees of freedom convention, zero-denominator safety).
+- Updated `docs/daily-progress.md` with Day 11 development log.
+
+### Known Limitations & Next Steps
+- Current indicator suite includes SMA, EMA, RSI, MACD, and Bollinger Bands. Additional volatility/volume indicators (e.g., ATR, VWAP) remain for subsequent phases.
+- Indicators operate on unadjusted closing prices per individual symbol; volume-weighted and cross-sectional market features are scheduled for subsequent phases.
+- Next roadmap step (Day 12): Volume-Weighted Average Price (VWAP) / Average True Range (ATR) or Technical Feature Matrix Assembly.
 

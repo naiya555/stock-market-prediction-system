@@ -1,10 +1,10 @@
-"""Real-Data Verification Script for Moving Averages, RSI & MACD Technical Indicators.
+"""Real-Data Verification Script for Moving Averages, RSI, MACD & Bollinger Bands.
 
 Validates:
 1. Investigation & resolution of the Day 8 six-record historical data limitation.
 2. Expanded historical data acquisition (6-12 months / ~120-250 trading sessions).
-3. Availability and mathematical correctness of SMA-5, EMA-5, SMA-10, EMA-10, RSI-14, and MACD (12, 26, 9).
-4. Point-in-time integrity, chronological alignment, and histogram identity (histogram = macd - signal).
+3. Availability and mathematical correctness of SMA-5, EMA-5, SMA-10, EMA-10, RSI-14, MACD (12, 26, 9), and Bollinger Bands (20, 2.0).
+4. Point-in-time integrity, chronological alignment, histogram identity, and Bollinger band identities (bandwidth and %B).
 5. Regression validation of the original 6-session bounded historical range.
 """
 
@@ -61,6 +61,9 @@ def verify_expanded_history() -> int:
             macd_fast=12,
             macd_slow=26,
             macd_signal=9,
+            bb_window=20,
+            bb_multiplier=2.0,
+            bb_ddof=0,
         )
     except Exception as exc:
         print(f"ERROR: Market data pipeline execution failed: {exc}", file=sys.stderr)
@@ -197,7 +200,58 @@ def verify_expanded_history() -> int:
                 )
                 return 1
 
-    print("  [OK] SMA-5, EMA-5, SMA-10, EMA-10, RSI-14, and MACD (12, 26, 9) warmup and values verified.")
+    # Verify Bollinger Bands (20, 2.0, ddof=0) warmup and values
+    for i in range(len(indicators)):
+        if i < 19:
+            if (
+                indicators[i].bb_middle is not None
+                or indicators[i].bb_upper is not None
+                or indicators[i].bb_lower is not None
+                or indicators[i].bb_bandwidth is not None
+                or indicators[i].bb_percent_b is not None
+            ):
+                print(f"ERROR: Session {i} (< 20 sessions) must have Bollinger Bands as None", file=sys.stderr)
+                return 1
+        else:
+            mid = indicators[i].bb_middle
+            up = indicators[i].bb_upper
+            low = indicators[i].bb_lower
+            bw = indicators[i].bb_bandwidth
+            pb = indicators[i].bb_percent_b
+            c = indicators[i].close
+
+            if mid is None or up is None or low is None or bw is None or pb is None:
+                print(f"ERROR: Session {i} (>= 20 sessions) must have all Bollinger Bands values populated", file=sys.stderr)
+                return 1
+
+            expected_mid = sum(closes[i - 19 : i + 1]) / 20.0
+            if not math.isclose(mid, expected_mid, rel_tol=1e-5):
+                print(f"ERROR: Session {i} BB middle mismatch: expected {expected_mid:.4f}, got {mid}", file=sys.stderr)
+                return 1
+
+            if not (up >= mid >= low):
+                print(f"ERROR: Session {i} BB band ordering violated: up={up}, mid={mid}, low={low}", file=sys.stderr)
+                return 1
+
+            # Symmetry check: upper - middle == middle - lower
+            if not math.isclose(up - mid, mid - low, abs_tol=1e-5):
+                print(f"ERROR: Session {i} BB band asymmetry: (up-mid)={up-mid} != (mid-low)={mid-low}", file=sys.stderr)
+                return 1
+
+            # Band Width check: (upper - lower) / middle
+            expected_bw = (up - low) / mid
+            if not math.isclose(bw, expected_bw, rel_tol=1e-5):
+                print(f"ERROR: Session {i} BB bandwidth mismatch: expected {expected_bw}, got {bw}", file=sys.stderr)
+                return 1
+
+            # Percent B check: (close - lower) / (upper - lower)
+            if up > low:
+                expected_pb = (c - low) / (up - low)
+                if not math.isclose(pb, expected_pb, rel_tol=1e-5):
+                    print(f"ERROR: Session {i} BB %B mismatch: expected {expected_pb}, got {pb}", file=sys.stderr)
+                    return 1
+
+    print("  [OK] SMA-5, EMA-5, SMA-10, EMA-10, RSI-14, MACD (12, 26, 9), and Bollinger Bands (20, 2.0) warmup and values verified.")
 
     currency = _get_currency_symbol()
     close_header = f"Close ({currency})"
@@ -225,6 +279,24 @@ def verify_expanded_history() -> int:
 
     print(divider)
 
+    print("\nStep 4B: Inspection of Recent Bollinger Bands (20, 2.0, ddof=0):")
+    divider_bb = "-" * 90
+    print(divider_bb)
+    print(
+        f"{'Date':<12} {close_header:<12} {'Middle':<12} {'Upper':<12} {'Lower':<12} {'BandWidth':<12} {'%B':<10}"
+    )
+    print(divider_bb)
+    for ind in display_sample:
+        d_str = ind.timestamp.strftime("%Y-%m-%d")
+        c_str = f"{ind.close:.2f}"
+        mid_str = f"{ind.bb_middle:.2f}" if ind.bb_middle is not None else "None"
+        up_str = f"{ind.bb_upper:.2f}" if ind.bb_upper is not None else "None"
+        low_str = f"{ind.bb_lower:.2f}" if ind.bb_lower is not None else "None"
+        bw_str = f"{ind.bb_bandwidth:.4f}" if ind.bb_bandwidth is not None else "None"
+        pb_str = f"{ind.bb_percent_b:.4f}" if ind.bb_percent_b is not None else "None"
+        print(f"{d_str:<12} {c_str:<12} {mid_str:<12} {up_str:<12} {low_str:<12} {bw_str:<12} {pb_str:<10}")
+    print(divider_bb)
+
     sma_5_count = sum(1 for ind in indicators if ind.sma_5 is not None)
     ema_5_count = sum(1 for ind in indicators if ind.ema_5 is not None)
     sma_10_count = sum(1 for ind in indicators if ind.sma_10 is not None)
@@ -233,6 +305,7 @@ def verify_expanded_history() -> int:
     macd_count = sum(1 for ind in indicators if ind.macd_line is not None)
     sig_count = sum(1 for ind in indicators if ind.signal_line is not None)
     hist_count = sum(1 for ind in indicators if ind.histogram is not None)
+    bb_count = sum(1 for ind in indicators if ind.bb_middle is not None)
 
     print("Summary Metrics (Expanded History):")
     print(f"  Symbol:                      {symbol}")
@@ -245,11 +318,17 @@ def verify_expanded_history() -> int:
     print(f"  MACD Available Count:        {macd_count} (of {len(indicators)})")
     print(f"  Signal Available Count:      {sig_count} (of {len(indicators)})")
     print(f"  Histogram Available Count:   {hist_count} (of {len(indicators)})")
+    print(f"  Bollinger Available Count:   {bb_count} (of {len(indicators)})")
     print(f"  Latest Close Price:          {indicators[-1].close:.2f}")
     print(f"  Latest RSI-14 Value:         {indicators[-1].rsi_14:.2f}")
     print(f"  Latest MACD Line:            {indicators[-1].macd_line:+.2f}")
     print(f"  Latest Signal Line:          {indicators[-1].signal_line:+.2f}")
     print(f"  Latest MACD Histogram:       {indicators[-1].histogram:+.2f}")
+    print(f"  Latest BB Middle:            {indicators[-1].bb_middle:.2f}")
+    print(f"  Latest BB Upper:             {indicators[-1].bb_upper:.2f}")
+    print(f"  Latest BB Lower:             {indicators[-1].bb_lower:.2f}")
+    print(f"  Latest BB BandWidth:         {indicators[-1].bb_bandwidth:.4f}")
+    print(f"  Latest BB %B:                {indicators[-1].bb_percent_b:.4f}")
 
     return 0
 
@@ -277,6 +356,9 @@ def verify_six_record_regression() -> int:
             macd_fast=12,
             macd_slow=26,
             macd_signal=9,
+            bb_window=20,
+            bb_multiplier=2.0,
+            bb_ddof=0,
         )
     except Exception as exc:
         print(f"ERROR: Regression pipeline execution failed: {exc}", file=sys.stderr)
@@ -293,6 +375,7 @@ def verify_six_record_regression() -> int:
     macd_avail = sum(1 for ind in indicators if ind.macd_line is not None)
     sig_avail = sum(1 for ind in indicators if ind.signal_line is not None)
     hist_avail = sum(1 for ind in indicators if ind.histogram is not None)
+    bb_avail = sum(1 for ind in indicators if ind.bb_middle is not None)
 
     if sma_5_avail != 2:
         print(f"ERROR: Expected 2 SMA-5 values in 6-bar set, got {sma_5_avail}", file=sys.stderr)
@@ -312,14 +395,17 @@ def verify_six_record_regression() -> int:
     if hist_avail != 0:
         print(f"ERROR: Expected 0 Histogram values in 6-bar set, got {hist_avail}", file=sys.stderr)
         return 1
+    if bb_avail != 0:
+        print(f"ERROR: Expected 0 Bollinger values in 6-bar set, got {bb_avail}", file=sys.stderr)
+        return 1
 
-    print("  [OK] 6-record regression verified: SMA-5 (2 values), SMA-10 (0), RSI-14 (0), MACD (0), Signal (0), Hist (0).")
+    print("  [OK] 6-record regression verified: SMA-5 (2 values), SMA-10 (0), RSI-14 (0), MACD (0), Signal (0), Hist (0), BB (0).")
     return 0
 
 
 def main() -> int:
     print("==================================================")
-    print("DAY 10 EXPANDED HISTORICAL DATA, RSI & MACD VERIFICATION")
+    print("DAY 11 EXPANDED HISTORICAL DATA, RSI, MACD & BOLLINGER BANDS VERIFICATION")
     print("==================================================")
 
     res_expanded = verify_expanded_history()
@@ -330,7 +416,7 @@ def main() -> int:
     if res_regression != 0:
         return res_regression
 
-    print("\n[SUCCESS] Day 10 expanded historical data, moving averages, RSI, and MACD verified successfully.")
+    print("\n[SUCCESS] Day 11 expanded historical data, moving averages, RSI, MACD, and Bollinger Bands verified successfully.")
     print("==================================================")
     return 0
 

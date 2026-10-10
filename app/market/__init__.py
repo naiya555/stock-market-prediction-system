@@ -6,8 +6,10 @@ Provides abstractions and adapters for market data acquisition, normalization, a
 from app.core.schemas import DataSourceMetadata, MarketOHLCV, MarketQuote
 from app.market.cleaner import CleaningResult, CleaningSummary, clean_market_data
 from app.market.indicators import (
+    BollingerBandsSeries,
     MACDSeries,
     MovingAverageFeatures,
+    calculate_bollinger_bands,
     calculate_ema,
     calculate_macd,
     calculate_rsi,
@@ -53,10 +55,12 @@ __all__ = [
     "compute_market_returns",
     "MovingAverageFeatures",
     "MACDSeries",
+    "BollingerBandsSeries",
     "calculate_sma",
     "calculate_ema",
     "calculate_rsi",
     "calculate_macd",
+    "calculate_bollinger_bands",
     "compute_moving_averages",
     "compute_technical_indicators",
     "MarketDataPipelineResult",

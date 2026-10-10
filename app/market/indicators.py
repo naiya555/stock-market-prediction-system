@@ -1,8 +1,9 @@
-"""Technical Indicators Layer: Moving Averages and Oscillators.
+"""Technical Indicators Layer: Moving Averages, Oscillators, and Volatility Bands.
 
 Provides deterministic, point-in-time calculation of Simple Moving Averages (SMA),
-Exponential Moving Averages (EMA), Relative Strength Index (RSI), and
-Moving Average Convergence Divergence (MACD) on cleaned historical market data (MarketOHLCV).
+Exponential Moving Averages (EMA), Relative Strength Index (RSI),
+Moving Average Convergence Divergence (MACD), and Bollinger Bands on cleaned
+historical market data (MarketOHLCV).
 """
 
 from collections import defaultdict
@@ -42,11 +43,41 @@ class MACDSeries:
 
 
 @dataclass(frozen=True)
+class BollingerBandsSeries:
+    """Calculated Bollinger Bands technical indicator series.
+
+    Encapsulates middle band, upper band, lower band, bandwidth, and percent_b.
+    Implements sequence protocol for 5-tuple unpacking:
+        middle, upper, lower, bandwidth, percent_b = calculate_bollinger_bands(prices)
+    """
+
+    middle: List[Optional[float]]
+    upper: List[Optional[float]]
+    lower: List[Optional[float]]
+    bandwidth: List[Optional[float]]
+    percent_b: List[Optional[float]]
+
+    def __iter__(self):
+        """Allow unpacking as (middle, upper, lower, bandwidth, percent_b)."""
+        return iter((self.middle, self.upper, self.lower, self.bandwidth, self.percent_b))
+
+    def __len__(self) -> int:
+        """Return the length of the series."""
+        return len(self.middle)
+
+    @property
+    def band_width(self) -> List[Optional[float]]:
+        """Convenience alias for bandwidth."""
+        return self.bandwidth
+
+
+@dataclass(frozen=True)
 class MovingAverageFeatures:
     """Canonical calculated technical indicator features for a single market bar.
 
     Encapsulates Simple Moving Averages (SMA), Exponential Moving Averages (EMA),
-    Relative Strength Index (RSI), and Moving Average Convergence Divergence (MACD).
+    Relative Strength Index (RSI), Moving Average Convergence Divergence (MACD),
+    and Bollinger Bands.
     """
 
     symbol: str
@@ -58,6 +89,11 @@ class MovingAverageFeatures:
     macd: Optional[float] = None
     macd_signal: Optional[float] = None
     macd_histogram: Optional[float] = None
+    bb_middle: Optional[float] = None
+    bb_upper: Optional[float] = None
+    bb_lower: Optional[float] = None
+    bb_bandwidth: Optional[float] = None
+    bb_percent_b: Optional[float] = None
 
     @property
     def sma_5(self) -> Optional[float]:
@@ -99,6 +135,36 @@ class MovingAverageFeatures:
         """Convenience property for MACD histogram."""
         return self.macd_histogram
 
+    @property
+    def bollinger_middle(self) -> Optional[float]:
+        """Convenience property for Bollinger middle band."""
+        return self.bb_middle
+
+    @property
+    def bollinger_upper(self) -> Optional[float]:
+        """Convenience property for Bollinger upper band."""
+        return self.bb_upper
+
+    @property
+    def bollinger_lower(self) -> Optional[float]:
+        """Convenience property for Bollinger lower band."""
+        return self.bb_lower
+
+    @property
+    def bollinger_bandwidth(self) -> Optional[float]:
+        """Convenience property for Bollinger Band Width."""
+        return self.bb_bandwidth
+
+    @property
+    def bollinger_band_width(self) -> Optional[float]:
+        """Convenience alias for Bollinger Band Width."""
+        return self.bb_bandwidth
+
+    @property
+    def bollinger_percent_b(self) -> Optional[float]:
+        """Convenience property for Bollinger %B."""
+        return self.bb_percent_b
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert features to a flat dictionary for tabular analysis and ML datasets."""
         out: Dict[str, Any] = {
@@ -115,6 +181,16 @@ class MovingAverageFeatures:
         out["macd"] = self.macd
         out["macd_signal"] = self.macd_signal
         out["macd_histogram"] = self.macd_histogram
+        out["bb_middle"] = self.bb_middle
+        out["bb_upper"] = self.bb_upper
+        out["bb_lower"] = self.bb_lower
+        out["bb_bandwidth"] = self.bb_bandwidth
+        out["bb_percent_b"] = self.bb_percent_b
+        out["bollinger_middle"] = self.bb_middle
+        out["bollinger_upper"] = self.bb_upper
+        out["bollinger_lower"] = self.bb_lower
+        out["bollinger_bandwidth"] = self.bb_bandwidth
+        out["bollinger_percent_b"] = self.bb_percent_b
         return out
 
 
@@ -431,6 +507,143 @@ def calculate_macd(
     return MACDSeries(macd=macd_vals, signal=signal_vals, histogram=hist_vals)
 
 
+def calculate_bollinger_bands(
+    prices: Sequence[float],
+    window: int = 20,
+    multiplier: float = 2.0,
+    num_std: Optional[float] = None,
+    ddof: int = 0,
+) -> BollingerBandsSeries:
+    """Compute Bollinger Bands technical indicator over a sliding chronological window.
+
+    Bollinger Bands are volatility bands placed above and below a moving average.
+    Volatility is based on standard deviation, which changes as volatility increases or decreases.
+    Note: Bollinger Bands provide a measure of relative price level and volatility;
+    a band touch is NOT a guaranteed buy or sell signal.
+
+    Mathematical Definitions:
+        1. Middle Band:
+            Middle_t = (1 / W) * sum_{i=0}^{W-1} P_{t-i} (Rolling SMA)
+        2. Rolling Standard Deviation:
+            sigma_t = sqrt( sum_{i=0}^{W-1} (P_{t-i} - Middle_t)^2 / (W - ddof) )
+            Default ddof = 0 (population standard deviation, per John Bollinger's specification).
+        3. Upper Band:
+            Upper_t = Middle_t + multiplier * sigma_t
+        4. Lower Band:
+            Lower_t = Middle_t - multiplier * sigma_t
+        5. Band Width:
+            BandWidth_t = (Upper_t - Lower_t) / Middle_t, when Middle_t > 0
+        6. Percent B (%B):
+            PercentB_t = (P_t - Lower_t) / (Upper_t - Lower_t), when (Upper_t - Lower_t) > 0
+
+    Warm-up & Edge-Case Rules:
+        - window must be an integer >= 1.
+        - multiplier must be positive and finite (> 0.0).
+        - ddof must satisfy 0 <= ddof < window.
+        - For t < window - 1: Insufficient history; all outputs return None.
+        - Non-positive (<= 0) or NaN prices in the active window cause affected sessions to return None.
+        - If Middle_t <= 0: Band Width returns None.
+        - If (Upper_t - Lower_t) <= 0 (e.g. flat prices where sigma_t = 0): Percent B returns None
+          (safely avoiding division by zero).
+        - Point-in-time invariant: Calculation at session t depends strictly on observations up to t.
+
+    Args:
+        prices: Chronological sequence of prices (typically raw unadjusted close).
+        window: Number of sessions in rolling window (default 20).
+        multiplier: Standard deviation multiplier (default 2.0).
+        num_std: Optional alias for multiplier.
+        ddof: Delta degrees of freedom for standard deviation (default 0).
+
+    Returns:
+        BollingerBandsSeries containing middle, upper, lower, bandwidth, and percent_b lists.
+    """
+    mult = num_std if num_std is not None else multiplier
+
+    if not isinstance(window, int) or isinstance(window, bool):
+        raise TypeError(f"Bollinger Bands window must be an integer, got {type(window).__name__}")
+    if window < 1:
+        raise ValueError(f"Bollinger Bands window must be >= 1, got {window}")
+
+    if not isinstance(mult, (int, float)) or isinstance(mult, bool):
+        raise TypeError(f"Bollinger Bands multiplier must be a number, got {type(mult).__name__}")
+    if math.isnan(mult) or math.isinf(mult) or mult <= 0.0:
+        raise ValueError(f"Bollinger Bands multiplier must be positive and finite, got {mult}")
+
+    if not isinstance(ddof, int) or isinstance(ddof, bool):
+        raise TypeError(f"Bollinger Bands ddof must be an integer, got {type(ddof).__name__}")
+    if ddof < 0 or ddof >= window:
+        raise ValueError(f"Bollinger Bands ddof must satisfy 0 <= ddof < window ({window}), got {ddof}")
+
+    n = len(prices)
+    if n == 0:
+        return BollingerBandsSeries(middle=[], upper=[], lower=[], bandwidth=[], percent_b=[])
+
+    clean_vals: List[float] = []
+    has_invalid = False
+    for p in prices:
+        if p is None or math.isnan(p) or p <= 0.0:
+            clean_vals.append(float("nan"))
+            has_invalid = True
+        else:
+            clean_vals.append(float(p))
+
+    if has_invalid:
+        logger.warning("Encountered non-positive or NaN prices in Bollinger Bands series; masking affected windows.")
+
+    series = pd.Series(clean_vals, dtype="float64")
+    rolling = series.rolling(window=window, min_periods=window)
+    mean_series = rolling.mean()
+    std_series = rolling.std(ddof=ddof)
+
+    middle_list: List[Optional[float]] = []
+    upper_list: List[Optional[float]] = []
+    lower_list: List[Optional[float]] = []
+    bw_list: List[Optional[float]] = []
+    pct_b_list: List[Optional[float]] = []
+
+    for i in range(n):
+        m = mean_series.iloc[i]
+        s = std_series.iloc[i]
+        p = clean_vals[i]
+
+        if math.isnan(m) or math.isnan(s):
+            middle_list.append(None)
+            upper_list.append(None)
+            lower_list.append(None)
+            bw_list.append(None)
+            pct_b_list.append(None)
+        else:
+            m_val = float(m)
+            s_val = float(s)
+            u_val = m_val + mult * s_val
+            l_val = m_val - mult * s_val
+
+            middle_list.append(m_val)
+            upper_list.append(u_val)
+            lower_list.append(l_val)
+
+            # Band width = (upper - lower) / middle
+            if m_val > 0.0:
+                bw_list.append((u_val - l_val) / m_val)
+            else:
+                bw_list.append(None)
+
+            # Percent B = (close - lower) / (upper - lower)
+            denom = u_val - l_val
+            if denom > 0.0 and not math.isnan(p):
+                pct_b_list.append((p - l_val) / denom)
+            else:
+                pct_b_list.append(None)
+
+    return BollingerBandsSeries(
+        middle=middle_list,
+        upper=upper_list,
+        lower=lower_list,
+        bandwidth=bw_list,
+        percent_b=pct_b_list,
+    )
+
+
 def compute_moving_averages(
     records: Sequence[MarketOHLCV],
     sma_windows: Sequence[int] = (5, 10),
@@ -441,8 +654,11 @@ def compute_moving_averages(
     macd_fast: Optional[int] = 12,
     macd_slow: Optional[int] = 26,
     macd_signal: Optional[int] = 9,
+    bb_window: Optional[int] = 20,
+    bb_multiplier: Optional[float] = 2.0,
+    bb_ddof: int = 0,
 ) -> List[MovingAverageFeatures]:
-    """Compute moving average and momentum indicators across canonical MarketOHLCV records.
+    """Compute moving average, momentum, and volatility indicators across canonical MarketOHLCV records.
 
     Guarantees:
         - Multi-symbol isolation: Data is grouped by symbol and calculated independently.
@@ -461,6 +677,9 @@ def compute_moving_averages(
         macd_fast: Fast EMA period for MACD (default 12, or None to skip).
         macd_slow: Slow EMA period for MACD (default 26, or None to skip).
         macd_signal: Signal EMA period for MACD (default 9, or None to skip).
+        bb_window: Rolling window for Bollinger Bands (default 20, or None to skip).
+        bb_multiplier: Standard deviation multiplier for Bollinger Bands (default 2.0).
+        bb_ddof: Degrees of freedom for Bollinger standard deviation (default 0).
 
     Returns:
         List of MovingAverageFeatures chronologically aligned with input bars.
@@ -515,6 +734,23 @@ def compute_moving_averages(
                 histogram=[None] * len(sorted_bars),
             )
 
+        # Compute Bollinger Bands
+        if bb_window is not None and bb_multiplier is not None:
+            bb_series = calculate_bollinger_bands(
+                prices,
+                window=bb_window,
+                multiplier=bb_multiplier,
+                ddof=bb_ddof,
+            )
+        else:
+            bb_series = BollingerBandsSeries(
+                middle=[None] * len(sorted_bars),
+                upper=[None] * len(sorted_bars),
+                lower=[None] * len(sorted_bars),
+                bandwidth=[None] * len(sorted_bars),
+                percent_b=[None] * len(sorted_bars),
+            )
+
         # Assemble per-bar feature records
         for i, bar in enumerate(sorted_bars):
             bar_smas = {w: sma_results[w][i] for w in sma_windows}
@@ -531,6 +767,11 @@ def compute_moving_averages(
                 macd=macd_series.macd[i],
                 macd_signal=macd_series.signal[i],
                 macd_histogram=macd_series.histogram[i],
+                bb_middle=bb_series.middle[i],
+                bb_upper=bb_series.upper[i],
+                bb_lower=bb_series.lower[i],
+                bb_bandwidth=bb_series.bandwidth[i],
+                bb_percent_b=bb_series.percent_b[i],
             )
             all_features.append(features)
 

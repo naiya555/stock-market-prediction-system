@@ -224,3 +224,47 @@ def test_pipeline_macd_integration():
     assert indicator_dicts[4]["macd"] is not None
     assert indicator_dicts[4]["macd_signal"] is not None
     assert indicator_dicts[4]["macd_histogram"] is not None
+
+
+def test_pipeline_bollinger_integration():
+    """Verify market data pipeline computes and serializes Bollinger Bands indicators."""
+    bars = [_make_bar(day=i, close=100.0 + (i % 5) * 2.0) for i in range(1, 25)]
+    # Use standard window=20, multiplier=2.0
+    result = process_market_data(
+        bars,
+        bb_window=20,
+        bb_multiplier=2.0,
+        bb_ddof=0,
+    )
+
+    assert len(result.indicators) == 24
+    # Warmup: first 19 bars (indices 0..18) must be None
+    assert result.indicators[18].bb_middle is None
+    assert result.indicators[18].bb_upper is None
+    assert result.indicators[18].bb_lower is None
+    assert result.indicators[18].bb_bandwidth is None
+    assert result.indicators[18].bb_percent_b is None
+
+    # Bar 20 (index 19) is first valid bar
+    ind_19 = result.indicators[19]
+    assert ind_19.bb_middle is not None
+    assert ind_19.bb_upper is not None
+    assert ind_19.bb_lower is not None
+    assert ind_19.bb_bandwidth is not None
+    assert ind_19.bb_percent_b is not None
+
+    # Relationship checks
+    assert ind_19.bb_upper > ind_19.bb_middle > ind_19.bb_lower
+    expected_width = (ind_19.bb_upper - ind_19.bb_lower) / ind_19.bb_middle
+    assert ind_19.bb_bandwidth == pytest.approx(expected_width)
+
+    # Check serialization
+    indicator_dicts = result.to_indicator_dicts()
+    assert len(indicator_dicts) == 24
+    assert "bollinger_middle" in indicator_dicts[19]
+    assert "bollinger_upper" in indicator_dicts[19]
+    assert "bollinger_lower" in indicator_dicts[19]
+    assert "bollinger_bandwidth" in indicator_dicts[19]
+    assert "bollinger_percent_b" in indicator_dicts[19]
+    assert indicator_dicts[19]["bollinger_middle"] == pytest.approx(ind_19.bb_middle)
+

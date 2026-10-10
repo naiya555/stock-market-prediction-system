@@ -72,6 +72,9 @@ def process_market_data(
     macd_fast: Optional[int] = 12,
     macd_slow: Optional[int] = 26,
     macd_signal: Optional[int] = 9,
+    bb_window: Optional[int] = 20,
+    bb_multiplier: Optional[float] = 2.0,
+    bb_ddof: int = 0,
 ) -> MarketDataPipelineResult:
     """Process an existing sequence of raw MarketOHLCV records through cleaning, returns, and indicators.
 
@@ -89,6 +92,9 @@ def process_market_data(
         macd_fast: Fast EMA period for MACD (default 12, or None to skip).
         macd_slow: Slow EMA period for MACD (default 26, or None to skip).
         macd_signal: Signal EMA period for MACD (default 9, or None to skip).
+        bb_window: Rolling window for Bollinger Bands (default 20, or None to skip).
+        bb_multiplier: Standard deviation multiplier for Bollinger Bands (default 2.0).
+        bb_ddof: Degrees of freedom for Bollinger standard deviation (default 0).
 
     Returns:
         MarketDataPipelineResult containing raw records, cleaned records, cleaning summary,
@@ -118,6 +124,9 @@ def process_market_data(
         macd_fast=macd_fast,
         macd_slow=macd_slow,
         macd_signal=macd_signal,
+        bb_window=bb_window,
+        bb_multiplier=bb_multiplier,
+        bb_ddof=bb_ddof,
     )
 
     logger.info(
@@ -155,6 +164,9 @@ def run_market_data_pipeline(
     macd_fast: Optional[int] = 12,
     macd_slow: Optional[int] = 26,
     macd_signal: Optional[int] = 9,
+    bb_window: Optional[int] = 20,
+    bb_multiplier: Optional[float] = 2.0,
+    bb_ddof: int = 0,
 ) -> MarketDataPipelineResult:
     """Execute end-to-end market data acquisition, cleaning, feature engineering, and indicator computation.
 
@@ -162,7 +174,7 @@ def run_market_data_pipeline(
     1. Historical data acquisition via BaseMarketDataProvider (defaults to YFinanceProvider)
     2. Data cleaning, duplicate resolution, and domain validation via clean_market_data
     3. Return and volatility feature computation via compute_market_returns
-    4. Technical indicator computation (SMA, EMA, RSI, MACD) via compute_moving_averages
+    4. Technical indicator computation (SMA, EMA, RSI, MACD, Bollinger Bands) via compute_moving_averages
 
     Args:
         symbol: Market ticker symbol (e.g. 'BHARTIARTL').
@@ -180,6 +192,9 @@ def run_market_data_pipeline(
         macd_fast: Fast EMA period for MACD (default 12, or None to skip).
         macd_slow: Slow EMA period for MACD (default 26, or None to skip).
         macd_signal: Signal EMA period for MACD (default 9, or None to skip).
+        bb_window: Rolling window for Bollinger Bands (default 20, or None to skip).
+        bb_multiplier: Standard deviation multiplier for Bollinger Bands (default 2.0).
+        bb_ddof: Degrees of freedom for Bollinger standard deviation (default 0).
 
     Returns:
         MarketDataPipelineResult with all pipeline stage artifacts.
@@ -219,4 +234,7 @@ def run_market_data_pipeline(
         macd_fast=macd_fast,
         macd_slow=macd_slow,
         macd_signal=macd_signal,
+        bb_window=bb_window,
+        bb_multiplier=bb_multiplier,
+        bb_ddof=bb_ddof,
     )

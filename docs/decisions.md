@@ -351,3 +351,47 @@ This document formalizes the architectural decisions made on Day 1. All future i
      - MACD is strictly treated as an empirical trend-following momentum feature, never as a guaranteed price-direction predictor.
 - **Consequences:** Guarantees leak-free, mathematically verified MACD calculation that integrates seamlessly with existing pipeline and test suites.
 
+---
+
+## ADR 38: Bollinger Bands Technical Indicator Architecture, Degrees of Freedom Convention, and Zero-Denominator Safety
+- **Status:** Accepted
+- **Context:** Downstream models and market regime analyzers require volatility bands around moving averages to quantify volatility expansion, contraction (squeezes), and relative price location. The canonical Bollinger Bands indicator consists of a middle moving average, an upper band, a lower band, Band Width, and %B. Naive implementations often suffer from:
+  1. Ambiguity in standard deviation degrees of freedom: Python/pandas `.std()` defaults to sample standard deviation ($ddof=1$), whereas John Bollinger's canonical specification uses population standard deviation ($ddof=0$, dividing by $N$).
+  2. Fabricating numbers during warm-up periods ($t < W - 1$) or across missing price sessions.
+  3. Division by zero in Band Width ($(Upper - Lower) / Middle$) when the middle band is zero/negative, or in %B ($(Close - Lower) / (Upper - Lower)$) during flat-price regimes where upper equals lower.
+  4. Future data leakage if rolling windows access forward prices.
+  5. Misinterpreting band touches as mechanical buy/sell signals rather than quantitative volatility and location features.
+- **Decision:**
+  1. **Canonical Formulation & Defaults:**
+     - Rolling Window: $W = 20$ trading sessions.
+     - Multiplier: $M = 2.0$ standard deviations (parameterized as `multiplier` with `num_std` alias).
+     - Standard Deviation Convention: Default population standard deviation ($ddof=0$):
+       $$\sigma_{t, W} = \sqrt{\frac{1}{W} \sum_{i=0}^{W-1} (P_{t-i} - Middle_t)^2}$$
+       Configurable $ddof$ supported, validating $0 \le ddof < W$.
+     - Middle Band: $Middle_t = SMA_{t, W}(prices)$.
+     - Upper Band: $Upper_t = Middle_t + M \times \sigma_{t, W}$.
+     - Lower Band: $Lower_t = Middle_t - M \times \sigma_{t, W}$.
+     - Band Width: $BandWidth_t = \frac{Upper_t - Lower_t}{Middle_t}$.
+     - Percent B (%B): $\%B_t = \frac{Close_t - Lower_t}{Upper_t - Lower_t}$.
+  2. **Safe Zero-Denominator & Edge-Case Handling:**
+     - For flat-price series where all prices in the window are identical: $Upper == Lower == Middle$, so $\sigma = 0.0$.
+     - Band Width numerator is 0.0, evaluating safely to `0.0` when $Middle > 0$.
+     - %B denominator is $(Upper - Lower) = 0.0$; evaluates safely to `None` without division-by-zero crashes.
+     - Non-positive middle band ($Middle \le 0$) yields `None` for Band Width.
+  3. **Strict Warm-up & Missing Observation Policy:**
+     - Sessions prior to full window warmup ($t < W - 1$, first 19 sessions for $W=20$) strictly return `None` across all 5 series.
+     - Missing, NaN, or non-positive price observations invalidate affected rolling windows, returning `None`.
+     - Zero data fabrication or artificial zero-padding.
+  4. **Container & Unpacking Ergonomics:**
+     - Created `BollingerBandsSeries` dataclass holding `middle`, `upper`, `lower`, `bandwidth`, and `percent_b` lists.
+     - Implements sequence protocol `__iter__` to allow 5-tuple sequence unpacking:
+       `middle, upper, lower, bw, pb = calculate_bollinger_bands(prices)`
+       as well as attribute access and `.band_width` alias.
+  5. **Feature Container & Pipeline Integration:**
+     - Integrated Bollinger Bands into `MovingAverageFeatures` with properties `bollinger_middle`, `bollinger_upper`, `bollinger_lower`, `bollinger_bandwidth`, `bollinger_band_width`, and `bollinger_percent_b`.
+     - Serializes both `bb_*` and `bollinger_*` keys in `.to_dict()` for downstream tabular and ML dataset convenience.
+     - Added `bb_window=20`, `bb_multiplier=2.0`, `bb_ddof=0` parameters to `process_market_data` and `run_market_data_pipeline`.
+  6. **Non-Predictive Baseline Disclaimer:**
+     - Bollinger Bands and %B are strictly quantitative features representing volatility regimes and relative price positioning; band touches are never treated as guaranteed buy or sell signals.
+- **Consequences:** Guarantees leak-free, mathematically verified Bollinger Bands calculations adhering strictly to canonical definitions and robust edge-case handling.
+

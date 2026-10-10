@@ -244,6 +244,8 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
              ↓
   Compute Trend / Convergence-Divergence (MACD: 12-fast, 26-slow, 9-signal EMA)
              ↓
+  Compute Volatility Bands (Bollinger Bands: 20-period SMA, 2.0 std dev, ddof=0, Band Width, %B)
+             ↓
   MovingAverageFeatures Dataclass (.to_dict() tabular export)
   ```
 - **Price Basis:** Indicators are strictly computed using raw, unadjusted closing prices (`close`).
@@ -257,8 +259,15 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
     - MACD Line: $MACD_t = EMA_{fast, t} - EMA_{slow, t}$. Un-warmed when $t < slow - 1$ (returns `None`).
     - Signal Line: $Signal_t = EMA(MACD, window=signal\_period)$ (default 9). Un-warmed when $t < slow + signal - 2$ (returns `None`).
     - MACD Histogram: $Histogram_t = MACD_t - Signal_t$. Returns `None` whenever Signal line is `None`. Strictly satisfies $Histogram = MACD - Signal$.
+  - **Bollinger Bands:**
+    - Middle Band: $Middle_t = SMA_{t, W}$ (default $W=20$). Un-warmed when $t < W - 1$ (returns `None`).
+    - Upper Band: $Upper_t = Middle_t + multiplier \times \sigma_{t, W}$ (default $multiplier=2.0$).
+    - Lower Band: $Lower_t = Middle_t - multiplier \times \sigma_{t, W}$.
+    - Rolling Standard Deviation: Population standard deviation ($ddof=0$) by default: $\sigma_t = \sqrt{\frac{1}{W} \sum_{i=0}^{W-1} (P_{t-i} - Middle_t)^2}$, configurable to sample standard deviation ($ddof=1$).
+    - Band Width: $BandWidth_t = \frac{Upper_t - Lower_t}{Middle_t}$ when $Middle_t > 0$ (evaluates safely to `0.0` for flat series, `None` if middle is non-positive).
+    - Percent B (%B): $\%B_t = \frac{Close_t - Lower_t}{Upper_t - Lower_t}$ when $Upper_t > Lower_t$ (evaluates safely to `None` for flat series where denominator is zero).
 - **Zero Future-Data Leakage:** Point-in-time calculation strictly bounds inputs to observations up to and including the evaluated session timestamp.
-- **Pipeline Integration:** Orchestrated within `MarketDataPipelineResult` alongside return and volatility features with configurable `lookback_days` supporting 6-12 month ranges, and configurable `macd_fast`, `macd_slow`, `macd_signal` parameters.
+- **Pipeline Integration:** Orchestrated within `MarketDataPipelineResult` alongside return and volatility features with configurable `lookback_days` supporting 6-12 month ranges, configurable MACD (`macd_fast`, `macd_slow`, `macd_signal`), and configurable Bollinger Bands (`bb_window`, `bb_multiplier`, `bb_ddof`).
 - **Non-Predictive Baseline:** Indicators provide descriptive trend, momentum, and divergence features; they are never treated as standalone guaranteed price-direction predictors.
 
 - **Strict Development Schedule Boundaries:**
@@ -269,7 +278,8 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   - **Day 8 (Complete):** Moving average technical indicators (SMA & EMA, configurable windows, point-in-time guarantees).
   - **Day 9 (Complete):** Expanded historical data acquisition (6-12 months lookback) and Relative Strength Index (RSI).
   - **Day 10 (Complete):** MACD technical indicator (fast/slow/signal EMAs, MACD line, signal line, histogram identity, point-in-time integrity).
-  - **Day 11 (Planned):** Next scheduled milestone phase.
+  - **Day 11 (Complete):** Bollinger Bands technical indicator (middle, upper, lower bands, bandwidth, percent B, configurable window/multiplier/ddof, safe zero-denominator handling).
+  - **Day 12 (Planned):** Next scheduled milestone phase.
 
 
 

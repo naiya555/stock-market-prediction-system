@@ -16,8 +16,10 @@ import pytest
 
 from app.core.schemas import MarketOHLCV
 from app.market.indicators import (
+    BollingerBandsSeries,
     MACDSeries,
     MovingAverageFeatures,
+    calculate_bollinger_bands,
     calculate_ema,
     calculate_macd,
     calculate_rsi,
@@ -433,6 +435,7 @@ def test_six_record_regression_case():
     - SMA-10 and EMA-10 are None for all 6 sessions (6 < 10).
     - RSI-14 is None for all 6 sessions (6 <= 14).
     - MACD, signal line, and histogram are None for all 6 sessions (6 < 26).
+    - Bollinger Bands (middle, upper, lower, bandwidth, percent_b) are None for all 6 sessions (6 < 20).
     """
     bars = [
         _make_bar(day=1, close=1877.20),
@@ -456,8 +459,13 @@ def test_six_record_regression_case():
         assert features[i].macd_line is None
         assert features[i].signal_line is None
         assert features[i].histogram is None
+        assert features[i].bollinger_middle is None
+        assert features[i].bollinger_upper is None
+        assert features[i].bollinger_lower is None
+        assert features[i].bollinger_bandwidth is None
+        assert features[i].bollinger_percent_b is None
 
-    # Session 4 (5th bar): 5-period available, 10-period, 14-period, and MACD None
+    # Session 4 (5th bar): 5-period available, others None
     assert features[4].sma_5 == pytest.approx((1877.20 + 1862.80 + 1869.00 + 1840.00 + 1854.00) / 5.0)
     assert features[4].ema_5 is not None
     assert features[4].sma_10 is None
@@ -466,8 +474,13 @@ def test_six_record_regression_case():
     assert features[4].macd_line is None
     assert features[4].signal_line is None
     assert features[4].histogram is None
+    assert features[4].bollinger_middle is None
+    assert features[4].bollinger_upper is None
+    assert features[4].bollinger_lower is None
+    assert features[4].bollinger_bandwidth is None
+    assert features[4].bollinger_percent_b is None
 
-    # Session 5 (6th bar): 5-period available, 10-period, 14-period, and MACD None
+    # Session 5 (6th bar): 5-period available, others None
     assert features[5].sma_5 is not None
     assert features[5].ema_5 is not None
     assert features[5].sma_10 is None
@@ -476,6 +489,11 @@ def test_six_record_regression_case():
     assert features[5].macd_line is None
     assert features[5].signal_line is None
     assert features[5].histogram is None
+    assert features[5].bollinger_middle is None
+    assert features[5].bollinger_upper is None
+    assert features[5].bollinger_lower is None
+    assert features[5].bollinger_bandwidth is None
+    assert features[5].bollinger_percent_b is None
 
 
 def test_expanded_history_case():
@@ -485,6 +503,7 @@ def test_expanded_history_case():
     - SMA-5 and EMA-5 warm up at index 4 (5th bar).
     - SMA-10 and EMA-10 warm up at index 9 (10th bar).
     - RSI-14 warms up at index 14 (15th bar, 14 price changes).
+    - Bollinger Bands warm up at index 19 (20th bar).
     - MACD line warms up at index 25 (26th bar).
     - Signal line and Histogram warm up at index 33 (34th bar).
     - By index 39 (40th bar), ALL indicators are fully available.
@@ -500,36 +519,52 @@ def test_expanded_history_case():
     assert features[4].sma_10 is None
     assert features[4].ema_10 is None
     assert features[4].rsi_14 is None
+    assert features[4].bollinger_middle is None
     assert features[4].macd_line is None
     assert features[4].signal_line is None
     assert features[4].histogram is None
 
-    # Index 9 (10th bar): 5-session and 10-session MAs active; RSI-14 and MACD None
+    # Index 9 (10th bar): 5-session and 10-session MAs active; others None
     assert features[9].sma_5 is not None
     assert features[9].ema_5 is not None
     assert features[9].sma_10 is not None
     assert features[9].ema_10 is not None
     assert features[9].rsi_14 is None
+    assert features[9].bollinger_middle is None
     assert features[9].macd_line is None
     assert features[9].signal_line is None
     assert features[9].histogram is None
 
-    # Index 14 (15th bar): RSI-14 active; MACD line None
+    # Index 14 (15th bar): RSI-14 active; Bollinger and MACD None
     assert features[14].sma_5 is not None
     assert features[14].ema_5 is not None
     assert features[14].sma_10 is not None
     assert features[14].ema_10 is not None
     assert features[14].rsi_14 is not None
+    assert features[14].bollinger_middle is None
     assert features[14].macd_line is None
     assert features[14].signal_line is None
     assert features[14].histogram is None
 
+    # Index 19 (20th bar): Bollinger Bands active; MACD line None
+    assert features[19].bollinger_middle is not None
+    assert features[19].bollinger_upper is not None
+    assert features[19].bollinger_lower is not None
+    assert features[19].bollinger_bandwidth is not None
+    assert features[19].bollinger_percent_b is not None
+    assert features[19].bollinger_upper > features[19].bollinger_lower
+    assert features[19].macd_line is None
+    assert features[19].signal_line is None
+    assert features[19].histogram is None
+
     # Index 25 (26th bar): MACD line active; Signal line and Histogram None
+    assert features[25].bollinger_middle is not None
     assert features[25].macd_line is not None
     assert features[25].signal_line is None
     assert features[25].histogram is None
 
     # Index 33 (34th bar): ALL indicators active, including Signal line and Histogram
+    assert features[33].bollinger_middle is not None
     assert features[33].macd_line is not None
     assert features[33].signal_line is not None
     assert features[33].histogram is not None
@@ -545,7 +580,11 @@ def test_expanded_history_case():
     assert features[39].macd_line is not None
     assert features[39].signal_line is not None
     assert features[39].histogram is not None
-    assert features[39].histogram == pytest.approx(features[39].macd_line - features[39].signal_line)
+    assert features[39].bollinger_middle is not None
+    assert features[39].bollinger_upper is not None
+    assert features[39].bollinger_lower is not None
+    assert features[39].bollinger_bandwidth is not None
+    assert features[39].bollinger_percent_b is not None
 
 
 # ==============================================================================
@@ -807,3 +846,285 @@ def test_moving_average_features_with_macd_to_dict():
     assert d["macd"] == pytest.approx(1.25)
     assert d["macd_signal"] == pytest.approx(0.85)
     assert d["macd_histogram"] == pytest.approx(0.40)
+
+
+# ==============================================================================
+# 7. Bollinger Bands Tests
+# ==============================================================================
+
+
+def test_bollinger_bands_known_calculation():
+    """Verify Bollinger Bands on small, manually verifiable price sequence."""
+    prices = [10.0, 20.0, 30.0, 40.0, 50.0]
+    # Window = 3, Multiplier = 2.0, ddof = 0
+    # Manual trace:
+    #   t=0, 1: None (< 3 window)
+    #   t=2: Window [10, 20, 30]
+    #     Middle = (10 + 20 + 30) / 3 = 20.0
+    #     Population Variance = ((10-20)^2 + (20-20)^2 + (30-20)^2) / 3 = 200 / 3
+    #     Population Std = sqrt(200 / 3) = 8.16496580927726
+    #     Upper = 20.0 + 2.0 * 8.1649658 = 36.3299316
+    #     Lower = 20.0 - 2.0 * 8.1649658 = 3.6700684
+    #     Band Width = (Upper - Lower) / Middle = 32.6598632 / 20.0 = 1.63299316
+    #     Percent B = (Close - Lower) / (Upper - Lower) = (30 - 3.6700684) / 32.6598632 = 0.8061862
+    bb = calculate_bollinger_bands(prices, window=3, multiplier=2.0, ddof=0)
+
+    assert len(bb) == 5
+    # Sequence unpacking protocol
+    mid, up, low, bw, pb = bb
+    assert mid == bb.middle
+    assert up == bb.upper
+    assert low == bb.lower
+    assert bw == bb.bandwidth
+    assert pb == bb.percent_b
+    assert bb.band_width == bb.bandwidth
+
+    # Check indices 0 and 1
+    assert bb.middle[:2] == [None, None]
+    assert bb.upper[:2] == [None, None]
+    assert bb.lower[:2] == [None, None]
+    assert bb.bandwidth[:2] == [None, None]
+    assert bb.percent_b[:2] == [None, None]
+
+    # Check index 2
+    assert bb.middle[2] == pytest.approx(20.0)
+    assert bb.upper[2] == pytest.approx(36.3299316)
+    assert bb.lower[2] == pytest.approx(3.6700684)
+    assert bb.bandwidth[2] == pytest.approx(1.63299316)
+    assert bb.percent_b[2] == pytest.approx(0.8061862)
+
+    # Check index 3: Window [20, 30, 40] -> Middle = 30.0, Std = sqrt(200/3)
+    assert bb.middle[3] == pytest.approx(30.0)
+    assert bb.upper[3] == pytest.approx(30.0 + 2.0 * 8.164965809)
+    assert bb.lower[3] == pytest.approx(30.0 - 2.0 * 8.164965809)
+    assert bb.bandwidth[3] == pytest.approx((bb.upper[3] - bb.lower[3]) / 30.0)
+    assert bb.percent_b[3] == pytest.approx((40.0 - bb.lower[3]) / (bb.upper[3] - bb.lower[3]))
+
+
+def test_bollinger_bands_ddof_1():
+    """Verify Bollinger Bands sample standard deviation convention (ddof=1)."""
+    prices = [10.0, 20.0, 30.0]
+    # Sample Variance = ((10-20)^2 + 0 + (30-20)^2) / (3 - 1) = 200 / 2 = 100.0
+    # Sample Std = 10.0
+    # Middle = 20.0, Upper = 40.0, Lower = 0.0
+    # Band Width = (40 - 0) / 20 = 2.0
+    # Percent B = (30 - 0) / (40 - 0) = 0.75
+    bb = calculate_bollinger_bands(prices, window=3, multiplier=2.0, ddof=1)
+
+    assert bb.middle[2] == pytest.approx(20.0)
+    assert bb.upper[2] == pytest.approx(40.0)
+    assert bb.lower[2] == pytest.approx(0.0)
+    assert bb.bandwidth[2] == pytest.approx(2.0)
+    assert bb.percent_b[2] == pytest.approx(0.75)
+
+
+def test_bollinger_bands_configurable_window_and_multiplier():
+    """Verify configurable window and multiplier (including num_std alias)."""
+    prices = [100.0 + i for i in range(10)]
+    bb1 = calculate_bollinger_bands(prices, window=5, multiplier=1.5)
+    bb2 = calculate_bollinger_bands(prices, window=5, num_std=1.5)
+
+    assert bb1.middle == bb2.middle
+    assert bb1.upper == bb2.upper
+    assert bb1.lower == bb2.lower
+    assert bb1.middle[4] is not None
+    assert bb1.upper[4] is not None
+
+
+def test_bollinger_bands_warmup_and_insufficient_history():
+    """Verify warm-up periods return None rather than fabricating numbers."""
+    prices_10 = [100.0 + i for i in range(10)]
+    bb_10 = calculate_bollinger_bands(prices_10, window=20)
+    assert all(v is None for v in bb_10.middle)
+    assert all(v is None for v in bb_10.upper)
+    assert all(v is None for v in bb_10.lower)
+    assert all(v is None for v in bb_10.bandwidth)
+    assert all(v is None for v in bb_10.percent_b)
+
+    prices_20 = [100.0 + i for i in range(20)]
+    bb_20 = calculate_bollinger_bands(prices_20, window=20)
+    assert bb_20.middle[:19] == [None] * 19
+    assert bb_20.middle[19] is not None
+    assert bb_20.upper[19] is not None
+    assert bb_20.lower[19] is not None
+    assert bb_20.bandwidth[19] is not None
+    assert bb_20.percent_b[19] is not None
+
+
+def test_bollinger_bands_invalid_parameters():
+    """Verify parameter validations for window, multiplier, and ddof."""
+    prices = [10.0, 20.0, 30.0]
+
+    # Non-positive window
+    with pytest.raises(ValueError, match="window must be >= 1"):
+        calculate_bollinger_bands(prices, window=0)
+    with pytest.raises(ValueError, match="window must be >= 1"):
+        calculate_bollinger_bands(prices, window=-5)
+
+    # Non-integer window
+    with pytest.raises(TypeError, match="window must be an integer"):
+        calculate_bollinger_bands(prices, window=20.5)  # type: ignore
+    with pytest.raises(TypeError, match="window must be an integer"):
+        calculate_bollinger_bands(prices, window=True)  # type: ignore
+
+    # Non-positive or non-finite multiplier
+    with pytest.raises(ValueError, match="multiplier must be positive and finite"):
+        calculate_bollinger_bands(prices, multiplier=0.0)
+    with pytest.raises(ValueError, match="multiplier must be positive and finite"):
+        calculate_bollinger_bands(prices, multiplier=-2.0)
+    with pytest.raises(ValueError, match="multiplier must be positive and finite"):
+        calculate_bollinger_bands(prices, multiplier=float("nan"))
+    with pytest.raises(ValueError, match="multiplier must be positive and finite"):
+        calculate_bollinger_bands(prices, multiplier=float("inf"))
+
+    # Non-numeric multiplier
+    with pytest.raises(TypeError, match="multiplier must be a number"):
+        calculate_bollinger_bands(prices, multiplier="2.0")  # type: ignore
+
+    # Invalid ddof
+    with pytest.raises(ValueError, match="ddof must satisfy"):
+        calculate_bollinger_bands(prices, window=3, ddof=-1)
+    with pytest.raises(ValueError, match="ddof must satisfy"):
+        calculate_bollinger_bands(prices, window=3, ddof=3)  # ddof must be < window
+    with pytest.raises(TypeError, match="ddof must be an integer"):
+        calculate_bollinger_bands(prices, window=3, ddof=1.5)  # type: ignore
+
+
+def test_bollinger_bands_empty_input():
+    """Verify empty prices returns empty BollingerBandsSeries."""
+    bb = calculate_bollinger_bands([])
+    assert len(bb) == 0
+    assert bb.middle == []
+    assert bb.upper == []
+    assert bb.lower == []
+    assert bb.bandwidth == []
+    assert bb.percent_b == []
+
+
+def test_bollinger_bands_no_future_leakage():
+    """Verify modifying a future price does not alter past or current Bollinger values."""
+    prices_a = [100.0 + i for i in range(30)]
+    prices_b = list(prices_a)
+    prices_b[29] = 9999.0  # Only the last price is changed
+
+    bb_a = calculate_bollinger_bands(prices_a, window=20)
+    bb_b = calculate_bollinger_bands(prices_b, window=20)
+
+    # Sessions 0..28 must be strictly identical
+    assert bb_a.middle[:29] == bb_b.middle[:29]
+    assert bb_a.upper[:29] == bb_b.upper[:29]
+    assert bb_a.lower[:29] == bb_b.lower[:29]
+    assert bb_a.bandwidth[:29] == bb_b.bandwidth[:29]
+    assert bb_a.percent_b[:29] == bb_b.percent_b[:29]
+
+    # Session 29 must differ
+    assert bb_a.middle[29] != bb_b.middle[29]
+    assert bb_a.upper[29] != bb_b.upper[29]
+
+
+def test_bollinger_bands_invalid_prices():
+    """Verify non-positive or NaN prices mask the affected rolling window as None."""
+    prices = [100.0 + i for i in range(10)]
+    prices[5] = -50.0  # Invalid price at session 5
+
+    bb = calculate_bollinger_bands(prices, window=3)
+
+    # Windows spanning index 5 must evaluate to None:
+    # index 5: window [3, 4, 5] -> None
+    # index 6: window [4, 5, 6] -> None
+    # index 7: window [5, 6, 7] -> None
+    assert bb.middle[5] is None
+    assert bb.middle[6] is None
+    assert bb.middle[7] is None
+    assert bb.upper[5] is None
+    assert bb.lower[5] is None
+    assert bb.bandwidth[5] is None
+    assert bb.percent_b[5] is None
+
+    # Windows before and after must be valid
+    assert bb.middle[4] is not None
+    assert bb.middle[8] is not None
+
+
+def test_bollinger_bands_zero_denominator_and_flat_series():
+    """Verify safe handling of flat prices where upper == lower == middle (zero denominator)."""
+    prices = [100.0] * 5
+    bb = calculate_bollinger_bands(prices, window=3)
+
+    # At index 2:
+    # Middle = 100.0, Std = 0.0, Upper = 100.0, Lower = 100.0
+    # Band Width = (100 - 100) / 100 = 0.0 (middle > 0, so valid)
+    # Percent B = (100 - 100) / (100 - 100) -> denominator is 0.0, must return None safely
+    assert bb.middle[2] == pytest.approx(100.0)
+    assert bb.upper[2] == pytest.approx(100.0)
+    assert bb.lower[2] == pytest.approx(100.0)
+    assert bb.bandwidth[2] == pytest.approx(0.0)
+    assert bb.percent_b[2] is None
+
+
+def test_compute_moving_averages_multi_symbol_bollinger():
+    """Verify multi-symbol isolation and chronological sorting for Bollinger Bands."""
+    bars = []
+    for day in range(1, 26):
+        bars.append(_make_bar(symbol="TCS", day=day, close=3000.0 + day * 5))
+        bars.append(_make_bar(symbol="INFY", day=day, close=1500.0 + day * 3))
+
+    features = compute_moving_averages(bars, bb_window=20, bb_multiplier=2.0)
+    assert len(features) == 50
+
+    infy_feats = [f for f in features if f.symbol == "INFY"]
+    tcs_feats = [f for f in features if f.symbol == "TCS"]
+    assert len(infy_feats) == 25
+    assert len(tcs_feats) == 25
+
+    # Check chronological ordering
+    for sym_list in (infy_feats, tcs_feats):
+        for i in range(1, len(sym_list)):
+            assert sym_list[i].timestamp > sym_list[i - 1].timestamp
+
+    # Check Bollinger availability (window=20 warms up at index 19)
+    assert infy_feats[18].bollinger_middle is None
+    assert infy_feats[19].bollinger_middle is not None
+    assert infy_feats[19].bollinger_upper is not None
+    assert infy_feats[19].bollinger_lower is not None
+    assert infy_feats[19].bollinger_bandwidth is not None
+    assert infy_feats[19].bollinger_percent_b is not None
+
+    assert tcs_feats[18].bollinger_middle is None
+    assert tcs_feats[19].bollinger_middle is not None
+    assert tcs_feats[19].bollinger_upper is not None
+
+
+def test_moving_average_features_with_bollinger_to_dict():
+    """Verify MovingAverageFeatures dictionary serialization contains Bollinger keys."""
+    bar = _make_bar(day=1, close=150.0)
+    feat = MovingAverageFeatures(
+        symbol=bar.symbol,
+        timestamp=bar.timestamp,
+        close=bar.close,
+        smas={5: 148.5},
+        emas={5: 149.2},
+        rsi={14: 62.5},
+        macd=1.25,
+        macd_signal=0.85,
+        macd_histogram=0.40,
+        bb_middle=149.0,
+        bb_upper=155.0,
+        bb_lower=143.0,
+        bb_bandwidth=0.0805,
+        bb_percent_b=0.5833,
+    )
+
+    assert feat.bollinger_middle == pytest.approx(149.0)
+    assert feat.bollinger_upper == pytest.approx(155.0)
+    assert feat.bollinger_lower == pytest.approx(143.0)
+    assert feat.bollinger_bandwidth == pytest.approx(0.0805)
+    assert feat.bollinger_band_width == pytest.approx(0.0805)
+    assert feat.bollinger_percent_b == pytest.approx(0.5833)
+
+    d = feat.to_dict()
+    assert d["bb_middle"] == pytest.approx(149.0)
+    assert d["bb_upper"] == pytest.approx(155.0)
+    assert d["bb_lower"] == pytest.approx(143.0)
+    assert d["bb_bandwidth"] == pytest.approx(0.0805)
+    assert d["bb_percent_b"] == pytest.approx(0.5833)
