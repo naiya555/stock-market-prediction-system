@@ -1,10 +1,10 @@
-"""Real-Data Verification Script for Moving Averages, RSI, MACD & Bollinger Bands.
+"""Real-Data Verification Script for Moving Averages, RSI, MACD, Bollinger Bands, ATR & ROC.
 
 Validates:
 1. Investigation & resolution of the Day 8 six-record historical data limitation.
 2. Expanded historical data acquisition (6-12 months / ~120-250 trading sessions).
-3. Availability and mathematical correctness of SMA-5, EMA-5, SMA-10, EMA-10, RSI-14, MACD (12, 26, 9), and Bollinger Bands (20, 2.0).
-4. Point-in-time integrity, chronological alignment, histogram identity, and Bollinger band identities (bandwidth and %B).
+3. Availability and mathematical correctness of SMA-5, EMA-5, SMA-10, EMA-10, RSI-14, MACD (12, 26, 9), Bollinger Bands (20, 2.0), ATR-14, and ROC-10.
+4. Point-in-time integrity, chronological alignment, histogram identity, Bollinger band identities, ATR recurrence/warmup, and ROC identity/warmup.
 5. Regression validation of the original 6-session bounded historical range.
 """
 
@@ -25,7 +25,7 @@ project_root = Path(__file__).resolve().parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from app.market.indicators import compute_moving_averages
+from app.market.indicators import calculate_true_range, compute_moving_averages
 from app.market.pipeline import run_market_data_pipeline
 from app.market.providers.yfinance_provider import YFinanceProvider
 
@@ -64,6 +64,8 @@ def verify_expanded_history() -> int:
             bb_window=20,
             bb_multiplier=2.0,
             bb_ddof=0,
+            atr_periods=(14,),
+            roc_periods=(10,),
         )
     except Exception as exc:
         print(f"ERROR: Market data pipeline execution failed: {exc}", file=sys.stderr)
@@ -251,12 +253,55 @@ def verify_expanded_history() -> int:
                     print(f"ERROR: Session {i} BB %B mismatch: expected {expected_pb}, got {pb}", file=sys.stderr)
                     return 1
 
-    print("  [OK] SMA-5, EMA-5, SMA-10, EMA-10, RSI-14, MACD (12, 26, 9), and Bollinger Bands (20, 2.0) warmup and values verified.")
+    # Verify ATR (period=14) warmup, Wilder recurrence, and mathematical identity
+    trs = calculate_true_range(clean_records)
+    for i in range(len(indicators)):
+        if i < 13:
+            if indicators[i].atr_14 is not None:
+                print(f"ERROR: Session {i} (< 14 bars) must have atr_14 as None", file=sys.stderr)
+                return 1
+        elif i == 13:
+            expected_seed_atr = sum(trs[:14]) / 14.0
+            actual_atr = indicators[i].atr_14
+            if actual_atr is None or not math.isclose(actual_atr, expected_seed_atr, rel_tol=1e-5):
+                print(
+                    f"ERROR: Session 13 ATR seed mismatch: expected {expected_seed_atr:.4f}, got {actual_atr}",
+                    file=sys.stderr,
+                )
+                return 1
+        else:
+            prev_atr = indicators[i - 1].atr_14
+            expected_atr = ((13.0 * prev_atr) + trs[i]) / 14.0
+            actual_atr = indicators[i].atr_14
+            if actual_atr is None or not math.isclose(actual_atr, expected_atr, rel_tol=1e-5):
+                print(
+                    f"ERROR: Session {i} ATR Wilder recurrence mismatch: expected {expected_atr:.4f}, got {actual_atr}",
+                    file=sys.stderr,
+                )
+                return 1
+
+    # Verify ROC (period=10) warmup and formula identity
+    for i in range(len(indicators)):
+        if i < 10:
+            if indicators[i].roc_10 is not None:
+                print(f"ERROR: Session {i} (< 10 bars) must have roc_10 as None", file=sys.stderr)
+                return 1
+        else:
+            expected_roc = ((closes[i] / closes[i - 10]) - 1.0) * 100.0
+            actual_roc = indicators[i].roc_10
+            if actual_roc is None or not math.isclose(actual_roc, expected_roc, rel_tol=1e-5):
+                print(
+                    f"ERROR: Session {i} ROC-10 mismatch: expected {expected_roc:.4f}, got {actual_roc}",
+                    file=sys.stderr,
+                )
+                return 1
+
+    print("  [OK] SMA-5, EMA-5, SMA-10, EMA-10, RSI-14, MACD (12, 26, 9), Bollinger Bands (20, 2.0), ATR-14, and ROC-10 warmup and values verified.")
 
     currency = _get_currency_symbol()
     close_header = f"Close ({currency})"
 
-    print("\nStep 4: Inspection of Recent Indicator Observations:")
+    print("\nStep 4: Inspection of Recent Trend & Momentum Indicators:")
     divider = "-" * 115
     print(divider)
     print(
@@ -297,6 +342,28 @@ def verify_expanded_history() -> int:
         print(f"{d_str:<12} {c_str:<12} {mid_str:<12} {up_str:<12} {low_str:<12} {bw_str:<12} {pb_str:<10}")
     print(divider_bb)
 
+    print("\nStep 4C: Inspection of Recent Volatility & Momentum (ATR-14, ROC-10):")
+    divider_vol = "-" * 85
+    print(divider_vol)
+    print(
+        f"{'Date':<12} {close_header:<12} {'High':<10} {'Low':<10} {'TR':<10} {'ATR-14':<12} {'ROC-10 (%)':<12}"
+    )
+    print(divider_vol)
+    sample_indices = range(len(indicators) - 12, len(indicators))
+    for idx in sample_indices:
+        ind = indicators[idx]
+        rec = clean_records[idx]
+        tr_val = trs[idx]
+        d_str = ind.timestamp.strftime("%Y-%m-%d")
+        c_str = f"{ind.close:.2f}"
+        h_str = f"{rec.high:.2f}"
+        l_str = f"{rec.low:.2f}"
+        tr_str = f"{tr_val:.2f}"
+        atr_str = f"{ind.atr_14:.2f}" if ind.atr_14 is not None else "None"
+        roc_str = f"{ind.roc_10:+.2f}%" if ind.roc_10 is not None else "None"
+        print(f"{d_str:<12} {c_str:<12} {h_str:<10} {l_str:<10} {tr_str:<10} {atr_str:<12} {roc_str:<12}")
+    print(divider_vol)
+
     sma_5_count = sum(1 for ind in indicators if ind.sma_5 is not None)
     ema_5_count = sum(1 for ind in indicators if ind.ema_5 is not None)
     sma_10_count = sum(1 for ind in indicators if ind.sma_10 is not None)
@@ -306,6 +373,8 @@ def verify_expanded_history() -> int:
     sig_count = sum(1 for ind in indicators if ind.signal_line is not None)
     hist_count = sum(1 for ind in indicators if ind.histogram is not None)
     bb_count = sum(1 for ind in indicators if ind.bb_middle is not None)
+    atr_count = sum(1 for ind in indicators if ind.atr_14 is not None)
+    roc_count = sum(1 for ind in indicators if ind.roc_10 is not None)
 
     print("Summary Metrics (Expanded History):")
     print(f"  Symbol:                      {symbol}")
@@ -319,6 +388,8 @@ def verify_expanded_history() -> int:
     print(f"  Signal Available Count:      {sig_count} (of {len(indicators)})")
     print(f"  Histogram Available Count:   {hist_count} (of {len(indicators)})")
     print(f"  Bollinger Available Count:   {bb_count} (of {len(indicators)})")
+    print(f"  ATR-14 Available Count:      {atr_count} (of {len(indicators)})")
+    print(f"  ROC-10 Available Count:      {roc_count} (of {len(indicators)})")
     print(f"  Latest Close Price:          {indicators[-1].close:.2f}")
     print(f"  Latest RSI-14 Value:         {indicators[-1].rsi_14:.2f}")
     print(f"  Latest MACD Line:            {indicators[-1].macd_line:+.2f}")
@@ -329,6 +400,8 @@ def verify_expanded_history() -> int:
     print(f"  Latest BB Lower:             {indicators[-1].bb_lower:.2f}")
     print(f"  Latest BB BandWidth:         {indicators[-1].bb_bandwidth:.4f}")
     print(f"  Latest BB %B:                {indicators[-1].bb_percent_b:.4f}")
+    print(f"  Latest ATR-14 Value:         {indicators[-1].atr_14:.2f}")
+    print(f"  Latest ROC-10 Value:         {indicators[-1].roc_10:+.2f}%")
 
     return 0
 
@@ -359,6 +432,8 @@ def verify_six_record_regression() -> int:
             bb_window=20,
             bb_multiplier=2.0,
             bb_ddof=0,
+            atr_periods=(14,),
+            roc_periods=(10,),
         )
     except Exception as exc:
         print(f"ERROR: Regression pipeline execution failed: {exc}", file=sys.stderr)
@@ -376,6 +451,8 @@ def verify_six_record_regression() -> int:
     sig_avail = sum(1 for ind in indicators if ind.signal_line is not None)
     hist_avail = sum(1 for ind in indicators if ind.histogram is not None)
     bb_avail = sum(1 for ind in indicators if ind.bb_middle is not None)
+    atr_avail = sum(1 for ind in indicators if ind.atr_14 is not None)
+    roc_avail = sum(1 for ind in indicators if ind.roc_10 is not None)
 
     if sma_5_avail != 2:
         print(f"ERROR: Expected 2 SMA-5 values in 6-bar set, got {sma_5_avail}", file=sys.stderr)
@@ -398,14 +475,20 @@ def verify_six_record_regression() -> int:
     if bb_avail != 0:
         print(f"ERROR: Expected 0 Bollinger values in 6-bar set, got {bb_avail}", file=sys.stderr)
         return 1
+    if atr_avail != 0:
+        print(f"ERROR: Expected 0 ATR values in 6-bar set, got {atr_avail}", file=sys.stderr)
+        return 1
+    if roc_avail != 0:
+        print(f"ERROR: Expected 0 ROC values in 6-bar set, got {roc_avail}", file=sys.stderr)
+        return 1
 
-    print("  [OK] 6-record regression verified: SMA-5 (2 values), SMA-10 (0), RSI-14 (0), MACD (0), Signal (0), Hist (0), BB (0).")
+    print("  [OK] 6-record regression verified: SMA-5 (2 values), SMA-10 (0), RSI-14 (0), MACD (0), Signal (0), Hist (0), BB (0), ATR (0), ROC (0).")
     return 0
 
 
 def main() -> int:
     print("==================================================")
-    print("DAY 11 EXPANDED HISTORICAL DATA, RSI, MACD & BOLLINGER BANDS VERIFICATION")
+    print("DAY 12 EXPANDED HISTORICAL DATA, RSI, MACD, BOLLINGER BANDS, ATR & ROC VERIFICATION")
     print("==================================================")
 
     res_expanded = verify_expanded_history()
@@ -416,7 +499,7 @@ def main() -> int:
     if res_regression != 0:
         return res_regression
 
-    print("\n[SUCCESS] Day 11 expanded historical data, moving averages, RSI, MACD, and Bollinger Bands verified successfully.")
+    print("\n[SUCCESS] Day 12 expanded historical data, moving averages, RSI, MACD, Bollinger Bands, ATR, and ROC verified successfully.")
     print("==================================================")
     return 0
 

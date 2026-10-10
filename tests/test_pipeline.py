@@ -268,3 +268,33 @@ def test_pipeline_bollinger_integration():
     assert "bollinger_percent_b" in indicator_dicts[19]
     assert indicator_dicts[19]["bollinger_middle"] == pytest.approx(ind_19.bb_middle)
 
+
+def test_pipeline_atr_roc_integration():
+    """Verify market data pipeline computes and serializes ATR and ROC indicators."""
+    bars = [_make_bar(day=i, close=100.0 + (i % 5) * 2.0) for i in range(1, 26)]
+    result = process_market_data(
+        bars,
+        atr_periods=(14,),
+        roc_periods=(10,),
+    )
+
+    assert len(result.indicators) == 25
+
+    # ATR-14 warmup: indices 0..12 are None, index 13 is first valid value
+    assert result.indicators[12].atr_14 is None
+    assert result.indicators[13].atr_14 is not None
+    assert result.indicators[13].atr_14 > 0.0
+
+    # ROC-10 warmup: indices 0..9 are None, index 10 is first valid value
+    assert result.indicators[9].roc_10 is None
+    assert result.indicators[10].roc_10 is not None
+
+    # Check serialization
+    indicator_dicts = result.to_indicator_dicts()
+    assert len(indicator_dicts) == 25
+    assert "atr_14" in indicator_dicts[13]
+    assert "roc_10" in indicator_dicts[10]
+    assert indicator_dicts[13]["atr_14"] == pytest.approx(result.indicators[13].atr_14)
+    assert indicator_dicts[10]["roc_10"] == pytest.approx(result.indicators[10].roc_10)
+
+

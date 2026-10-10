@@ -94,6 +94,8 @@ class MovingAverageFeatures:
     bb_lower: Optional[float] = None
     bb_bandwidth: Optional[float] = None
     bb_percent_b: Optional[float] = None
+    atr: Dict[int, Optional[float]] = field(default_factory=dict)
+    roc: Dict[int, Optional[float]] = field(default_factory=dict)
 
     @property
     def sma_5(self) -> Optional[float]:
@@ -165,6 +167,16 @@ class MovingAverageFeatures:
         """Convenience property for Bollinger %B."""
         return self.bb_percent_b
 
+    @property
+    def atr_14(self) -> Optional[float]:
+        """Convenience property for standard 14-session Average True Range."""
+        return self.atr.get(14)
+
+    @property
+    def roc_10(self) -> Optional[float]:
+        """Convenience property for standard 10-session Rate of Change."""
+        return self.roc.get(10)
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert features to a flat dictionary for tabular analysis and ML datasets."""
         out: Dict[str, Any] = {
@@ -191,6 +203,10 @@ class MovingAverageFeatures:
         out["bollinger_lower"] = self.bb_lower
         out["bollinger_bandwidth"] = self.bb_bandwidth
         out["bollinger_percent_b"] = self.bb_percent_b
+        for p, val in sorted(self.atr.items()):
+            out[f"atr_{p}"] = val
+        for p, val in sorted(self.roc.items()):
+            out[f"roc_{p}"] = val
         return out
 
 
@@ -644,6 +660,223 @@ def calculate_bollinger_bands(
     )
 
 
+def calculate_true_range(
+    high: Any,
+    low: Optional[Sequence[float]] = None,
+    close: Optional[Sequence[float]] = None,
+) -> List[Optional[float]]:
+    """Compute True Range (TR) across chronological price sessions.
+
+    Mathematical Definition:
+        For session t = 0 (first session, no previous close):
+            TR_0 = High_0 - Low_0
+        For session t >= 1:
+            TR_t = max(High_t - Low_t, |High_t - Close_{t-1}|, |Low_t - Close_{t-1}|)
+
+    Args:
+        high: Sequence of high prices, or Sequence of MarketOHLCV records.
+        low: Sequence of low prices (required if high is float sequence).
+        close: Sequence of closing prices (required if high is float sequence).
+
+    Returns:
+        List of True Range values, where invalid, missing, or unphysical sessions yield None.
+    """
+    if low is None and close is None:
+        records = list(high)
+        if len(records) == 0:
+            return []
+        h_vals = [getattr(r, "high", None) for r in records]
+        l_vals = [getattr(r, "low", None) for r in records]
+        c_vals = [getattr(r, "close", None) for r in records]
+    else:
+        if low is None or close is None:
+            raise ValueError("Both low and close must be provided when high is a numeric sequence")
+        h_vals = list(high)
+        l_vals = list(low)
+        c_vals = list(close)
+
+    n = len(h_vals)
+    if len(l_vals) != n or len(c_vals) != n:
+        raise ValueError(
+            f"Input sequences must have identical lengths: high={n}, low={len(l_vals)}, close={len(c_vals)}"
+        )
+    if n == 0:
+        return []
+
+    tr_list: List[Optional[float]] = []
+    for t in range(n):
+        h = h_vals[t]
+        l = l_vals[t]
+
+        if (
+            h is None
+            or l is None
+            or not isinstance(h, (int, float))
+            or not isinstance(l, (int, float))
+            or isinstance(h, bool)
+            or isinstance(l, bool)
+            or not math.isfinite(h)
+            or not math.isfinite(l)
+            or h <= 0.0
+            or l <= 0.0
+            or h < l
+        ):
+            tr_list.append(None)
+            continue
+
+        if t == 0:
+            # First session initialization policy: High - Low
+            tr_list.append(float(h - l))
+        else:
+            prev_c = c_vals[t - 1]
+            if (
+                prev_c is None
+                or not isinstance(prev_c, (int, float))
+                or isinstance(prev_c, bool)
+                or not math.isfinite(prev_c)
+                or prev_c <= 0.0
+            ):
+                tr_list.append(None)
+                continue
+
+            hl = float(h - l)
+            hc = float(abs(h - prev_c))
+            lc = float(abs(l - prev_c))
+            tr_list.append(max(hl, hc, lc))
+
+    return tr_list
+
+
+def calculate_atr(
+    high: Any,
+    low: Optional[Sequence[float]] = None,
+    close: Optional[Sequence[float]] = None,
+    period: int = 14,
+) -> List[Optional[float]]:
+    """Compute Average True Range (ATR) using Wilder's smoothing method.
+
+    Mathematical Definition:
+        Initial ATR at session t = period - 1:
+            ATR_{period-1} = (1 / period) * sum_{i=0}^{period-1} TR_i
+        Subsequent sessions t >= period:
+            ATR_t = ((period - 1) * ATR_{t-1} + TR_t) / period
+
+    Args:
+        high: Sequence of high prices, or Sequence of MarketOHLCV records.
+        low: Sequence of low prices (required if high is float sequence).
+        close: Sequence of closing prices (required if high is float sequence).
+        period: Rolling session window (default 14, must be positive integer >= 1).
+
+    Returns:
+        List of smoothed ATR values, where un-warmed sessions (t < period - 1)
+        or sessions with invalid data evaluate strictly to None.
+    """
+    if not isinstance(period, int) or isinstance(period, bool):
+        raise TypeError(f"period must be an integer, got {type(period).__name__}")
+    if period < 1:
+        raise ValueError(f"period must be >= 1, got {period}")
+
+    tr_list = calculate_true_range(high, low, close)
+    n = len(tr_list)
+    if n == 0:
+        return []
+
+    atr_list: List[Optional[float]] = []
+    prev_atr: Optional[float] = None
+
+    for t in range(n):
+        if t < period - 1:
+            atr_list.append(None)
+        elif t == period - 1:
+            # Seed with simple arithmetic mean of the first 'period' True Ranges
+            window_tr = tr_list[0:period]
+            if any(val is None for val in window_tr):
+                atr_list.append(None)
+                prev_atr = None
+            else:
+                first_atr = sum(val for val in window_tr if val is not None) / float(period)
+                atr_list.append(first_atr)
+                prev_atr = first_atr
+        else:
+            tr_val = tr_list[t]
+            if prev_atr is not None and tr_val is not None:
+                curr_atr = ((period - 1) * prev_atr + tr_val) / float(period)
+                atr_list.append(curr_atr)
+                prev_atr = curr_atr
+            else:
+                atr_list.append(None)
+                prev_atr = None
+
+    return atr_list
+
+
+def calculate_roc(
+    prices: Any,
+    period: int = 10,
+    lookback: Optional[int] = None,
+) -> List[Optional[float]]:
+    """Compute Price Rate of Change (ROC) over a sliding chronological lookback.
+
+    Mathematical Definition:
+        ROC_{t, n} = ((Close_t / Close_{t-n}) - 1) * 100
+
+    Args:
+        prices: Sequence of closing prices, or Sequence of MarketOHLCV records.
+        period: Number of historical sessions to look back (default 10).
+        lookback: Optional alias for period.
+
+    Returns:
+        List of ROC percentage values, where un-warmed sessions (t < n)
+        or sessions with missing/non-positive prices evaluate strictly to None.
+    """
+    if lookback is not None:
+        period = lookback
+
+    if not isinstance(period, int) or isinstance(period, bool):
+        raise TypeError(f"period must be an integer, got {type(period).__name__}")
+    if period < 1:
+        raise ValueError(f"period must be >= 1, got {period}")
+
+    p_vals: List[Any]
+    if len(prices) > 0 and hasattr(prices[0], "close"):
+        p_vals = [r.close for r in prices]
+    else:
+        p_vals = list(prices)
+
+    n = len(p_vals)
+    if n == 0:
+        return []
+
+    roc_list: List[Optional[float]] = []
+    for t in range(n):
+        if t < period:
+            roc_list.append(None)
+            continue
+
+        curr_p = p_vals[t]
+        prev_p = p_vals[t - period]
+
+        if (
+            curr_p is None
+            or prev_p is None
+            or isinstance(curr_p, bool)
+            or isinstance(prev_p, bool)
+            or not isinstance(curr_p, (int, float))
+            or not isinstance(prev_p, (int, float))
+            or not math.isfinite(curr_p)
+            or not math.isfinite(prev_p)
+            or curr_p <= 0.0
+            or prev_p <= 0.0
+        ):
+            roc_list.append(None)
+            continue
+
+        roc_val = ((float(curr_p) / float(prev_p)) - 1.0) * 100.0
+        roc_list.append(roc_val)
+
+    return roc_list
+
+
 def compute_moving_averages(
     records: Sequence[MarketOHLCV],
     sma_windows: Sequence[int] = (5, 10),
@@ -657,6 +890,8 @@ def compute_moving_averages(
     bb_window: Optional[int] = 20,
     bb_multiplier: Optional[float] = 2.0,
     bb_ddof: int = 0,
+    atr_periods: Sequence[int] = (14,),
+    roc_periods: Sequence[int] = (10,),
 ) -> List[MovingAverageFeatures]:
     """Compute moving average, momentum, and volatility indicators across canonical MarketOHLCV records.
 
@@ -680,6 +915,8 @@ def compute_moving_averages(
         bb_window: Rolling window for Bollinger Bands (default 20, or None to skip).
         bb_multiplier: Standard deviation multiplier for Bollinger Bands (default 2.0).
         bb_ddof: Degrees of freedom for Bollinger standard deviation (default 0).
+        atr_periods: Periods to compute for Average True Range (default (14,)).
+        roc_periods: Lookbacks to compute for Rate of Change (default (10,)).
 
     Returns:
         List of MovingAverageFeatures chronologically aligned with input bars.
@@ -697,6 +934,8 @@ def compute_moving_averages(
     for sym, sym_records in sorted(grouped.items(), key=lambda x: x[0]):
         sorted_bars = sorted(sym_records, key=lambda b: b.timestamp)
         prices = [b.close for b in sorted_bars]
+        highs = [b.high for b in sorted_bars]
+        lows = [b.low for b in sorted_bars]
 
         # Compute SMAs
         sma_results: Dict[int, List[Optional[float]]] = {}
@@ -751,11 +990,23 @@ def compute_moving_averages(
                 percent_b=[None] * len(sorted_bars),
             )
 
+        # Compute ATRs
+        atr_results: Dict[int, List[Optional[float]]] = {}
+        for p in atr_periods:
+            atr_results[p] = calculate_atr(highs, lows, prices, period=p)
+
+        # Compute ROCs
+        roc_results: Dict[int, List[Optional[float]]] = {}
+        for p in roc_periods:
+            roc_results[p] = calculate_roc(prices, period=p)
+
         # Assemble per-bar feature records
         for i, bar in enumerate(sorted_bars):
             bar_smas = {w: sma_results[w][i] for w in sma_windows}
             bar_emas = {w: ema_results[w][i] for w in ema_windows}
             bar_rsi = {p: rsi_results[p][i] for p in rsi_periods}
+            bar_atr = {p: atr_results[p][i] for p in atr_periods}
+            bar_roc = {p: roc_results[p][i] for p in roc_periods}
 
             features = MovingAverageFeatures(
                 symbol=bar.symbol,
@@ -772,6 +1023,8 @@ def compute_moving_averages(
                 bb_lower=bb_series.lower[i],
                 bb_bandwidth=bb_series.bandwidth[i],
                 bb_percent_b=bb_series.percent_b[i],
+                atr=bar_atr,
+                roc=bar_roc,
             )
             all_features.append(features)
 

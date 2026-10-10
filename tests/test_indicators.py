@@ -24,6 +24,9 @@ from app.market.indicators import (
     calculate_macd,
     calculate_rsi,
     calculate_sma,
+    calculate_true_range,
+    calculate_atr,
+    calculate_roc,
     compute_moving_averages,
     compute_technical_indicators,
 )
@@ -464,6 +467,8 @@ def test_six_record_regression_case():
         assert features[i].bollinger_lower is None
         assert features[i].bollinger_bandwidth is None
         assert features[i].bollinger_percent_b is None
+        assert features[i].atr_14 is None
+        assert features[i].roc_10 is None
 
     # Session 4 (5th bar): 5-period available, others None
     assert features[4].sma_5 == pytest.approx((1877.20 + 1862.80 + 1869.00 + 1840.00 + 1854.00) / 5.0)
@@ -479,6 +484,8 @@ def test_six_record_regression_case():
     assert features[4].bollinger_lower is None
     assert features[4].bollinger_bandwidth is None
     assert features[4].bollinger_percent_b is None
+    assert features[4].atr_14 is None
+    assert features[4].roc_10 is None
 
     # Session 5 (6th bar): 5-period available, others None
     assert features[5].sma_5 is not None
@@ -494,6 +501,8 @@ def test_six_record_regression_case():
     assert features[5].bollinger_lower is None
     assert features[5].bollinger_bandwidth is None
     assert features[5].bollinger_percent_b is None
+    assert features[5].atr_14 is None
+    assert features[5].roc_10 is None
 
 
 def test_expanded_history_case():
@@ -534,6 +543,16 @@ def test_expanded_history_case():
     assert features[9].macd_line is None
     assert features[9].signal_line is None
     assert features[9].histogram is None
+    assert features[9].roc_10 is None
+    assert features[9].atr_14 is None
+
+    # Index 10 (11th bar): ROC-10 becomes active (requires 10 prior sessions)
+    assert features[10].roc_10 is not None
+    assert features[10].atr_14 is None
+
+    # Index 13 (14th bar): ATR-14 becomes active (first 14 True Range values)
+    assert features[12].atr_14 is None
+    assert features[13].atr_14 is not None
 
     # Index 14 (15th bar): RSI-14 active; Bollinger and MACD None
     assert features[14].sma_5 is not None
@@ -545,6 +564,8 @@ def test_expanded_history_case():
     assert features[14].macd_line is None
     assert features[14].signal_line is None
     assert features[14].histogram is None
+    assert features[14].atr_14 is not None
+    assert features[14].roc_10 is not None
 
     # Index 19 (20th bar): Bollinger Bands active; MACD line None
     assert features[19].bollinger_middle is not None
@@ -585,6 +606,8 @@ def test_expanded_history_case():
     assert features[39].bollinger_lower is not None
     assert features[39].bollinger_bandwidth is not None
     assert features[39].bollinger_percent_b is not None
+    assert features[39].atr_14 is not None
+    assert features[39].roc_10 is not None
 
 
 # ==============================================================================
@@ -1128,3 +1151,357 @@ def test_moving_average_features_with_bollinger_to_dict():
     assert d["bb_lower"] == pytest.approx(143.0)
     assert d["bb_bandwidth"] == pytest.approx(0.0805)
     assert d["bb_percent_b"] == pytest.approx(0.5833)
+
+
+# ==============================================================================
+# 8. Average True Range (ATR) & Rate of Change (ROC) Tests
+# ==============================================================================
+
+
+def test_true_range_known_calculation():
+    """Verify True Range calculation against manually verified OHLC examples."""
+    # Bar 0: H=105, L=100, C=102 -> TR = 105 - 100 = 5.0
+    # Bar 1: H=108, L=103, C=106 -> prev_C=102 -> max(108-103=5, |108-102|=6, |103-102|=1) = 6.0
+    # Bar 2: H=104, L=98, C=100  -> prev_C=106 -> max(104-98=6, |104-106|=2, |98-106|=8) = 8.0
+    # Bar 3: H=101, L=99, C=100  -> prev_C=100 -> max(101-99=2, |101-100|=1, |99-100|=1) = 2.0
+    highs = [105.0, 108.0, 104.0, 101.0]
+    lows = [100.0, 103.0, 98.0, 99.0]
+    closes = [102.0, 106.0, 100.0, 100.0]
+
+    tr_vals = calculate_true_range(highs, lows, closes)
+    assert len(tr_vals) == 4
+    assert tr_vals[0] == pytest.approx(5.0)
+    assert tr_vals[1] == pytest.approx(6.0)
+    assert tr_vals[2] == pytest.approx(8.0)
+    assert tr_vals[3] == pytest.approx(2.0)
+
+    # Also verify sequence of MarketOHLCV records
+    bars = [
+        MarketOHLCV(
+            symbol="BHARTIARTL",
+            timestamp=datetime(2026, 9, 1, 10, 0, tzinfo=timezone.utc) + timedelta(days=i),
+            open=closes[i],
+            high=highs[i],
+            low=lows[i],
+            close=closes[i],
+            volume=1000,
+            source="test",
+        )
+        for i in range(4)
+    ]
+    tr_from_bars = calculate_true_range(bars)
+    assert tr_from_bars == tr_vals
+
+
+def test_true_range_first_session_initialization():
+    """Verify first-session True Range uses High - Low when valid, and None when invalid."""
+    # Valid first session: High=110, Low=100 -> TR=10.0
+    assert calculate_true_range([110.0], [100.0], [105.0]) == [10.0]
+
+    # Invalid first session: High < Low -> None
+    assert calculate_true_range([95.0], [100.0], [98.0]) == [None]
+
+    # Invalid first session: non-positive prices
+    assert calculate_true_range([0.0], [0.0], [0.0]) == [None]
+    assert calculate_true_range([-5.0], [-10.0], [-8.0]) == [None]
+
+
+def test_true_range_invalid_ohlc_handling():
+    """Verify True Range handles invalid, NaN, boolean, and mismatched length inputs safely."""
+    # Mismatched lengths
+    with pytest.raises(ValueError, match="must have identical lengths"):
+        calculate_true_range([105.0, 110.0], [100.0], [102.0])
+
+    # Missing low or close when high is a numeric sequence
+    with pytest.raises(ValueError, match="Both low and close must be provided"):
+        calculate_true_range([105.0, 110.0], None, [102.0, 105.0])
+
+    # Empty input
+    assert calculate_true_range([], [], []) == []
+    assert calculate_true_range([]) == []
+
+    # High < Low at second session
+    highs = [105.0, 95.0, 105.0]
+    lows = [100.0, 100.0, 100.0]
+    closes = [102.0, 98.0, 102.0]
+    tr = calculate_true_range(highs, lows, closes)
+    assert tr[0] == pytest.approx(5.0)
+    assert tr[1] is None  # High < Low is invalid
+    assert tr[2] == pytest.approx(7.0)  # max(105-100=5, |105-98|=7, |100-98|=2) = 7.0
+
+    # Non-finite or boolean values
+    assert calculate_true_range([float("nan")], [100.0], [102.0]) == [None]
+    assert calculate_true_range([True], [100.0], [102.0]) == [None]
+
+
+def test_atr_known_calculation_and_wilder_recurrence():
+    """Verify ATR-3 initial simple average seed and subsequent Wilder smoothing recurrence."""
+    # 4 bars from test_true_range_known_calculation: TR = [5.0, 6.0, 8.0, 2.0]
+    # Period = 3:
+    # Index 0: None (< 3 bars)
+    # Index 1: None (< 3 bars)
+    # Index 2: First ATR = (5.0 + 6.0 + 8.0) / 3 = 19.0 / 3 ≈ 6.3333333333
+    # Index 3: Wilder recurrence = ((3 - 1) * (19/3) + 2.0) / 3 = (38/3 + 6/3) / 3 = 44/9 ≈ 4.8888888889
+    highs = [105.0, 108.0, 104.0, 101.0]
+    lows = [100.0, 103.0, 98.0, 99.0]
+    closes = [102.0, 106.0, 100.0, 100.0]
+
+    atr_vals = calculate_atr(highs, lows, closes, period=3)
+    assert len(atr_vals) == 4
+    assert atr_vals[0] is None
+    assert atr_vals[1] is None
+    assert atr_vals[2] == pytest.approx(19.0 / 3.0)
+    assert atr_vals[3] == pytest.approx(44.0 / 9.0)
+
+
+def test_atr_insufficient_history_and_warmup():
+    """Verify ATR-14 warmup behavior across sufficient and insufficient history sequences."""
+    # 20 bars: indices 0..12 are None; index 13 (14th bar) is first valid ATR
+    bars = [_make_bar(day=i, close=100.0 + i) for i in range(1, 21)]
+    atr_vals = calculate_atr(bars, period=14)
+    assert len(atr_vals) == 20
+
+    for i in range(13):
+        assert atr_vals[i] is None, f"Expected ATR to be None at index {i}"
+
+    assert atr_vals[13] is not None
+    assert atr_vals[13] > 0.0
+
+    for i in range(14, 20):
+        assert atr_vals[i] is not None
+        assert atr_vals[i] > 0.0
+
+    # Insufficient history: fewer than 14 bars (10 bars) -> all None
+    short_bars = bars[:10]
+    assert calculate_atr(short_bars, period=14) == [None] * 10
+
+
+def test_atr_invalid_parameters_and_missing_values():
+    """Verify ATR parameter validation and missing/corrupt value handling."""
+    highs = [105.0, 108.0, 104.0]
+    lows = [100.0, 103.0, 98.0]
+    closes = [102.0, 106.0, 100.0]
+
+    # Period validation
+    with pytest.raises(ValueError, match="period must be >= 1"):
+        calculate_atr(highs, lows, closes, period=0)
+
+    with pytest.raises(ValueError, match="period must be >= 1"):
+        calculate_atr(highs, lows, closes, period=-5)
+
+    with pytest.raises(TypeError, match="period must be an integer"):
+        calculate_atr(highs, lows, closes, period=14.5)  # type: ignore
+
+    with pytest.raises(TypeError, match="period must be an integer"):
+        calculate_atr(highs, lows, closes, period=True)  # type: ignore
+
+    # Empty input
+    assert calculate_atr([], [], [], period=14) == []
+    assert calculate_atr([], period=14) == []
+
+    # Corrupt bar inside seed window invalidates the seed
+    highs_corrupt = [105.0, float("nan"), 104.0]
+    lows_corrupt = [100.0, 103.0, 98.0]
+    closes_corrupt = [102.0, 106.0, 100.0]
+    atr_corrupt = calculate_atr(highs_corrupt, lows_corrupt, closes_corrupt, period=3)
+    assert atr_corrupt[2] is None
+
+
+def test_atr_no_future_leakage():
+    """Verify point-in-time integrity: mutating future bars has zero effect on past ATR values."""
+    bars = [_make_bar(day=i, close=100.0 + i * 2.0) for i in range(1, 25)]
+    base_atr = calculate_atr(bars, period=14)
+
+    # Mutate bar at index 20
+    mutated_bars = list(bars)
+    mutated_bars[20] = MarketOHLCV(
+        symbol="BHARTIARTL",
+        timestamp=bars[20].timestamp,
+        open=300.0,
+        high=350.0,
+        low=290.0,
+        close=340.0,
+        volume=50000,
+        source="test",
+    )
+    mutated_atr = calculate_atr(mutated_bars, period=14)
+
+    # Bars 0 to 19 must be strictly identical
+    for i in range(20):
+        if base_atr[i] is None:
+            assert mutated_atr[i] is None
+        else:
+            assert base_atr[i] == pytest.approx(mutated_atr[i])
+
+    # Bar 20 should diverge
+    assert base_atr[20] != mutated_atr[20]
+
+
+def test_roc_known_calculation():
+    """Verify Rate of Change (ROC) calculation against known manual calculations."""
+    # Prices: [100.0, 105.0, 110.0, 104.0, 120.0], lookback=2
+    # t=0: None (< 2)
+    # t=1: None (< 2)
+    # t=2: ((110 / 100) - 1) * 100 = 10.0%
+    # t=3: ((104 / 105) - 1) * 100 = -0.952380952%
+    # t=4: ((120 / 110) - 1) * 100 = 9.09090909%
+    prices = [100.0, 105.0, 110.0, 104.0, 120.0]
+    roc = calculate_roc(prices, period=2)
+
+    assert len(roc) == 5
+    assert roc[0] is None
+    assert roc[1] is None
+    assert roc[2] == pytest.approx(10.0)
+    assert roc[3] == pytest.approx(((104.0 / 105.0) - 1.0) * 100.0)
+    assert roc[4] == pytest.approx(((120.0 / 110.0) - 1.0) * 100.0)
+
+    # Also test lookback alias
+    assert calculate_roc(prices, lookback=2) == roc
+
+
+def test_roc_warmup_and_insufficient_history():
+    """Verify ROC-10 warmup: first 10 bars are None, 11th bar is first valid value."""
+    prices = [100.0 + i for i in range(15)]
+    roc = calculate_roc(prices, period=10)
+
+    assert len(roc) == 15
+    for i in range(10):
+        assert roc[i] is None, f"Expected ROC to be None at index {i}"
+
+    assert roc[10] is not None
+    # Index 10: ((prices[10] / prices[0]) - 1) * 100 = ((110 / 100) - 1) * 100 = 10.0%
+    assert roc[10] == pytest.approx(10.0)
+
+    # Insufficient history (8 prices < 10)
+    assert calculate_roc(prices[:8], period=10) == [None] * 8
+
+
+def test_roc_flat_prices_zero_behavior():
+    """Verify ROC produces exact 0.0 for flat price series without division errors."""
+    flat_prices = [150.0] * 6
+    roc = calculate_roc(flat_prices, period=3)
+
+    assert len(roc) == 6
+    assert roc[0] is None
+    assert roc[1] is None
+    assert roc[2] is None
+    assert roc[3] == 0.0
+    assert roc[4] == 0.0
+    assert roc[5] == 0.0
+
+
+def test_roc_invalid_parameters_and_prices():
+    """Verify ROC parameter validation and handling of non-positive or NaN prices."""
+    # Invalid period / lookback
+    with pytest.raises(ValueError, match="period must be >= 1"):
+        calculate_roc([100.0, 105.0], period=0)
+
+    with pytest.raises(ValueError, match="period must be >= 1"):
+        calculate_roc([100.0, 105.0], period=-2)
+
+    with pytest.raises(TypeError, match="period must be an integer"):
+        calculate_roc([100.0, 105.0], period="10")  # type: ignore
+
+    with pytest.raises(TypeError, match="period must be an integer"):
+        calculate_roc([100.0, 105.0], period=False)  # type: ignore
+
+    # Empty input
+    assert calculate_roc([], period=10) == []
+
+    # Non-positive or NaN prices
+    bad_prices = [100.0, 0.0, 110.0, -50.0, float("nan"), 120.0]
+    roc = calculate_roc(bad_prices, period=1)
+    assert roc[0] is None
+    assert roc[1] is None  # price=0 is invalid
+    assert roc[2] is None  # prev_price=0 is invalid denominator
+    assert roc[3] is None  # price=-50 is invalid
+    assert roc[4] is None  # NaN is invalid
+    assert roc[5] is None  # prev_price=NaN is invalid
+
+
+def test_roc_no_future_leakage():
+    """Verify point-in-time integrity: mutating future price has zero effect on earlier ROC."""
+    prices = [100.0 + i * 2.0 for i in range(20)]
+    base_roc = calculate_roc(prices, period=5)
+
+    mutated_prices = list(prices)
+    mutated_prices[15] = 999.0
+    mutated_roc = calculate_roc(mutated_prices, period=5)
+
+    # Indices 0 to 14 must be identical
+    for i in range(15):
+        if base_roc[i] is None:
+            assert mutated_roc[i] is None
+        else:
+            assert base_roc[i] == pytest.approx(mutated_roc[i])
+
+    # Index 15 must diverge
+    assert base_roc[15] != mutated_roc[15]
+
+
+def test_compute_moving_averages_multi_symbol_atr_roc():
+    """Verify compute_moving_averages isolates ATR and ROC per ticker and sorts chronologically."""
+    infy_bars = [_make_bar(symbol="INFY", day=i, close=1000.0 + i * 10.0) for i in range(1, 20)]
+    tcs_bars = [_make_bar(symbol="TCS", day=i, close=3000.0 + i * 20.0) for i in range(1, 20)]
+
+    # Interleave to verify sorting and isolation
+    mixed = []
+    for a, b in zip(infy_bars, tcs_bars):
+        mixed.extend([b, a])
+
+    features = compute_moving_averages(mixed, atr_periods=(14,), roc_periods=(10,))
+    assert len(features) == 38
+
+    infy_feats = [f for f in features if f.symbol == "INFY"]
+    tcs_feats = [f for f in features if f.symbol == "TCS"]
+
+    assert len(infy_feats) == 19
+    assert len(tcs_feats) == 19
+
+    # Chronological sort check
+    for feats in (infy_feats, tcs_feats):
+        for i in range(1, len(feats)):
+            assert feats[i].timestamp > feats[i - 1].timestamp
+
+    # Check ATR-14: index 12 is None, index 13 is not None
+    assert infy_feats[12].atr_14 is None
+    assert infy_feats[13].atr_14 is not None
+    assert tcs_feats[12].atr_14 is None
+    assert tcs_feats[13].atr_14 is not None
+
+    # Check ROC-10: index 9 is None, index 10 is not None
+    assert infy_feats[9].roc_10 is None
+    assert infy_feats[10].roc_10 is not None
+    assert tcs_feats[9].roc_10 is None
+    assert tcs_feats[10].roc_10 is not None
+
+
+def test_moving_average_features_with_atr_roc_to_dict():
+    """Verify MovingAverageFeatures dictionary serialization contains atr_14 and roc_10."""
+    bar = _make_bar(day=1, close=150.0)
+    feat = MovingAverageFeatures(
+        symbol=bar.symbol,
+        timestamp=bar.timestamp,
+        close=bar.close,
+        smas={5: 148.5},
+        emas={5: 149.2},
+        rsi={14: 62.5},
+        macd=1.25,
+        macd_signal=0.85,
+        macd_histogram=0.40,
+        bb_middle=149.0,
+        bb_upper=155.0,
+        bb_lower=143.0,
+        bb_bandwidth=0.0805,
+        bb_percent_b=0.5833,
+        atr={14: 4.25},
+        roc={10: 3.85},
+    )
+
+    assert feat.atr_14 == pytest.approx(4.25)
+    assert feat.roc_10 == pytest.approx(3.85)
+
+    d = feat.to_dict()
+    assert d["atr_14"] == pytest.approx(4.25)
+    assert d["roc_10"] == pytest.approx(3.85)
+

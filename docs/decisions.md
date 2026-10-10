@@ -395,3 +395,49 @@ This document formalizes the architectural decisions made on Day 1. All future i
      - Bollinger Bands and %B are strictly quantitative features representing volatility regimes and relative price positioning; band touches are never treated as guaranteed buy or sell signals.
 - **Consequences:** Guarantees leak-free, mathematically verified Bollinger Bands calculations adhering strictly to canonical definitions and robust edge-case handling.
 
+---
+
+## ADR 39: Average True Range (ATR) and Rate of Change (ROC) Technical Indicators Architecture, Wilder Smoothing Recurrence, and Safe Relative Momentum
+- **Status:** Accepted
+- **Context:** Downstream numerical machine learning models require volatility and momentum features that reflect trading range expansion/contraction and price velocity. The system requires two foundational indicators: Average True Range (Wilder's ATR) and Rate of Change (ROC). Naive implementations often suffer from:
+  1. Ambiguity in first-session True Range initialization when no prior closing price exists ($t=0$).
+  2. Inconsistent smoothing formulas: confusion between simple rolling average, standard EMA ($\alpha = 2 / (N+1)$), and Wilder's smoothing recurrence ($\alpha = 1 / N$).
+  3. Failure to validate physical OHLC candle geometry ($high \ge low$, positive prices) leading to negative or nonsense ranges.
+  4. Division by zero or crashes in ROC when historical closing prices are missing, zero, or non-positive.
+  5. Future data leakage or cross-symbol contamination in rolling series calculations.
+  6. False claims of price direction prediction: ATR measures volatility magnitude regardless of direction, while ROC measures past price change rate without forecasting future trajectory.
+- **Decision:**
+  1. **Average True Range (ATR) Formulation & Wilder Recurrence:**
+     - Parameter: Configurable positive integer `period` (default 14 sessions).
+     - True Range ($TR_t$):
+       - First session policy ($t=0$): $TR_0 = High_0 - Low_0$ when valid.
+       - Subsequent sessions ($t > 0$):
+         $$TR_t = \max(High_t - Low_t, |High_t - Close_{t-1}|, |Low_t - Close_{t-1}|)$$
+     - Wilder Smoothing Recurrence:
+       - Initial seed at index $t = period - 1$ (e.g., $t=13$ for $period=14$): Simple arithmetic mean of first $period$ valid True Range values:
+         $$ATR_{period-1} = \frac{1}{period} \sum_{i=0}^{period-1} TR_i$$
+       - Subsequent sessions ($t \ge period$):
+         $$ATR_t = \frac{(period - 1) \times ATR_{t-1} + TR_t}{period}$$
+     - Sessions prior to full period warmup ($t < period - 1$) strictly return `None`.
+     - Dual-mode input signature: accepts either a sequence of `MarketOHLCV` records or separate sequences of high, low, and close floats.
+  2. **Rate of Change (ROC) Formulation & Safe Momentum:**
+     - Parameter: Configurable positive integer `period` / `lookback` (default 10 sessions).
+     - Formula:
+       $$ROC_{t, n} = \left(\frac{Close_t}{Close_{t-n}} - 1\right) \times 100$$
+     - Warmup: Sessions where $t < n$ strictly return `None`.
+     - Zero & Negative Denominator Protection: Returns `None` if $Close_{t-n} \le 0$ or if historical price is invalid/missing.
+     - Flat Price Regimes: Series with identical prices evaluate safely to `0.0`.
+  3. **Point-in-Time Integrity & Multi-Symbol Isolation:**
+     - Indicator computations operate exclusively on historical and contemporaneous observations up to session timestamp $t$.
+     - When calculating across multi-symbol datasets, records are isolated by ticker symbol and sorted chronologically before feature calculation.
+  4. **Container & Pipeline Integration:**
+     - Integrated `atr: Dict[int, Optional[float]]` and `roc: Dict[int, Optional[float]]` into `MovingAverageFeatures`.
+     - Provided convenience properties `atr_14` and `roc_10`.
+     - Serializes `atr_{p}` and `roc_{p}` keys in `.to_dict()` tabular output.
+     - Extended `process_market_data` and `run_market_data_pipeline` with `atr_periods=(14,)` and `roc_periods=(10,)` parameters.
+  5. **Non-Predictive Baseline Disclaimer:**
+     - ATR strictly quantifies price range volatility and carries no directional information; it does not predict whether prices will move up or down.
+     - ROC measures historical price momentum and velocity; it does not constitute a guaranteed directional trading signal.
+- **Consequences:** Guarantees leak-free, mathematically verified ATR and ROC calculations adhering to canonical formulas, Wilder's smoothing recurrence, and robust edge-case validation.
+
+

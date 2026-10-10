@@ -28,6 +28,7 @@ def main() -> int:
     print("Day 9 technical indicators (RSI & expanded history) ready")
     print("Day 10 MACD technical indicator ready")
     print("Day 11 Bollinger Bands ready")
+    print("Day 12 ATR and ROC ready")
     print(f"Python runtime: {sys.version.split()[0]}")
     print(f"Environment: {settings.environment}")
     print(f"Project root: {Path(__file__).resolve().parent}")

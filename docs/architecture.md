@@ -236,7 +236,7 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   ```text
   Clean Market Records (MarketOHLCV)
              ↓
-  Extract Chronological Series (Close Prices)
+  Extract Chronological Series (Close Prices, High, Low)
              ↓
   Compute Moving Averages (SMA & EMA: 5-day, 10-day, configurable)
              ↓
@@ -246,9 +246,13 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
              ↓
   Compute Volatility Bands (Bollinger Bands: 20-period SMA, 2.0 std dev, ddof=0, Band Width, %B)
              ↓
+  Compute Trading Range Volatility (ATR: 14-period True Range, Wilder's smoothing recurrence)
+             ↓
+  Compute Relative Price Momentum (ROC: 10-period Rate of Change percentage)
+             ↓
   MovingAverageFeatures Dataclass (.to_dict() tabular export)
   ```
-- **Price Basis:** Indicators are strictly computed using raw, unadjusted closing prices (`close`).
+- **Price Basis:** Indicators are strictly computed using raw, unadjusted market prices (`close`, `high`, `low`).
 - **Mathematical Formulations:**
   - **Simple Moving Average (SMA):** $SMA_{t, W} = \frac{1}{W} \sum_{i=0}^{W-1} P_{t-i}$. Sessions where $t < W - 1$ return `None`.
   - **Exponential Moving Average (EMA):** $EMA_t = \alpha P_t + (1 - \alpha) EMA_{t-1}$ where $\alpha = \frac{2}{W + 1}$. Early un-warmed sessions ($t < W - 1$) return `None`.
@@ -266,9 +270,20 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
     - Rolling Standard Deviation: Population standard deviation ($ddof=0$) by default: $\sigma_t = \sqrt{\frac{1}{W} \sum_{i=0}^{W-1} (P_{t-i} - Middle_t)^2}$, configurable to sample standard deviation ($ddof=1$).
     - Band Width: $BandWidth_t = \frac{Upper_t - Lower_t}{Middle_t}$ when $Middle_t > 0$ (evaluates safely to `0.0` for flat series, `None` if middle is non-positive).
     - Percent B (%B): $\%B_t = \frac{Close_t - Lower_t}{Upper_t - Lower_t}$ when $Upper_t > Lower_t$ (evaluates safely to `None` for flat series where denominator is zero).
+  - **Average True Range (ATR):**
+    - True Range ($TR_t$): For session $t=0$: $TR_0 = High_0 - Low_0$ when valid. For sessions $t > 0$: $TR_t = \max(High_t - Low_t, |High_t - Close_{t-1}|, |Low_t - Close_{t-1}|)$.
+    - Initial Seed ($t = period - 1$, e.g., $t=13$ for $period=14$): Simple arithmetic mean of first 14 True Range values: $ATR_{13} = \frac{1}{14} \sum_{i=0}^{13} TR_i$.
+    - Wilder Smoothing Recurrence ($t \ge period$): $ATR_t = \frac{(period - 1) \times ATR_{t-1} + TR_t}{period}$.
+    - Un-warmed sessions ($t < period - 1$) return `None`.
+    - Volatility character: strictly measures price movement range without directional bias; does not predict the direction of the next move.
+  - **Rate of Change (ROC):**
+    - Formula: $ROC_{t, n} = \left(\frac{Close_t}{Close_{t-n}} - 1\right) \times 100$ (default $n=10$ sessions).
+    - Un-warmed sessions ($t < n$) return `None`.
+    - Division safety: handles non-positive previous closes safely by returning `None`; flat series evaluate safely to `0.0`.
+    - Momentum character: measures relative percentage change over historical lookback window; does not guarantee price direction.
 - **Zero Future-Data Leakage:** Point-in-time calculation strictly bounds inputs to observations up to and including the evaluated session timestamp.
-- **Pipeline Integration:** Orchestrated within `MarketDataPipelineResult` alongside return and volatility features with configurable `lookback_days` supporting 6-12 month ranges, configurable MACD (`macd_fast`, `macd_slow`, `macd_signal`), and configurable Bollinger Bands (`bb_window`, `bb_multiplier`, `bb_ddof`).
-- **Non-Predictive Baseline:** Indicators provide descriptive trend, momentum, and divergence features; they are never treated as standalone guaranteed price-direction predictors.
+- **Pipeline Integration:** Orchestrated within `MarketDataPipelineResult` alongside return and volatility features with configurable `lookback_days` supporting 6-12 month ranges, configurable MACD (`macd_fast`, `macd_slow`, `macd_signal`), configurable Bollinger Bands (`bb_window`, `bb_multiplier`, `bb_ddof`), and configurable ATR/ROC (`atr_periods=(14,)`, `roc_periods=(10,)`).
+- **Non-Predictive Baseline:** Indicators provide descriptive trend, momentum, volatility, and divergence features; they are never treated as standalone guaranteed price-direction predictors.
 
 - **Strict Development Schedule Boundaries:**
   - **Day 4 (Complete):** Concrete historical market data collector adapter and empirical verification.
@@ -279,7 +294,8 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   - **Day 9 (Complete):** Expanded historical data acquisition (6-12 months lookback) and Relative Strength Index (RSI).
   - **Day 10 (Complete):** MACD technical indicator (fast/slow/signal EMAs, MACD line, signal line, histogram identity, point-in-time integrity).
   - **Day 11 (Complete):** Bollinger Bands technical indicator (middle, upper, lower bands, bandwidth, percent B, configurable window/multiplier/ddof, safe zero-denominator handling).
-  - **Day 12 (Planned):** Next scheduled milestone phase.
+  - **Day 12 (Complete):** Volatility and momentum technical features: Average True Range (ATR-14 with Wilder's recurrence and first-session policy) and Rate of Change (ROC-10 with safe division and flat-price zero handling).
+  - **Day 13 (Planned):** Next scheduled milestone phase (candlestick pattern features).
 
 
 

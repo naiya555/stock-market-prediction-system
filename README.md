@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 11: Bollinger Bands Technical Indicator  
+> **Status:** Ongoing Project — Day 12: Volatility and Momentum Features: ATR + ROC  
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -43,7 +43,7 @@ When fully developed, the end-user workflow will operate as follows:
 - **`app/api/`**: FastAPI application endpoints and route handlers (planned).
 - **`app/core/`**: Centralized configuration (`config.py`), logging foundation (`logging_config.py`), and canonical schema contracts (`schemas.py`).
 - **`app/database/`**: Relational database persistence (SQLite initially, PostgreSQL migration path).
-- **`app/market/`**: Market data acquisition, cleaning, technical feature engineering (returns, volatility, moving averages, RSI, MACD, Bollinger Bands), market breadth, pipeline orchestration, and visualization.
+- **`app/market/`**: Market data acquisition, cleaning, technical feature engineering (returns, volatility, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC), market breadth, pipeline orchestration, and visualization.
 - **`app/news/`**: Financial news ingestion, deduplication, and entity linking.
 - **`app/nlp/`**: FinBERT sentiment scoring and textual analysis.
 - **`app/prediction/`**: Numerical ML predictor, LLM predictor, and ensemble synthesis.
@@ -52,9 +52,9 @@ When fully developed, the end-user workflow will operate as follows:
 
 ---
 
-## 4. Current Status: Day 11 (Bollinger Bands Technical Indicator)
+## 4. Current Status: Day 12 (Volatility and Momentum Features: ATR + ROC)
 
-Day 11 implements the Bollinger Bands technical indicator (Middle Band, Upper Band, Lower Band, Band Width, and Percent B) on top of the technical indicator suite, confirms full point-in-time integrity, safe zero-denominator handling, and real-data verification on `BHARTIARTL.NS`.
+Day 12 implements Average True Range (ATR) and Rate of Change (ROC) technical indicators on top of the technical indicator suite, confirms full point-in-time integrity, safe zero-denominator handling, and real-data verification on `BHARTIARTL.NS`.
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.
@@ -100,15 +100,26 @@ Day 11 implements the Bollinger Bands technical indicator (Middle Band, Upper Ba
     - Percent B: $(Close - Lower) / (Upper - Lower)$ (evaluates safely to `None` for flat series where $Upper == Lower$).
     - Unpacking protocol: `middle, upper, lower, bandwidth, percent_b = calculate_bollinger_bands(prices)`.
     - Dedicated immutable container `BollingerBandsSeries` supporting sequence unpacking and attribute access (`.middle`, `.upper`, `.lower`, `.bandwidth`, `.band_width`, `.percent_b`).
+  - Average True Range (`calculate_atr` & `calculate_true_range`):
+    - True Range: $\max(High_t - Low_t, |High_t - Close_{t-1}|, |Low_t - Close_{t-1}|)$.
+    - First session initialization policy ($t=0$): uses $High_0 - Low_0$ when valid.
+    - Wilder's smoothing recurrence: initial ATR seeded with arithmetic mean of first 14 TR values ($t=13$), followed by $ATR_t = ((period - 1) \times ATR_{t-1} + TR_t) / period$.
+    - Configurable positive integer period (default: 14 sessions).
+    - Non-directional volatility metric: strictly measures trading range magnitude without directional bias.
+  - Rate of Change (`calculate_roc`):
+    - Formula: $ROC_t = ((Close_t / Close_{t-n}) - 1) \times 100$.
+    - Configurable positive integer lookback (default: 10 sessions).
+    - Safe non-positive price and division-by-zero protection; flat series evaluates safely to `0.0`.
+    - Relative momentum metric: measures price velocity over the specified lookback window.
   - Explicit RSI edge-case handling: neutral 50.0 for flat prices, 100.0 for pure gains, 0.0 for pure losses; bounded strictly within $[0.0, 100.0]$.
-  - Multi-session indicator orchestrator (`compute_moving_averages` / `compute_technical_indicators`) producing immutable `MovingAverageFeatures` dataclasses with `rsi_14`, `macd_line`, `signal_line`, `histogram`, `bollinger_middle`, `bollinger_upper`, `bollinger_lower`, `bollinger_bandwidth`, and `bollinger_percent_b` properties and flat `.to_dict()` export.
+  - Multi-session indicator orchestrator (`compute_moving_averages` / `compute_technical_indicators`) producing immutable `MovingAverageFeatures` dataclasses with `rsi_14`, `macd_line`, `signal_line`, `histogram`, `bollinger_middle`, `bollinger_upper`, `bollinger_lower`, `bollinger_bandwidth`, `bollinger_percent_b`, `atr_14`, and `roc_10` properties and flat `.to_dict()` export.
   - Strict point-in-time guarantees preventing future-data leakage.
-  - Un-warmed window sessions ($t < W - 1$ for MAs and Bollinger Bands, $t < W$ for RSI, $t < slow - 1$ for MACD line, $t < slow + signal - 2$ for Signal line and Histogram) safely return `None`.
+  - Un-warmed window sessions ($t < W - 1$ for MAs and Bollinger Bands, $t < W$ for RSI, $t < slow - 1$ for MACD line, $t < slow + signal - 2$ for Signal line and Histogram, $t < 13$ for ATR-14, $t < 10$ for ROC-10) safely return `None`.
   - Raw price basis: strictly unadjusted closing prices (`close`).
   - Non-predictive disclaimer: band touches and indicator extremes are quantitative features, never guaranteed buy or sell signals.
 - Market Data Pipeline Orchestrator (`app/market/pipeline.py`):
   - Unified pipeline connecting provider retrieval, data cleaning, return/volatility feature computation, and technical indicators (`run_market_data_pipeline` and `process_market_data`).
-  - Supports configurable `macd_fast=12`, `macd_slow=26`, `macd_signal=9`, `bb_window=20`, `bb_multiplier=2.0`, `bb_ddof=0` parameters with complete feature preservation.
+  - Supports configurable `macd_fast=12`, `macd_slow=26`, `macd_signal=9`, `bb_window=20`, `bb_multiplier=2.0`, `bb_ddof=0`, `atr_periods=(14,)`, `roc_periods=(10,)` parameters with complete feature preservation.
   - Supports flexible historical range lookbacks via `lookback_days` (defaulting to 180 days / ~6 months, or 365 days / ~12 months) when `start_date` is omitted, while retaining deterministic explicit date support.
   - Immutable pipeline container (`MarketDataPipelineResult`) preserving raw records, cleaned records, cleaning summary, return features, and technical indicators.
 - Historical Market Visualizer (`app/market/visualizer.py`):
@@ -116,7 +127,7 @@ Day 11 implements the Bollinger Bands technical indicator (Middle Band, Upper Ba
   - Historical closing price chart (`plot_closing_prices`) with formatted INR pricing and session date labels.
   - Daily percentage returns chart (`plot_daily_returns`) with color-coded positive/negative bars and zero baseline.
   - Batch chart generator (`generate_market_charts`) saving to `data/processed/charts/` (strictly ignored by `.gitignore`).
-- 130 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, and visualizer.
+- 145 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, and visualizer.
 
 ---
 

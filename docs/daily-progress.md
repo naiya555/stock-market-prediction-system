@@ -982,3 +982,99 @@ Executed `scripts/verify_indicators.py` on real `BHARTIARTL.NS` historical data:
 - Indicators operate on unadjusted closing prices per individual symbol; volume-weighted and cross-sectional market features are scheduled for subsequent phases.
 - Next roadmap step (Day 12): Volume-Weighted Average Price (VWAP) / Average True Range (ATR) or Technical Feature Matrix Assembly.
 
+---
+
+## Day 12: Volatility and Momentum Features — Average True Range (ATR) & Rate of Change (ROC)
+
+### Goal
+Implement Average True Range (ATR) with Wilder's smoothing recurrence and documented first-session policy, and Rate of Change (ROC) with configurable lookback and safe division; integrate both indicators into technical indicators, feature containers, and the market pipeline; enforce strict point-in-time integrity, chronological ordering, and ticker isolation; expand test suites and verify against real historical data for `BHARTIARTL.NS`.
+
+### Pre-Checks
+- Current branch: `main`, clean working tree at commit `4aeaf812899bddbf18f060d9c2e70d798376b921`.
+- Verified 130 passing tests prior to starting.
+- Roo Code remained disabled.
+
+### What Was Built
+1. **Average True Range (`calculate_true_range` and `calculate_atr` in `app/market/indicators.py`):**
+   - True Range formula:
+     - First-session initialization policy ($t=0$): $TR_0 = High_0 - Low_0$ when valid.
+     - Subsequent sessions ($t > 0$): $TR_t = \max(High_t - Low_t, |High_t - Close_{t-1}|, |Low_t - Close_{t-1}|)$.
+   - Wilder's Smoothing Recurrence:
+     - Seeded at index $period - 1$ ($t=13$ for default 14-period) with simple arithmetic mean of first 14 valid True Range values:
+       $ATR_{13} = \frac{1}{14} \sum_{i=0}^{13} TR_i$.
+     - Recursive formula for $t \ge period$:
+       $ATR_t = \frac{(period - 1) \times ATR_{t-1} + TR_t}{period}$.
+   - Un-warmed sessions ($t < period - 1$, first 13 sessions for $period=14$) strictly return `None`.
+   - Input validation: accepts either `MarketOHLCV` record sequences or individual high, low, close float sequences. Validates physical OHLC candle geometry ($high \ge low$, positive prices).
+   - Non-predictive disclaimer documented: ATR measures historical trading volatility range without directional bias; does not predict price direction.
+2. **Rate of Change (`calculate_roc` in `app/market/indicators.py`):**
+   - Formula: $ROC_{t, n} = ((Close_t / Close_{t-n}) - 1) \times 100$.
+   - Configurable positive integer `period` / `lookback` (default: 10 sessions).
+   - Un-warmed sessions ($t < n$) strictly return `None`.
+   - Division-by-zero & negative price safety: returns `None` if $Close_{t-n} \le 0$ or if price is missing. Flat price series evaluate safely to `0.0`.
+   - Relative price momentum indicator measuring percentage rate of change over the lookback window.
+3. **Feature Container & Dataclass Integration (`MovingAverageFeatures`):**
+   - Added `atr: Dict[int, Optional[float]] = field(default_factory=dict)` and `roc: Dict[int, Optional[float]] = field(default_factory=dict)`.
+   - Convenience properties: `atr_14`, `roc_10`.
+   - Tabular export: `.to_dict()` serializes `atr_{p}` and `roc_{p}` keys.
+4. **Indicator Orchestration (`compute_moving_averages` / `compute_technical_indicators`):**
+   - Added `atr_periods: Sequence[int] = (14,)` and `roc_periods: Sequence[int] = (10,)`.
+   - Per-symbol isolation and chronological sorting preserved.
+5. **Pipeline Integration (`app/market/pipeline.py`):**
+   - Added `atr_periods` and `roc_periods` to `process_market_data` and `run_market_data_pipeline`.
+6. **Package Exports (`app/market/__init__.py`):**
+   - Exported `calculate_true_range`, `calculate_atr`, and `calculate_roc`.
+7. **Application Entry Point Update (`main.py`):**
+   - Added `print("Day 12 ATR and ROC ready")`.
+8. **Real-Data Verification Script (`scripts/verify_indicators.py`):**
+   - Updated to verify ATR-14 and ROC-10 on expanded history (123 sessions of `BHARTIARTL.NS`) and the 6-record regression fixture.
+
+### Real Data Verification
+Executed `scripts/verify_indicators.py` on real `BHARTIARTL.NS` historical data:
+- **Part 1: Expanded Historical Range (lookback_days=180, ~6 months):**
+  - Raw bars collected: 123
+  - Cleaned bars produced: 123
+  - Indicator records: 123
+  - Date Range: 2026-04-15 to 2026-10-09 (123 trading sessions)
+  - SMA-5 available: 119 / 123 sessions
+  - EMA-5 available: 119 / 123 sessions
+  - SMA-10 available: 114 / 123 sessions
+  - EMA-10 available: 114 / 123 sessions
+  - RSI-14 available: 109 / 123 sessions
+  - MACD Line available: 98 / 123 sessions
+  - Signal Line available: 90 / 123 sessions
+  - Histogram available: 90 / 123 sessions
+  - Bollinger Bands available: 104 / 123 sessions
+  - ATR-14 available: 110 / 123 sessions (warmed up at session 14 / index 13)
+  - ROC-10 available: 113 / 123 sessions (warmed up at session 11 / index 10)
+  - Mathematical identities verified:
+    - ATR-14 Wilder recurrence strictly verified across all valid sessions.
+    - ROC-10 formula identity strictly verified against closing prices.
+  - Latest Observation (2026-10-09): Close=₹1805.10, High=₹1820.00, Low=₹1801.40, TR=₹18.60, ATR-14=₹33.96, ROC-10=+0.52%
+- **Part 2: Regression Verification (original 6-session range 2026-09-01 to 2026-09-08):**
+  - Clean bars: 6
+  - SMA-5: 2 values
+  - SMA-10, RSI-14, MACD, Signal, Hist, BB, ATR-14, ROC-10: all 0 values (strictly `None`)
+- Verification Status: Exit code 0, 1:1 bar alignment, zero encoding errors.
+
+### Tests
+- Added 15 new unit tests across `tests/test_indicators.py` and `tests/test_pipeline.py`.
+- **Full Test Suite Execution:**
+  - **145 passed in 1.71s** (`pytest -v`). Zero external network dependencies.
+
+### Review
+- **CodeRabbit:** CodeRabbit local CLI is not available in this environment; noted explicitly. Proactively enforced standards: explicit validation checks with return codes, aligned table format, float tolerance checks, and safe currency encoding.
+- **Roo Code:** Remained disabled.
+- **Ponytail / Senior Dev Mode:** Minimalist, pure Python/numpy calculation without heavy dependencies or speculative abstractions.
+
+### Documentation
+- Updated `README.md` to Day 12 status with 145 passing tests.
+- Updated `docs/architecture.md` Section 4.7 with ATR and ROC formulations and Day 12 completion.
+- Updated `docs/decisions.md` with ADR 39.
+- Updated `docs/daily-progress.md` with Day 12 development log.
+
+### Known Limitations & Next Steps
+- Current indicator suite includes SMA, EMA, RSI, MACD, Bollinger Bands, ATR, and ROC.
+- Next scheduled scope (Day 13): Candlestick pattern recognition and feature engineering.
+
+
