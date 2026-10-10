@@ -10,14 +10,16 @@ Validates:
 - Integration via compute_moving_averages and MovingAverageFeatures container.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import math
 import pytest
 
 from app.core.schemas import MarketOHLCV
 from app.market.indicators import (
+    MACDSeries,
     MovingAverageFeatures,
     calculate_ema,
+    calculate_macd,
     calculate_rsi,
     calculate_sma,
     compute_moving_averages,
@@ -33,7 +35,7 @@ def _make_bar(
     """Helper to generate valid canonical MarketOHLCV bars."""
     return MarketOHLCV(
         symbol=symbol,
-        timestamp=datetime(2026, 9, day, 10, 0, tzinfo=timezone.utc),
+        timestamp=datetime(2026, 9, 1, 10, 0, tzinfo=timezone.utc) + timedelta(days=day - 1),
         open=close,
         high=close * 1.02,
         low=close * 0.98,
@@ -430,6 +432,7 @@ def test_six_record_regression_case():
     - SMA-5 and EMA-5 become available at index 4 and 5.
     - SMA-10 and EMA-10 are None for all 6 sessions (6 < 10).
     - RSI-14 is None for all 6 sessions (6 <= 14).
+    - MACD, signal line, and histogram are None for all 6 sessions (6 < 26).
     """
     bars = [
         _make_bar(day=1, close=1877.20),
@@ -450,61 +453,357 @@ def test_six_record_regression_case():
         assert features[i].sma_10 is None
         assert features[i].ema_10 is None
         assert features[i].rsi_14 is None
+        assert features[i].macd_line is None
+        assert features[i].signal_line is None
+        assert features[i].histogram is None
 
-    # Session 4 (5th bar): 5-period available, 10-period and 14-period None
+    # Session 4 (5th bar): 5-period available, 10-period, 14-period, and MACD None
     assert features[4].sma_5 == pytest.approx((1877.20 + 1862.80 + 1869.00 + 1840.00 + 1854.00) / 5.0)
     assert features[4].ema_5 is not None
     assert features[4].sma_10 is None
     assert features[4].ema_10 is None
     assert features[4].rsi_14 is None
+    assert features[4].macd_line is None
+    assert features[4].signal_line is None
+    assert features[4].histogram is None
 
-    # Session 5 (6th bar): 5-period available, 10-period and 14-period None
+    # Session 5 (6th bar): 5-period available, 10-period, 14-period, and MACD None
     assert features[5].sma_5 is not None
     assert features[5].ema_5 is not None
     assert features[5].sma_10 is None
     assert features[5].ema_10 is None
     assert features[5].rsi_14 is None
+    assert features[5].macd_line is None
+    assert features[5].signal_line is None
+    assert features[5].histogram is None
 
 
 def test_expanded_history_case():
-    """Expanded History Test: 20-record dataset.
+    """Expanded History Test: 40-record dataset.
 
     Confirms that:
     - SMA-5 and EMA-5 warm up at index 4 (5th bar).
     - SMA-10 and EMA-10 warm up at index 9 (10th bar).
     - RSI-14 warms up at index 14 (15th bar, 14 price changes).
-    - By index 19 (20th bar), ALL indicators (SMA-5, EMA-5, SMA-10, EMA-10, RSI-14) are fully available.
+    - MACD line warms up at index 25 (26th bar).
+    - Signal line and Histogram warm up at index 33 (34th bar).
+    - By index 39 (40th bar), ALL indicators are fully available.
     """
-    bars = [_make_bar(day=i, close=100.0 + (i % 5) * 2.0) for i in range(1, 21)]  # 20 bars
+    bars = [_make_bar(day=i, close=100.0 + (i % 5) * 2.0 + (i * 0.5)) for i in range(1, 41)]  # 40 bars
     features = compute_technical_indicators(bars, sma_windows=(5, 10), ema_windows=(5, 10), rsi_periods=(14,))
 
-    assert len(features) == 20
+    assert len(features) == 40
 
-    # Index 4 (5th bar): 5-session MA active; 10-session MA and RSI-14 None
+    # Index 4 (5th bar): 5-session MA active; others None
     assert features[4].sma_5 is not None
     assert features[4].ema_5 is not None
     assert features[4].sma_10 is None
     assert features[4].ema_10 is None
     assert features[4].rsi_14 is None
+    assert features[4].macd_line is None
+    assert features[4].signal_line is None
+    assert features[4].histogram is None
 
-    # Index 9 (10th bar): 5-session and 10-session MAs active; RSI-14 None
+    # Index 9 (10th bar): 5-session and 10-session MAs active; RSI-14 and MACD None
     assert features[9].sma_5 is not None
     assert features[9].ema_5 is not None
     assert features[9].sma_10 is not None
     assert features[9].ema_10 is not None
     assert features[9].rsi_14 is None
+    assert features[9].macd_line is None
+    assert features[9].signal_line is None
+    assert features[9].histogram is None
 
-    # Index 14 (15th bar): ALL indicators active, including RSI-14
+    # Index 14 (15th bar): RSI-14 active; MACD line None
     assert features[14].sma_5 is not None
     assert features[14].ema_5 is not None
     assert features[14].sma_10 is not None
     assert features[14].ema_10 is not None
     assert features[14].rsi_14 is not None
+    assert features[14].macd_line is None
+    assert features[14].signal_line is None
+    assert features[14].histogram is None
 
-    # Index 19 (20th bar): ALL indicators active
-    assert features[19].sma_5 is not None
-    assert features[19].ema_5 is not None
-    assert features[19].sma_10 is not None
-    assert features[19].ema_10 is not None
-    assert features[19].rsi_14 is not None
-    assert 0.0 <= features[19].rsi_14 <= 100.0
+    # Index 25 (26th bar): MACD line active; Signal line and Histogram None
+    assert features[25].macd_line is not None
+    assert features[25].signal_line is None
+    assert features[25].histogram is None
+
+    # Index 33 (34th bar): ALL indicators active, including Signal line and Histogram
+    assert features[33].macd_line is not None
+    assert features[33].signal_line is not None
+    assert features[33].histogram is not None
+    assert features[33].histogram == pytest.approx(features[33].macd_line - features[33].signal_line)
+
+    # Index 39 (40th bar): ALL indicators active
+    assert features[39].sma_5 is not None
+    assert features[39].ema_5 is not None
+    assert features[39].sma_10 is not None
+    assert features[39].ema_10 is not None
+    assert features[39].rsi_14 is not None
+    assert 0.0 <= features[39].rsi_14 <= 100.0
+    assert features[39].macd_line is not None
+    assert features[39].signal_line is not None
+    assert features[39].histogram is not None
+    assert features[39].histogram == pytest.approx(features[39].macd_line - features[39].signal_line)
+
+
+# ==============================================================================
+# 6. Moving Average Convergence Divergence (MACD) Tests
+# ==============================================================================
+
+
+def test_macd_known_calculation():
+    """Verify MACD on small, manually verifiable price sequence."""
+    prices = [10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0]
+    # Configuration: fast=2, slow=4, signal=2
+    # Manual trace:
+    # fast EMA (span=2, min_periods=2):
+    #   t=0: None
+    #   t=1: 10.666667
+    #   t=2: 11.555556
+    #   t=3: 12.518519
+    #   t=4: 13.506173
+    #   t=5: 14.502058
+    #   t=6: 15.500686
+    # slow EMA (span=4, min_periods=4):
+    #   t=0..2: None
+    #   t=3: 11.824000
+    #   t=4: 12.694400
+    #   t=5: 13.616640
+    #   t=6: 14.569984
+    # MACD line:
+    #   t=0..2: None
+    #   t=3: 12.518519 - 11.824000 = 0.694519
+    #   t=4: 13.506173 - 12.694400 = 0.811773
+    #   t=5: 14.502058 - 13.616640 = 0.885418
+    #   t=6: 15.500686 - 14.569984 = 0.930702
+    # Signal line (EMA span=2 of MACD, min_periods=2):
+    #   t=0..3: None (at t=3, only 1 valid MACD; requires 2)
+    #   t=4: (2/3)*0.811773 + (1/3)*0.694519 = 0.772688
+    #   t=5: (2/3)*0.885418 + (1/3)*0.772688 = 0.847841
+    #   t=6: (2/3)*0.930702 + (1/3)*0.847841 = 0.903082
+    # Histogram (MACD - Signal):
+    #   t=0..3: None
+    #   t=4: 0.811773 - 0.772688 = 0.039085
+    #   t=5: 0.885418 - 0.847841 = 0.037577
+    #   t=6: 0.930702 - 0.903082 = 0.027620
+    macd_res = calculate_macd(prices, fast_period=2, slow_period=4, signal_period=2)
+
+    assert len(macd_res) == 7
+    # Test unpacking support
+    macd_l, sig_l, hist_l = macd_res
+    assert macd_l == macd_res.macd
+    assert sig_l == macd_res.signal
+    assert hist_l == macd_res.histogram
+
+    # Verify MACD line
+    assert macd_res.macd[:3] == [None, None, None]
+    assert macd_res.macd[3] == pytest.approx(0.694519, rel=1e-4)
+    assert macd_res.macd[4] == pytest.approx(0.811773, rel=1e-4)
+    assert macd_res.macd[5] == pytest.approx(0.885418, rel=1e-4)
+    assert macd_res.macd[6] == pytest.approx(0.930702, rel=1e-4)
+
+    # Verify Signal line
+    assert macd_res.signal[:4] == [None, None, None, None]
+    assert macd_res.signal[4] == pytest.approx(0.772688, rel=1e-4)
+    assert macd_res.signal[5] == pytest.approx(0.847841, rel=1e-4)
+    assert macd_res.signal[6] == pytest.approx(0.903082, rel=1e-4)
+
+    # Verify Histogram
+    assert macd_res.histogram[:4] == [None, None, None, None]
+    assert macd_res.histogram[4] == pytest.approx(0.039085, rel=1e-4)
+    assert macd_res.histogram[5] == pytest.approx(0.037577, rel=1e-4)
+    assert macd_res.histogram[6] == pytest.approx(0.027620, rel=1e-4)
+
+
+def test_macd_fast_slow_subtraction_and_histogram_identity():
+    """Verify MACD line = fast EMA - slow EMA and Histogram = MACD line - Signal line."""
+    prices = [100.0 + i * 1.5 + (-1) ** i * 0.7 for i in range(50)]
+    fast_ema = calculate_ema(prices, window=12, min_periods=12)
+    slow_ema = calculate_ema(prices, window=26, min_periods=26)
+    macd_res = calculate_macd(prices, fast_period=12, slow_period=26, signal_period=9)
+
+    for i in range(len(prices)):
+        if fast_ema[i] is not None and slow_ema[i] is not None:
+            expected_macd = fast_ema[i] - slow_ema[i]
+            assert macd_res.macd[i] == pytest.approx(expected_macd)
+        else:
+            assert macd_res.macd[i] is None
+
+        if macd_res.signal[i] is not None:
+            assert macd_res.macd[i] is not None
+            expected_hist = macd_res.macd[i] - macd_res.signal[i]
+            assert macd_res.histogram[i] == pytest.approx(expected_hist, abs=1e-9)
+        else:
+            assert macd_res.histogram[i] is None
+
+
+def test_macd_insufficient_history_and_warmup():
+    """Verify warm-up requirements: slow_period for MACD line and slow+signal-1 for signal/hist."""
+    # Fewer than slow_period (20 bars with default slow=26)
+    prices_20 = [100.0 + i for i in range(20)]
+    res_20 = calculate_macd(prices_20, fast_period=12, slow_period=26, signal_period=9)
+    assert all(v is None for v in res_20.macd)
+    assert all(v is None for v in res_20.signal)
+    assert all(v is None for v in res_20.histogram)
+
+    # Exactly 26 bars: index 25 is first valid MACD, signal and hist still None
+    prices_26 = [100.0 + i for i in range(26)]
+    res_26 = calculate_macd(prices_26, fast_period=12, slow_period=26, signal_period=9)
+    assert res_26.macd[:25] == [None] * 25
+    assert res_26.macd[25] is not None
+    assert all(v is None for v in res_26.signal)
+    assert all(v is None for v in res_26.histogram)
+
+    # Exactly 34 bars: index 33 is first valid signal and histogram
+    prices_34 = [100.0 + i for i in range(34)]
+    res_34 = calculate_macd(prices_34, fast_period=12, slow_period=26, signal_period=9)
+    assert res_34.signal[:33] == [None] * 33
+    assert res_34.signal[33] is not None
+    assert res_34.histogram[:33] == [None] * 33
+    assert res_34.histogram[33] is not None
+
+
+def test_macd_invalid_periods():
+    """Verify invalid periods raise ValueError or TypeError."""
+    prices = [10.0, 20.0, 30.0]
+
+    # fast >= slow
+    with pytest.raises(ValueError, match="strictly less than slow_period"):
+        calculate_macd(prices, fast_period=26, slow_period=12, signal_period=9)
+
+    with pytest.raises(ValueError, match="strictly less than slow_period"):
+        calculate_macd(prices, fast_period=12, slow_period=12, signal_period=9)
+
+    # non-positive periods
+    with pytest.raises(ValueError, match="fast_period must be >= 1"):
+        calculate_macd(prices, fast_period=0, slow_period=26, signal_period=9)
+
+    with pytest.raises(ValueError, match="slow_period must be >= 1"):
+        calculate_macd(prices, fast_period=12, slow_period=0, signal_period=9)
+
+    with pytest.raises(ValueError, match="signal_period must be >= 1"):
+        calculate_macd(prices, fast_period=12, slow_period=26, signal_period=0)
+
+    # type errors
+    with pytest.raises(TypeError, match="must be an integer"):
+        calculate_macd(prices, fast_period="12", slow_period=26, signal_period=9)  # type: ignore
+
+    with pytest.raises(TypeError, match="must be an integer"):
+        calculate_macd(prices, fast_period=12, slow_period=26, signal_period=True)  # type: ignore
+
+
+def test_macd_empty_input():
+    """Verify empty prices input yields empty MACDSeries."""
+    res = calculate_macd([])
+    assert res.macd == []
+    assert res.signal == []
+    assert res.histogram == []
+    assert len(res) == 0
+
+
+def test_macd_no_future_leakage():
+    """Verify altering future prices does not alter earlier MACD, signal, or histogram values."""
+    prices_a = [100.0 + i * 2.0 for i in range(40)]
+    prices_b = list(prices_a)
+    prices_b[39] = 9999.0  # Mutate only the last price
+
+    res_a = calculate_macd(prices_a, fast_period=12, slow_period=26, signal_period=9)
+    res_b = calculate_macd(prices_b, fast_period=12, slow_period=26, signal_period=9)
+
+    # Sessions 0..38 must be strictly identical
+    assert res_a.macd[:39] == res_b.macd[:39]
+    assert res_a.signal[:39] == res_b.signal[:39]
+    assert res_a.histogram[:39] == res_b.histogram[:39]
+
+    # Session 39 must differ
+    assert res_a.macd[39] != res_b.macd[39]
+    assert res_a.signal[39] != res_b.signal[39]
+    assert res_a.histogram[39] != res_b.histogram[39]
+
+
+def test_macd_negative_values():
+    """Verify MACD line, signal line, and histogram handle negative values gracefully."""
+    # Monotonically declining series: fast EMA will be below slow EMA -> negative MACD
+    prices = [200.0 - i * 3.0 for i in range(40)]
+    res = calculate_macd(prices, fast_period=12, slow_period=26, signal_period=9)
+
+    # Check that MACD values from session 25 onwards are negative
+    for m in res.macd[25:]:
+        assert m is not None
+        assert m < 0.0
+
+    # Check that signal line from session 33 onwards is negative
+    for s in res.signal[33:]:
+        assert s is not None
+        assert s < 0.0
+
+    # Check histogram identity
+    for i in range(33, 40):
+        assert res.histogram[i] == pytest.approx(res.macd[i] - res.signal[i])
+
+
+def test_macd_handles_invalid_or_non_positive_prices():
+    """Verify invalid or non-positive prices mask the affected session."""
+    prices = [100.0 + i for i in range(35)]
+    prices[20] = -50.0  # Invalid non-positive price
+    res = calculate_macd(prices, fast_period=12, slow_period=26, signal_period=9)
+
+    assert res.macd[20] is None
+    assert res.signal[20] is None
+    assert res.histogram[20] is None
+
+
+def test_compute_moving_averages_multi_symbol_macd():
+    """Verify multi-symbol isolation and chronological sorting for MACD computation."""
+    bars = []
+    # Interleave bars for SYMA and SYMB across 40 days
+    for day in range(1, 41):
+        bars.append(_make_bar(symbol="SYMB", day=day, close=200.0 + day))
+        bars.append(_make_bar(symbol="SYMA", day=day, close=100.0 + day))
+
+    features = compute_moving_averages(bars, macd_fast=12, macd_slow=26, macd_signal=9)
+    assert len(features) == 80
+
+    # Group results by symbol
+    syma_feats = [f for f in features if f.symbol == "SYMA"]
+    symb_feats = [f for f in features if f.symbol == "SYMB"]
+    assert len(syma_feats) == 40
+    assert len(symb_feats) == 40
+
+    # Ensure chronological order
+    for sym_list in (syma_feats, symb_feats):
+        for i in range(1, len(sym_list)):
+            assert sym_list[i].timestamp > sym_list[i - 1].timestamp
+
+    # Check MACD availability
+    assert syma_feats[25].macd_line is not None
+    assert syma_feats[33].signal_line is not None
+    assert symb_feats[25].macd_line is not None
+    assert symb_feats[33].signal_line is not None
+
+
+def test_moving_average_features_with_macd_to_dict():
+    """Verify MovingAverageFeatures dictionary serialization contains MACD keys."""
+    bar = _make_bar(day=1, close=150.0)
+    feat = MovingAverageFeatures(
+        symbol=bar.symbol,
+        timestamp=bar.timestamp,
+        close=bar.close,
+        smas={5: 148.5},
+        emas={5: 149.2},
+        rsi={14: 62.5},
+        macd=1.25,
+        macd_signal=0.85,
+        macd_histogram=0.40,
+    )
+
+    assert feat.macd_line == pytest.approx(1.25)
+    assert feat.signal_line == pytest.approx(0.85)
+    assert feat.histogram == pytest.approx(0.40)
+
+    d = feat.to_dict()
+    assert d["macd"] == pytest.approx(1.25)
+    assert d["macd_signal"] == pytest.approx(0.85)
+    assert d["macd_histogram"] == pytest.approx(0.40)

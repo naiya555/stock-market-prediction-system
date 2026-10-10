@@ -189,3 +189,38 @@ def test_run_market_data_pipeline_with_default_lookback():
     assert result.symbol == "BHARTIARTL"
     assert result.record_count == 2
     assert len(result.indicators) == 2
+
+
+def test_pipeline_macd_integration():
+    """Verify market data pipeline computes and serializes MACD indicators."""
+    bars = [_make_bar(day=i, close=100.0 + i * 2.0) for i in range(1, 15)]
+    # Use small periods for integration test: fast=2, slow=4, signal=2
+    result = process_market_data(
+        bars,
+        macd_fast=2,
+        macd_slow=4,
+        macd_signal=2,
+    )
+
+    assert len(result.indicators) == 14
+    # With fast=2, slow=4, signal=2:
+    # Index 3 (4th bar) is first valid MACD line
+    # Index 4 (5th bar) is first valid signal line and histogram
+    assert result.indicators[2].macd_line is None
+    assert result.indicators[3].macd_line is not None
+    assert result.indicators[3].signal_line is None
+    assert result.indicators[4].signal_line is not None
+    assert result.indicators[4].histogram is not None
+    assert result.indicators[4].histogram == pytest.approx(
+        result.indicators[4].macd_line - result.indicators[4].signal_line
+    )
+
+    # Verify serialization
+    indicator_dicts = result.to_indicator_dicts()
+    assert len(indicator_dicts) == 14
+    assert "macd" in indicator_dicts[4]
+    assert "macd_signal" in indicator_dicts[4]
+    assert "macd_histogram" in indicator_dicts[4]
+    assert indicator_dicts[4]["macd"] is not None
+    assert indicator_dicts[4]["macd_signal"] is not None
+    assert indicator_dicts[4]["macd_histogram"] is not None

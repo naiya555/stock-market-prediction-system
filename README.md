@@ -80,15 +80,25 @@ Day 9 resolves the Day 8 six-session historical data limitation by enabling flex
   - Multi-symbol grouping with isolated per-ticker chronological sorting.
 - Technical Indicators & Momentum Engine (`app/market/indicators.py`):
   - Simple Moving Average (`calculate_sma`) with configurable session windows (default 5 and 10 sessions).
-  - Exponential Moving Average (`calculate_ema`) with recursive smoothing factor $\alpha = \frac{2}{W + 1}$.
+  - Exponential Moving Average (`calculate_ema`) with recursive smoothing factor $\alpha = \frac{2}{W + 1}$ and `allow_negative` parameter for oscillator series.
   - Relative Strength Index (`calculate_rsi`) using Wilder's smoothing method ($\alpha = 1 / W$) with configurable periods (standard 14-session default).
+  - Moving Average Convergence Divergence (`calculate_macd`):
+    - Fast EMA period: 12 default ($EMA_{12}$).
+    - Slow EMA period: 26 default ($EMA_{26}$).
+    - Signal EMA period: 9 default ($EMA_9$).
+    - MACD Line: $EMA_{fast} - EMA_{slow}$.
+    - Signal Line: 9-period EMA of the MACD line.
+    - MACD Histogram: $MACD - Signal$ (verified strictly via floating-point identity).
+    - Unpacking protocol: `macd, signal, hist = calculate_macd(prices)`.
+    - Dedicated immutable container `MACDSeries` supporting both sequence unpacking and attribute access.
   - Explicit RSI edge-case handling: neutral 50.0 for flat prices, 100.0 for pure gains, 0.0 for pure losses; bounded strictly within $[0.0, 100.0]$.
-  - Multi-session indicator orchestrator (`compute_moving_averages` / `compute_technical_indicators`) producing immutable `MovingAverageFeatures` dataclasses with `rsi_14` property and flat `.to_dict()` export.
+  - Multi-session indicator orchestrator (`compute_moving_averages` / `compute_technical_indicators`) producing immutable `MovingAverageFeatures` dataclasses with `rsi_14`, `macd_line`, `signal_line`, and `histogram` properties and flat `.to_dict()` export.
   - Strict point-in-time guarantees preventing future-data leakage.
-  - Un-warmed window sessions ($t < W - 1$ for MAs, $t < W$ for RSI) and insufficient histories safely return `None`.
+  - Un-warmed window sessions ($t < W - 1$ for MAs, $t < W$ for RSI, $t < slow - 1$ for MACD line, $t < slow + signal - 2$ for Signal line and Histogram) safely return `None`.
   - Raw price basis: strictly unadjusted closing prices (`close`).
 - Market Data Pipeline Orchestrator (`app/market/pipeline.py`):
   - Unified pipeline connecting provider retrieval, data cleaning, return/volatility feature computation, and technical indicators (`run_market_data_pipeline` and `process_market_data`).
+  - Supports configurable `macd_fast=12`, `macd_slow=26`, `macd_signal=9` parameters with complete feature preservation.
   - Supports flexible historical range lookbacks via `lookback_days` (defaulting to 180 days / ~6 months, or 365 days / ~12 months) when `start_date` is omitted, while retaining deterministic explicit date support.
   - Immutable pipeline container (`MarketDataPipelineResult`) preserving raw records, cleaned records, cleaning summary, return features, and technical indicators.
 - Historical Market Visualizer (`app/market/visualizer.py`):
@@ -96,7 +106,7 @@ Day 9 resolves the Day 8 six-session historical data limitation by enabling flex
   - Historical closing price chart (`plot_closing_prices`) with formatted INR pricing and session date labels.
   - Daily percentage returns chart (`plot_daily_returns`) with color-coded positive/negative bars and zero baseline.
   - Batch chart generator (`generate_market_charts`) saving to `data/processed/charts/` (strictly ignored by `.gitignore`).
-- 107 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, and visualizer.
+- 118 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, and visualizer.
 
 ---
 

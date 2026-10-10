@@ -313,3 +313,41 @@ This document formalizes the architectural decisions made on Day 1. All future i
   5. **Non-Predictive Disclaimer:** RSI is strictly treated as an empirical momentum feature and input to downstream ML models, never as a guaranteed standalone predictor of price direction.
 - **Consequences:** Provides robust, leak-free momentum indicator calculation and allows collecting 6 to 12 months of clean historical data for comprehensive feature evaluation.
 
+---
+
+## ADR 37: Moving Average Convergence Divergence (MACD) Architecture, Recursive Signal Smoothing, and Point-in-Time Integrity
+- **Status:** Accepted
+- **Context:** Downstream models and technical feature pipelines require trend-following and momentum indicators that capture interactions between short-term and medium-term price trends. The standard Moving Average Convergence Divergence (MACD) indicator is widely recognized, but naive implementations often suffer from:
+  1. Lookahead data leakage if smoothing recursions access future values.
+  2. Fabricating numbers during warm-up periods or when intermediate values are undefined.
+  3. Treating negative MACD line values as invalid errors in general-purpose EMA routines designed only for asset price series ($P > 0$).
+  4. Histogram divergence where $Histogram \ne MACD - Signal$ due to rounding, asynchronous updates, or mismatched smoothing parameters.
+- **Decision:**
+  1. **Canonical Formulation:**
+     - Fast EMA: $EMA_{fast, t} = EMA(prices, window=fast\_period)$ with standard default 12.
+     - Slow EMA: $EMA_{slow, t} = EMA(prices, window=slow\_period)$ with standard default 26.
+     - MACD Line: $MACD_t = EMA_{fast, t} - EMA_{slow, t}$.
+     - Signal Line: $Signal_t = EMA(MACD, window=signal\_period)$ with standard default 9.
+     - MACD Histogram: $Histogram_t = MACD_t - Signal_t$.
+  2. **EMA Generalization & Oscillator Compatibility:**
+     - Extended existing `calculate_ema` with `allow_negative: bool = False`.
+     - When `allow_negative=False` (default, price series), non-positive or NaN values are treated as invalid.
+     - When `allow_negative=True` (used for MACD oscillator series), negative and zero values are valid floats, allowing standard recursive smoothing without error or spurious warnings.
+  3. **Strict Warm-up & Undefined Values Policy:**
+     - Fast period must be strictly less than slow period ($fast < slow$), and all periods must be positive integers ($W \ge 1$).
+     - Insufficient history: Fast EMA warms up at $t = fast - 1$; Slow EMA warms up at $t = slow - 1$.
+     - MACD line requires both fast and slow EMAs, so for $t < slow - 1$, MACD line returns `None`.
+     - Signal line is the signal-period EMA of the MACD line; it requires $signal$ valid observations of the MACD line. Therefore, for $t < (slow - 1) + (signal - 1) = slow + signal - 2$ (first 33 sessions for 12/26/9), Signal line returns `None`.
+     - Histogram requires both MACD line and Signal line; for $t < slow + signal - 2$, Histogram returns `None`.
+     - Numbers are never fabricated or padded; undefined sessions return `None`.
+  4. **Strict Histogram Identity:**
+     - For all sessions where the Signal line is defined, $Histogram = MACD - Signal$ holds strictly within floating-point tolerance ($10^{-6}$).
+  5. **Container & Unpacking Ergonomics:**
+     - Created `MACDSeries(macd, signal, histogram)` implementing sequence protocol `__iter__` to allow both 3-tuple unpacking (`macd, signal, hist = calculate_macd(prices)`) and attribute access (`res.macd`, `res.signal`, `res.histogram`).
+     - Integrated MACD features into `MovingAverageFeatures` with properties `macd_line`, `signal_line`, `histogram` and tabular `.to_dict()` export (`"macd"`, `"macd_signal"`, `"macd_histogram"`).
+  6. **Pipeline Integration:**
+     - Added `macd_fast=12`, `macd_slow=26`, `macd_signal=9` parameters to `process_market_data` and `run_market_data_pipeline`.
+  7. **Non-Predictive Disclaimer:**
+     - MACD is strictly treated as an empirical trend-following momentum feature, never as a guaranteed price-direction predictor.
+- **Consequences:** Guarantees leak-free, mathematically verified MACD calculation that integrates seamlessly with existing pipeline and test suites.
+

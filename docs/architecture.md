@@ -242,6 +242,8 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
              ↓
   Compute Momentum Oscillators (RSI: 14-period, configurable Wilder's smoothing)
              ↓
+  Compute Trend / Convergence-Divergence (MACD: 12-fast, 26-slow, 9-signal EMA)
+             ↓
   MovingAverageFeatures Dataclass (.to_dict() tabular export)
   ```
 - **Price Basis:** Indicators are strictly computed using raw, unadjusted closing prices (`close`).
@@ -249,8 +251,15 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   - **Simple Moving Average (SMA):** $SMA_{t, W} = \frac{1}{W} \sum_{i=0}^{W-1} P_{t-i}$. Sessions where $t < W - 1$ return `None`.
   - **Exponential Moving Average (EMA):** $EMA_t = \alpha P_t + (1 - \alpha) EMA_{t-1}$ where $\alpha = \frac{2}{W + 1}$. Early un-warmed sessions ($t < W - 1$) return `None`.
   - **Relative Strength Index (RSI):** $RSI_t = 100 \times \frac{AvgGain_t}{AvgGain_t + AvgLoss_t}$ with Wilder's exponential smoothing ($\alpha = 1 / W$). Flat series return `50.0`, pure gains return `100.0`, pure losses return `0.0`. Sessions where $t < W$ return `None`.
+  - **Moving Average Convergence Divergence (MACD):**
+    - Fast EMA: $EMA_{fast, t} = EMA(prices, window=fast\_period)$ (default 12).
+    - Slow EMA: $EMA_{slow, t} = EMA(prices, window=slow\_period)$ (default 26).
+    - MACD Line: $MACD_t = EMA_{fast, t} - EMA_{slow, t}$. Un-warmed when $t < slow - 1$ (returns `None`).
+    - Signal Line: $Signal_t = EMA(MACD, window=signal\_period)$ (default 9). Un-warmed when $t < slow + signal - 2$ (returns `None`).
+    - MACD Histogram: $Histogram_t = MACD_t - Signal_t$. Returns `None` whenever Signal line is `None`. Strictly satisfies $Histogram = MACD - Signal$.
 - **Zero Future-Data Leakage:** Point-in-time calculation strictly bounds inputs to observations up to and including the evaluated session timestamp.
-- **Pipeline Integration:** Orchestrated within `MarketDataPipelineResult` alongside return and volatility features with configurable `lookback_days` supporting 6-12 month ranges.
+- **Pipeline Integration:** Orchestrated within `MarketDataPipelineResult` alongside return and volatility features with configurable `lookback_days` supporting 6-12 month ranges, and configurable `macd_fast`, `macd_slow`, `macd_signal` parameters.
+- **Non-Predictive Baseline:** Indicators provide descriptive trend, momentum, and divergence features; they are never treated as standalone guaranteed price-direction predictors.
 
 - **Strict Development Schedule Boundaries:**
   - **Day 4 (Complete):** Concrete historical market data collector adapter and empirical verification.
@@ -259,7 +268,8 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   - **Day 7 (Complete):** First market charting and full data pipeline completion.
   - **Day 8 (Complete):** Moving average technical indicators (SMA & EMA, configurable windows, point-in-time guarantees).
   - **Day 9 (Complete):** Expanded historical data acquisition (6-12 months lookback) and Relative Strength Index (RSI).
-  - **Day 10 (Planned):** Next scheduled milestone phase.
+  - **Day 10 (Complete):** MACD technical indicator (fast/slow/signal EMAs, MACD line, signal line, histogram identity, point-in-time integrity).
+  - **Day 11 (Planned):** Next scheduled milestone phase.
 
 
 

@@ -746,4 +746,117 @@ Executed `scripts/verify_indicators.py` on real `BHARTIARTL.NS` historical data:
 - Historical data lookback is configured by default to 180 days (~6 months / ~124 sessions), which easily satisfies 5, 10, 14, 20, and 50-session indicators. Long-term indicators like 200-day SMA will require passing `lookback_days=365` or greater.
 - Next scheduled scope (Day 10): Additional technical indicators (MACD, Bollinger Bands, ATR) and indicator feature matrix assembly.
 
+---
+
+## Day 10: MACD Technical Indicator Implementation & Real-Data Verification
+
+### Goal
+Implement Moving Average Convergence Divergence (MACD) technical indicator with standard defaults (12-fast, 26-slow, 9-signal), ensure point-in-time integrity, guarantee the mathematical identity $Histogram = MACD - Signal$, support configurable parameters and error handling, expand unit tests, and empirically verify on real `BHARTIARTL.NS` historical data.
+
+### Pre-Checks
+- Current branch: `main`, clean working tree.
+- Prior commit: `024373b83879aa6650a8b636bc1739946aad6f9d` ("feat: expand market history and add RSI indicator").
+- Existing test baseline verified: 107 passing tests.
+- Roo Code remained disabled.
+
+### What Was Built
+1. **Generalization of Exponential Moving Average (`calculate_ema` in `app/market/indicators.py`):**
+   - Added `allow_negative: bool = False` parameter.
+   - Preserves price domain validation ($P > 0$) by default, while allowing oscillator series (such as MACD line, which oscillates around zero and goes negative during downtrends) to be recursively smoothed without treating negative values as corrupt or spamming logger warnings.
+   - Refined NaN/None masking to guarantee that unobserved sessions emit `None` rather than carrying forward values.
+2. **Moving Average Convergence Divergence (`calculate_macd` in `app/market/indicators.py`):**
+   - Default periods: `fast_period=12`, `slow_period=26`, `signal_period=9`.
+   - Comprehensive input validation: all periods must be positive integers ($W \ge 1$), and `fast_period < slow_period`. Invalid parameters raise `ValueError` or `TypeError`.
+   - Empty input sequence handling: returns empty `MACDSeries`.
+   - Mathematical definitions:
+     - $EMA_{fast, t} = EMA(prices, window=fast\_period)$
+     - $EMA_{slow, t} = EMA(prices, window=slow\_period)$
+     - $MACD_t = EMA_{fast, t} - EMA_{slow, t}$
+     - $Signal_t = EMA(MACD, window=signal\_period)$
+     - $Histogram_t = MACD_t - Signal_t$
+   - Warm-up and Insufficient History Policy:
+     - Fast EMA warms up at session index $fast - 1$ (index 11 for fast=12).
+     - Slow EMA warms up at session index $slow - 1$ (index 25 for slow=26).
+     - MACD line requires both fast and slow EMAs, warming up at index $slow - 1$ (index 25 for 12/26). Sessions $t < slow - 1$ return `None`.
+     - Signal line requires $signal$ valid MACD observations, warming up at index $(slow - 1) + (signal - 1) = slow + signal - 2$ (index 33, 34th bar, for 12/26/9). Sessions $t < 33$ return `None`.
+     - Histogram requires both MACD and Signal, warming up at index 33. Sessions $t < 33$ return `None`.
+     - Undefined intermediate values and missing prices return `None` without fabricating numbers.
+   - Point-in-time invariant: Calculation at time $t$ uses strictly observations up to and including $t$; changing future prices never affects earlier or current values.
+   - Non-predictive disclaimer documented: MACD is a momentum/trend indicator, not a guaranteed predictor of future price direction.
+3. **Dedicated Immutable Container (`MACDSeries`):**
+   - `@dataclass(frozen=True)` holding `macd: List[Optional[float]]`, `signal: List[Optional[float]]`, `histogram: List[Optional[float]]`.
+   - Implements sequence unpacking via `__iter__`: supports `macd, signal, hist = calculate_macd(prices)` as well as attribute access.
+4. **Feature Container Integration (`MovingAverageFeatures`):**
+   - Added fields `macd: Optional[float] = None`, `macd_signal: Optional[float] = None`, `macd_histogram: Optional[float] = None`.
+   - Added convenience properties `macd_line`, `signal_line`, `histogram`.
+   - Updated `.to_dict()` to serialize `"macd"`, `"macd_signal"`, `"macd_histogram"`.
+5. **Indicator Orchestration (`compute_moving_averages` / `compute_technical_indicators`):**
+   - Added `macd_fast: Optional[int] = 12`, `macd_slow: Optional[int] = 26`, `macd_signal: Optional[int] = 9`.
+   - Computes MACD per symbol with complete ticker isolation and chronological sorting.
+6. **Pipeline Integration (`app/market/pipeline.py`):**
+   - Added `macd_fast`, `macd_slow`, `macd_signal` parameters to `process_market_data` and `run_market_data_pipeline`.
+7. **Module Exports (`app/market/__init__.py`):**
+   - Exported `MACDSeries` and `calculate_macd`.
+8. **Real-Data Verification Script (`scripts/verify_indicators.py`):**
+   - Updated to verify real `BHARTIARTL.NS` historical data (180 days lookback) and original 6-session regression fixture.
+
+### Real Data Verification
+Executed `scripts/verify_indicators.py` on real `BHARTIARTL.NS` data:
+- **Part 1: Expanded Historical Range (lookback_days=180, ~6 months):**
+  - Date Range: 2026-04-13 to 2026-10-09 (124 sessions)
+  - SMA-5 available: 120 / 124 sessions (warmed up at session 5)
+  - EMA-5 available: 120 / 124 sessions (warmed up at session 5)
+  - SMA-10 available: 115 / 124 sessions (warmed up at session 10)
+  - EMA-10 available: 115 / 124 sessions (warmed up at session 10)
+  - RSI-14 available: 110 / 124 sessions (warmed up at session 15 / 14 price changes)
+  - MACD Line available: 99 / 124 sessions (warmed up at session 26 / index 25)
+  - Signal Line available: 91 / 124 sessions (warmed up at session 34 / index 33)
+  - Histogram available: 91 / 124 sessions (warmed up at session 34 / index 33)
+  - Histogram identity verified: $Histogram == MACD - Signal$ strictly verified within $\pm 10^{-6}$ on every session.
+  - Latest Observation (2026-10-09): Close=1805.10, RSI-14=46.63, MACD=-19.92, Signal=-25.39, Histogram=+5.47
+- **Part 2: Regression Verification (original 6-session range 2026-09-01 to 2026-09-08):**
+  - Bars: 6
+  - SMA-5: 2 values
+  - SMA-10: 0 values (all `None`)
+  - RSI-14: 0 values (all `None`)
+  - MACD Line: 0 values (all `None`)
+  - Signal Line: 0 values (all `None`)
+  - Histogram: 0 values (all `None`)
+- Verification Status: Exit code 0, 1:1 bar alignment, zero encoding errors.
+
+### Tests
+- **Unit Test Suite (`tests/test_indicators.py` and `tests/test_pipeline.py`):**
+  - Added 11 new tests covering:
+    - Manual trace verification on small sequence (`fast=2`, `slow=4`, `signal=2`, exact floating-point comparisons)
+    - Subtraction identity ($MACD = EMA_{fast} - EMA_{slow}$) and histogram identity ($Histogram = MACD - Signal$)
+    - Insufficient history and warm-up policies (20 bars, 26 bars, 34 bars)
+    - Parameter validation: $fast \ge slow$, non-positive periods, non-integer types raising errors
+    - Empty input handling
+    - Point-in-time invariant (future price mutation does not change earlier values)
+    - Negative value handling (downtrends where fast < slow producing negative MACD and Signal lines)
+    - Invalid price handling (masking affected sessions)
+    - Multi-symbol grouping, ticker isolation, and chronological sorting
+    - Feature dataclass `.to_dict()` and property serialization
+    - Pipeline integration and dictionary serialization
+    - Regression tests for 6-record case and expanded 40-record case
+- **Full Test Suite Execution:**
+  - **118 passed in 4.41s** (`pytest -v`). Zero external network dependencies.
+
+### Review
+- **CodeRabbit:** CodeRabbit local CLI is not available in this environment. Proactively enforced standards: explicit validation checks with return codes, aligned table format, float tolerance checks, and safe currency encoding.
+- **Roo Code:** Remained disabled.
+- **Ponytail / Senior Dev Mode:** Reused existing `calculate_ema` with minimal single flag (`allow_negative=True`) instead of duplicating EMA logic; zero added dependencies; shortest working diff.
+
+### Documentation
+- Updated `README.md` to Day 10 status with 118 passing tests.
+- Updated `docs/architecture.md` with Section 4.7 covering MACD formulation and Day 10 milestone completion.
+- Updated `docs/decisions.md` with ADR 37 (MACD indicator architecture, recursive signal smoothing, and point-in-time integrity).
+- Updated `docs/daily-progress.md` with Day 10 journal.
+
+### Known Limitations & Next Steps
+- Current indicator suite includes SMA, EMA, RSI, and MACD. Additional standard technical features (Bollinger Bands, ATR, VWAP) remain for subsequent phases.
+- Indicator features are computed per symbol in isolation; cross-sectional features (e.g. index-relative strength) will be implemented in future feature-engineering phases.
+- Next roadmap step (Day 11): Additional volatility indicators (Bollinger Bands) or technical feature matrix assembly for machine learning dataset preparation.
+
+
 

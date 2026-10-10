@@ -69,6 +69,9 @@ def process_market_data(
     sma_windows: Sequence[int] = (5, 10),
     ema_windows: Sequence[int] = (5, 10),
     rsi_periods: Sequence[int] = (14,),
+    macd_fast: Optional[int] = 12,
+    macd_slow: Optional[int] = 26,
+    macd_signal: Optional[int] = 9,
 ) -> MarketDataPipelineResult:
     """Process an existing sequence of raw MarketOHLCV records through cleaning, returns, and indicators.
 
@@ -83,6 +86,9 @@ def process_market_data(
         sma_windows: Multi-session windows for Simple Moving Average (default (5, 10)).
         ema_windows: Multi-session windows for Exponential Moving Average (default (5, 10)).
         rsi_periods: Multi-session windows for Relative Strength Index (default (14,)).
+        macd_fast: Fast EMA period for MACD (default 12, or None to skip).
+        macd_slow: Slow EMA period for MACD (default 26, or None to skip).
+        macd_signal: Signal EMA period for MACD (default 9, or None to skip).
 
     Returns:
         MarketDataPipelineResult containing raw records, cleaned records, cleaning summary,
@@ -109,6 +115,9 @@ def process_market_data(
         sma_windows=sma_windows,
         ema_windows=ema_windows,
         rsi_periods=rsi_periods,
+        macd_fast=macd_fast,
+        macd_slow=macd_slow,
+        macd_signal=macd_signal,
     )
 
     logger.info(
@@ -143,6 +152,9 @@ def run_market_data_pipeline(
     sma_windows: Sequence[int] = (5, 10),
     ema_windows: Sequence[int] = (5, 10),
     rsi_periods: Sequence[int] = (14,),
+    macd_fast: Optional[int] = 12,
+    macd_slow: Optional[int] = 26,
+    macd_signal: Optional[int] = 9,
 ) -> MarketDataPipelineResult:
     """Execute end-to-end market data acquisition, cleaning, feature engineering, and indicator computation.
 
@@ -150,7 +162,7 @@ def run_market_data_pipeline(
     1. Historical data acquisition via BaseMarketDataProvider (defaults to YFinanceProvider)
     2. Data cleaning, duplicate resolution, and domain validation via clean_market_data
     3. Return and volatility feature computation via compute_market_returns
-    4. Technical indicator computation (SMA, EMA, RSI) via compute_moving_averages
+    4. Technical indicator computation (SMA, EMA, RSI, MACD) via compute_moving_averages
 
     Args:
         symbol: Market ticker symbol (e.g. 'BHARTIARTL').
@@ -165,6 +177,9 @@ def run_market_data_pipeline(
         sma_windows: Multi-session windows for Simple Moving Average (default (5, 10)).
         ema_windows: Multi-session windows for Exponential Moving Average (default (5, 10)).
         rsi_periods: Multi-session windows for Relative Strength Index (default (14,)).
+        macd_fast: Fast EMA period for MACD (default 12, or None to skip).
+        macd_slow: Slow EMA period for MACD (default 26, or None to skip).
+        macd_signal: Signal EMA period for MACD (default 9, or None to skip).
 
     Returns:
         MarketDataPipelineResult with all pipeline stage artifacts.
@@ -201,4 +216,7 @@ def run_market_data_pipeline(
         sma_windows=sma_windows,
         ema_windows=ema_windows,
         rsi_periods=rsi_periods,
+        macd_fast=macd_fast,
+        macd_slow=macd_slow,
+        macd_signal=macd_signal,
     )

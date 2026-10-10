@@ -1,7 +1,8 @@
-"""Technical Indicators Layer: Moving Averages.
+"""Technical Indicators Layer: Moving Averages and Oscillators.
 
-Provides deterministic, point-in-time calculation of Simple Moving Averages (SMA)
-and Exponential Moving Averages (EMA) on cleaned historical market data (MarketOHLCV).
+Provides deterministic, point-in-time calculation of Simple Moving Averages (SMA),
+Exponential Moving Averages (EMA), Relative Strength Index (RSI), and
+Moving Average Convergence Divergence (MACD) on cleaned historical market data (MarketOHLCV).
 """
 
 from collections import defaultdict
@@ -19,11 +20,33 @@ logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
+class MACDSeries:
+    """Calculated Moving Average Convergence Divergence (MACD) indicator series.
+
+    Encapsulates MACD line, Signal line, and MACD Histogram.
+    Implements sequence protocol for 3-tuple unpacking:
+        macd_line, signal_line, histogram = calculate_macd(prices)
+    """
+
+    macd: List[Optional[float]]
+    signal: List[Optional[float]]
+    histogram: List[Optional[float]]
+
+    def __iter__(self):
+        """Allow unpacking as (macd, signal, histogram)."""
+        return iter((self.macd, self.signal, self.histogram))
+
+    def __len__(self) -> int:
+        """Return the length of the series."""
+        return len(self.macd)
+
+
+@dataclass(frozen=True)
 class MovingAverageFeatures:
     """Canonical calculated technical indicator features for a single market bar.
 
     Encapsulates Simple Moving Averages (SMA), Exponential Moving Averages (EMA),
-    and Relative Strength Index (RSI).
+    Relative Strength Index (RSI), and Moving Average Convergence Divergence (MACD).
     """
 
     symbol: str
@@ -32,6 +55,9 @@ class MovingAverageFeatures:
     smas: Dict[int, Optional[float]]
     emas: Dict[int, Optional[float]]
     rsi: Dict[int, Optional[float]] = field(default_factory=dict)
+    macd: Optional[float] = None
+    macd_signal: Optional[float] = None
+    macd_histogram: Optional[float] = None
 
     @property
     def sma_5(self) -> Optional[float]:
@@ -58,6 +84,21 @@ class MovingAverageFeatures:
         """Convenience property for standard 14-session Relative Strength Index."""
         return self.rsi.get(14)
 
+    @property
+    def macd_line(self) -> Optional[float]:
+        """Convenience property for MACD line."""
+        return self.macd
+
+    @property
+    def signal_line(self) -> Optional[float]:
+        """Convenience property for MACD signal line."""
+        return self.macd_signal
+
+    @property
+    def histogram(self) -> Optional[float]:
+        """Convenience property for MACD histogram."""
+        return self.macd_histogram
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert features to a flat dictionary for tabular analysis and ML datasets."""
         out: Dict[str, Any] = {
@@ -71,6 +112,9 @@ class MovingAverageFeatures:
             out[f"ema_{w}"] = val
         for p, val in sorted(self.rsi.items()):
             out[f"rsi_{p}"] = val
+        out["macd"] = self.macd
+        out["macd_signal"] = self.macd_signal
+        out["macd_histogram"] = self.macd_histogram
         return out
 
 
@@ -123,10 +167,11 @@ def calculate_sma(
 
 
 def calculate_ema(
-    prices: Sequence[float],
+    prices: Sequence[Optional[float]],
     window: int,
     min_periods: Optional[int] = None,
     adjust: bool = False,
+    allow_negative: bool = False,
 ) -> List[Optional[float]]:
     """Compute Exponential Moving Average over a sliding chronological window.
 
@@ -138,14 +183,16 @@ def calculate_ema(
         - window must be >= 1.
         - min_periods defaults to window to avoid emitting under-warmed indicators.
         - For t < min_periods - 1: Returns None.
-        - If any price in the series is non-positive or NaN, returns None for affected steps.
+        - If allow_negative is False, non-positive (<= 0) or NaN prices return None for affected steps.
+        - If allow_negative is True, only None or NaN values return None (permitting negative/zero oscillator values).
         - Point-in-time invariant: Strictly backward-looking recursion.
 
     Args:
-        prices: Chronological sequence of prices.
+        prices: Chronological sequence of prices or series values.
         window: Span of the exponential moving average.
         min_periods: Minimum required valid observations before emitting values (default: window).
         adjust: Whether to divide by decaying adjustment factor (default: False).
+        allow_negative: Whether to permit zero or negative numbers in the series (default: False).
 
     Returns:
         List of exponential moving averages of the same length as prices.
@@ -164,19 +211,19 @@ def calculate_ema(
     clean_vals: List[float] = []
     has_invalid = False
     for p in prices:
-        if p is None or math.isnan(p) or p <= 0.0:
+        if p is None or math.isnan(p) or (not allow_negative and p <= 0.0):
             clean_vals.append(float("nan"))
             has_invalid = True
         else:
             clean_vals.append(float(p))
 
-    if has_invalid:
+    if has_invalid and not allow_negative:
         logger.warning("Encountered non-positive or NaN prices in EMA series; masking affected windows.")
 
     series = pd.Series(clean_vals, dtype="float64")
     ewm_series = series.ewm(span=window, min_periods=req_periods, adjust=adjust).mean()
 
-    return [None if math.isnan(v) else float(v) for v in ewm_series]
+    return [None if math.isnan(v) or math.isnan(clean_vals[i]) else float(v) for i, v in enumerate(ewm_series)]
 
 
 def calculate_rsi(
@@ -293,6 +340,97 @@ def calculate_rsi(
     return out
 
 
+def calculate_macd(
+    prices: Sequence[float],
+    fast_period: int = 12,
+    slow_period: int = 26,
+    signal_period: int = 9,
+) -> MACDSeries:
+    """Compute Moving Average Convergence Divergence (MACD) technical indicator.
+
+    MACD is a trend-following momentum indicator that shows the relationship between
+    two exponential moving averages of a security's price.
+    Note: MACD is an indicator of historical trend and momentum; it is NOT a
+    guaranteed price-direction predictor.
+
+    Mathematical Definitions:
+        1. Fast EMA:
+            EMA_{fast, t} = EMA(prices, window=fast_period)
+        2. Slow EMA:
+            EMA_{slow, t} = EMA(prices, window=slow_period)
+        3. MACD Line:
+            MACD_t = EMA_{fast, t} - EMA_{slow, t}
+        4. Signal Line:
+            Signal_t = EMA(MACD, window=signal_period)
+        5. MACD Histogram:
+            Histogram_t = MACD_t - Signal_t
+
+    Warm-up & Initialization Policy:
+        - All periods must be positive integers (>= 1).
+        - fast_period must be strictly less than slow_period.
+        - EMA uses recursive exponential weighting with multiplier alpha = 2 / (span + 1),
+          adjust=False, seeded from the first valid observation.
+        - MACD line requires slow_period valid observations to warm up (since slow_period > fast_period).
+          For t < slow_period - 1: MACD line returns None.
+        - Signal line is the signal_period EMA of the MACD line. It requires signal_period valid
+          MACD line values before emitting its first output.
+          For t < (slow_period - 1) + (signal_period - 1): Signal line returns None.
+        - MACD histogram = MACD line - Signal line. When Signal line is None, Histogram returns None.
+        - Insufficient historical observations or undefined intermediate values return None;
+          no numbers are fabricated.
+        - Point-in-time invariant: Calculation at session t strictly depends on observations up to t;
+          altering future prices never changes past or current values.
+
+    Args:
+        prices: Chronological sequence of prices (typically raw unadjusted close).
+        fast_period: Span for the fast exponential moving average (default 12).
+        slow_period: Span for the slow exponential moving average (default 26).
+        signal_period: Span for the signal-line exponential moving average (default 9).
+
+    Returns:
+        MACDSeries containing macd, signal, and histogram lists aligned with input prices.
+    """
+    for name, val in [("fast_period", fast_period), ("slow_period", slow_period), ("signal_period", signal_period)]:
+        if not isinstance(val, int) or isinstance(val, bool):
+            raise TypeError(f"{name} must be an integer, got {type(val).__name__}")
+        if val < 1:
+            raise ValueError(f"{name} must be >= 1, got {val}")
+
+    if fast_period >= slow_period:
+        raise ValueError(f"fast_period ({fast_period}) must be strictly less than slow_period ({slow_period})")
+
+    n = len(prices)
+    if n == 0:
+        return MACDSeries(macd=[], signal=[], histogram=[])
+
+    fast_ema = calculate_ema(prices, window=fast_period, min_periods=fast_period, adjust=False)
+    slow_ema = calculate_ema(prices, window=slow_period, min_periods=slow_period, adjust=False)
+
+    macd_vals: List[Optional[float]] = []
+    for f, s in zip(fast_ema, slow_ema):
+        if f is not None and s is not None:
+            macd_vals.append(f - s)
+        else:
+            macd_vals.append(None)
+
+    signal_vals = calculate_ema(
+        macd_vals,
+        window=signal_period,
+        min_periods=signal_period,
+        adjust=False,
+        allow_negative=True,
+    )
+
+    hist_vals: List[Optional[float]] = []
+    for m, sig in zip(macd_vals, signal_vals):
+        if m is not None and sig is not None:
+            hist_vals.append(m - sig)
+        else:
+            hist_vals.append(None)
+
+    return MACDSeries(macd=macd_vals, signal=signal_vals, histogram=hist_vals)
+
+
 def compute_moving_averages(
     records: Sequence[MarketOHLCV],
     sma_windows: Sequence[int] = (5, 10),
@@ -300,6 +438,9 @@ def compute_moving_averages(
     min_periods_ema: Optional[int] = None,
     adjust_ema: bool = False,
     rsi_periods: Sequence[int] = (14,),
+    macd_fast: Optional[int] = 12,
+    macd_slow: Optional[int] = 26,
+    macd_signal: Optional[int] = 9,
 ) -> List[MovingAverageFeatures]:
     """Compute moving average and momentum indicators across canonical MarketOHLCV records.
 
@@ -317,6 +458,9 @@ def compute_moving_averages(
         min_periods_ema: Minimum observations before emitting EMA (default: matching window).
         adjust_ema: Pandas EWM adjust parameter (default False).
         rsi_periods: Periods to compute for RSI (default (14,)).
+        macd_fast: Fast EMA period for MACD (default 12, or None to skip).
+        macd_slow: Slow EMA period for MACD (default 26, or None to skip).
+        macd_signal: Signal EMA period for MACD (default 9, or None to skip).
 
     Returns:
         List of MovingAverageFeatures chronologically aligned with input bars.
@@ -356,6 +500,21 @@ def compute_moving_averages(
         for p in rsi_periods:
             rsi_results[p] = calculate_rsi(prices, period=p)
 
+        # Compute MACD
+        if macd_fast is not None and macd_slow is not None and macd_signal is not None:
+            macd_series = calculate_macd(
+                prices,
+                fast_period=macd_fast,
+                slow_period=macd_slow,
+                signal_period=macd_signal,
+            )
+        else:
+            macd_series = MACDSeries(
+                macd=[None] * len(sorted_bars),
+                signal=[None] * len(sorted_bars),
+                histogram=[None] * len(sorted_bars),
+            )
+
         # Assemble per-bar feature records
         for i, bar in enumerate(sorted_bars):
             bar_smas = {w: sma_results[w][i] for w in sma_windows}
@@ -369,6 +528,9 @@ def compute_moving_averages(
                 smas=bar_smas,
                 emas=bar_emas,
                 rsi=bar_rsi,
+                macd=macd_series.macd[i],
+                macd_signal=macd_series.signal[i],
+                macd_histogram=macd_series.histogram[i],
             )
             all_features.append(features)
 
