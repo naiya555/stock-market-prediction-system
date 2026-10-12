@@ -292,10 +292,60 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   - **Day 7 (Complete):** First market charting and full data pipeline completion.
   - **Day 8 (Complete):** Moving average technical indicators (SMA & EMA, configurable windows, point-in-time guarantees).
   - **Day 9 (Complete):** Expanded historical data acquisition (6-12 months lookback) and Relative Strength Index (RSI).
+### 4.8. Candlestick Feature Engine (`app/market/candlestick.py`)
+- **Candlestick Geometric Feature Flow:**
+  ```text
+  Clean Market Records (MarketOHLCV)
+             ↓
+  Extract Contemporaneous Bar OHLC (Open, High, Low, Close)
+             ↓
+  Validate Physical Geometry (High >= Low, High >= max(Open, Close), Low <= min(Open, Close))
+             ↓
+  Compute Geometric Dimensions (Body, Abs Body, Range, Upper Wick, Lower Wick)
+             ↓
+  Compute Normalizing Ratios & Bounds (Body Ratio, Upper Wick Ratio, Lower Wick Ratio)
+             ↓
+  Compute Intra-Session Location & Momentum (Close Location within Range, Body Return %)
+             ↓
+  Classify Intra-Session Direction (Bullish if Close > Open, Bearish if Close < Open, Neutral)
+             ↓
+  CandlestickFeatures Dataclass (.to_dict() tabular export & Pipeline Integration)
+  ```
+- **Mathematical Formulations:**
+  - **Signed Body:** $Close - Open$
+  - **Absolute Body:** $|Close - Open|$
+  - **Candle Range:** $High - Low$
+  - **Upper Wick:** $High - \max(Open, Close)$
+  - **Lower Wick:** $\min(Open, Close) - Low$
+  - **Body-to-Range Ratio:** $\frac{|Close - Open|}{High - Low}$, when $Range > 0$ (evaluates safely to `None` when $Range = 0$)
+  - **Upper-Wick-to-Range Ratio:** $\frac{UpperWick}{High - Low}$, when $Range > 0$ (evaluates safely to `None` when $Range = 0$)
+  - **Lower-Wick-to-Range Ratio:** $\frac{LowerWick}{High - Low}$, when $Range > 0$ (evaluates safely to `None` when $Range = 0$)
+  - **Close Location within Range:** $\frac{Close - Low}{High - Low}$, when $Range > 0$ (evaluates safely to `None` when $Range = 0$)
+  - **Body Return Percentage:** $\left(\frac{Close}{Open} - 1\right) \times 100$, when $Open > 0$ (evaluates safely to `None` when $Open \le 0$)
+  - **Candle Direction:** `bullish` if $Close > Open$, `bearish` if $Close < Open$, and `neutral` if $Close == Open$.
+- **Invariants & Geometric Identities:**
+  - **Geometric Partition Invariant:** $Body_{abs} + UpperWick + LowerWick = Range$.
+  - **Ratio Partition Invariant:** $Ratio_{body} + Ratio_{upper} + Ratio_{lower} = 1.0$ (when $Range > 0$).
+  - **Bounded Properties:** $0.0 \le Ratio \le 1.0$ and $0.0 \le CloseLocation \le 1.0$ across all valid non-zero candles.
+  - **Zero-Range Policy:** Zero dimensions are preserved ($Body=0.0, Range=0.0, Upper=0.0, Lower=0.0$), ratios evaluate strictly to `None`, and direction evaluates to `neutral`.
+  - **Physical Geometry Protection:** Invalid candles (violating $High \ge \max(Open, Close)$ or $Low \le \min(Open, Close)$) or non-finite prices are safely masked with `None`.
+- **Pipeline Integration:** Orchestrated within `MarketDataPipelineResult.candlesticks` via `compute_candlestick_features` and integrated into `MovingAverageFeatures` and `.to_indicator_dicts()` for tabular datasets.
+- **Strict Point-in-Time Guarantees:** Computed strictly from the contemporaneous candle's OHLC; zero future bars affect earlier candle features.
+- **Non-Predictive Disclaimer:** Candlestick features quantify single-bar geometric price action and intra-session dynamics; they do not constitute guaranteed buy/sell signals or predictive forecasts.
+
+- **Strict Development Schedule Boundaries:**
+  - **Day 4 (Complete):** Concrete historical market data collector adapter and empirical verification.
+  - **Day 5 (Complete):** Data cleaning layer (missing values, duplicates, physical anomalies, date normalization, chronological sorting).
+  - **Day 6 (Complete):** Returns and rolling realized volatility feature calculations.
+  - **Day 7 (Complete):** First market charting and full data pipeline completion.
+  - **Day 8 (Complete):** Moving average technical indicators (SMA & EMA, configurable windows, point-in-time guarantees).
+  - **Day 9 (Complete):** Expanded historical data acquisition (6-12 months lookback) and Relative Strength Index (RSI).
   - **Day 10 (Complete):** MACD technical indicator (fast/slow/signal EMAs, MACD line, signal line, histogram identity, point-in-time integrity).
   - **Day 11 (Complete):** Bollinger Bands technical indicator (middle, upper, lower bands, bandwidth, percent B, configurable window/multiplier/ddof, safe zero-denominator handling).
   - **Day 12 (Complete):** Volatility and momentum technical features: Average True Range (ATR-14 with Wilder's recurrence and first-session policy) and Rate of Change (ROC-10 with safe division and flat-price zero handling).
-  - **Day 13 (Planned):** Next scheduled milestone phase (candlestick pattern features).
+  - **Day 13 (Complete):** Candlestick feature engine (signed/abs body, range, upper/lower wicks, normalizing ratios, close location, return %, direction, zero-range safe division, physical geometry validation, pipeline integration).
+  - **Day 14 (Planned):** Trend and regime detection engine / technical feature matrix assembly.
+
 
 
 

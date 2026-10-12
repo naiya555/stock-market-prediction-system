@@ -440,4 +440,49 @@ This document formalizes the architectural decisions made on Day 1. All future i
      - ROC measures historical price momentum and velocity; it does not constitute a guaranteed directional trading signal.
 - **Consequences:** Guarantees leak-free, mathematically verified ATR and ROC calculations adhering to canonical formulas, Wilder's smoothing recurrence, and robust edge-case validation.
 
+---
+
+## ADR 40: Candlestick Feature Engineering Architecture, Geometric Wick-Body Partitioning, and Non-Predictive Intra-Session Price Dynamics
+- **Status:** Accepted
+- **Context:** Downstream numerical machine learning models require tabular feature representations of price action dynamics occurring within individual trading sessions. While moving averages and multi-session indicators capture trend and momentum across days, candlestick features capture intra-session supply and demand balance, rejection of price extremes (wicks), and closing conviction (body and close location). Naive implementations often suffer from:
+  1. Inconsistent definitions of candle body, range, and upper/lower wicks across bullish and bearish regimes.
+  2. Division-by-zero crashes or NaN explosions during flat or zero-range trading sessions where $High == Low$.
+  3. Failure to validate physical OHLC candle geometry ($High \ge \max(Open, Close)$, $Low \le \min(Open, Close)$) leading to negative wicks or impossible close locations.
+  4. False claims of predictive certainty: labeling candle shapes (e.g. hammers, engulfing bars, dojis) as guaranteed trading signals rather than neutral quantitative features.
+  5. Inconsistent container naming, missing multi-symbol isolation, or accidental mutation of raw canonical records.
+- **Decision:**
+  1. **Canonical Geometric Formulations:**
+     - For each valid OHLC candle observation:
+       - Signed Body: $Close - Open$
+       - Absolute Body: $|Close - Open|$
+       - Candle Range: $High - Low$
+       - Upper Wick: $High - \max(Open, Close)$
+       - Lower Wick: $\min(Open, Close) - Low$
+       - Body-to-Range Ratio: $\frac{|Close - Open|}{High - Low}$ when $Range > 0$ (evaluates safely to `None` when $Range = 0$).
+       - Upper-Wick-to-Range Ratio: $\frac{UpperWick}{High - Low}$ when $Range > 0$ (evaluates safely to `None` when $Range = 0$).
+       - Lower-Wick-to-Range Ratio: $\frac{LowerWick}{High - Low}$ when $Range > 0$ (evaluates safely to `None` when $Range = 0$).
+       - Close Location within Range: $\frac{Close - Low}{High - Low}$ when $Range > 0$ (evaluates safely to `None` when $Range = 0$).
+       - Body Return Percentage: $\left(\frac{Close}{Open} - 1\right) \times 100$ when $Open > 0$ (evaluates safely to `None` when $Open \le 0$).
+       - Candle Direction: `bullish` if $Close > Open$, `bearish` if $Close < Open$, and `neutral` if $Close == Open$.
+  2. **Geometric Partition & Ratio Invariants:**
+     - The calculation preserves the exact physical partition identity:
+       $$Body_{abs} + UpperWick + LowerWick = Range$$
+     - When $Range > 0$, the normalized ratio partition identity holds:
+       $$Ratio_{body} + Ratio_{upper} + Ratio_{lower} = 1.0$$
+     - All ratios and the close location property are mathematically bounded in $[0.0, 1.0]$.
+  3. **Safe Zero-Range & Invalid Geometry Handling:**
+     - Zero-range sessions ($High == Low == Open == Close$) preserve valid zero dimensions ($Body=0.0$, $Range=0.0$, $Upper=0.0$, $Lower=0.0$), evaluate body return to `0.0%`, assign direction `neutral`, and set undefined zero-denominator ratios safely to `None`.
+     - Invalid geometry ($High < Low$, $High < \max(Open, Close)$, $Low > \min(Open, Close)$) or non-finite/non-positive prices are safely masked with `None` across all calculated features.
+  4. **Strict Point-in-Time Integrity & Multi-Symbol Isolation:**
+     - Calculations depend exclusively on contemporaneous OHLC values of the current bar; zero lookahead or future observations affect earlier features.
+     - `compute_candlestick_features` isolates records by ticker symbol and sorts chronologically by timestamp ascending.
+     - Raw `MarketOHLCV` records are treated as immutable and never mutated.
+  5. **Container & Pipeline Integration:**
+     - Created `CandlestickFeatures` frozen dataclass with `.to_dict()` and convenience properties (`is_bullish`, `is_bearish`, `is_neutral`, `.body`, `.range`, etc.).
+     - Integrated candlestick features into `MovingAverageFeatures` (both attribute access and `.to_dict()` serialization).
+     - Extended `MarketDataPipelineResult` with `candlesticks: List[CandlestickFeatures]`, `.to_candlestick_dicts()`, and `"candlestick_count"` in summary dictionary.
+  6. **Non-Predictive Baseline Disclaimer:**
+     - Candlestick features are strictly quantitative representations of single-bar geometry; they do not constitute guaranteed directional trading signals or predictive forecasts.
+- **Consequences:** Guarantees leak-free, mathematically verified candlestick features adhering to strict geometric validation, safe zero-denominator handling, and seamless pipeline integration.
+
 

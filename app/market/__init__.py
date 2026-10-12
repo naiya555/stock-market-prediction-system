@@ -20,6 +20,12 @@ from app.market.indicators import (
     compute_moving_averages,
     compute_technical_indicators,
 )
+from app.market.candlestick import (
+    CandlestickFeatures,
+    calculate_candlestick_features,
+    calculate_single_candlestick,
+    compute_candlestick_features,
+)
 from app.market.pipeline import (
     MarketDataPipelineResult,
     process_market_data,
@@ -67,6 +73,10 @@ __all__ = [
     "calculate_true_range",
     "calculate_atr",
     "calculate_roc",
+    "CandlestickFeatures",
+    "calculate_candlestick_features",
+    "calculate_single_candlestick",
+    "compute_candlestick_features",
     "compute_moving_averages",
     "compute_technical_indicators",
     "MarketDataPipelineResult",

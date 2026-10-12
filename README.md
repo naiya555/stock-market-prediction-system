@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 12: Volatility and Momentum Features: ATR + ROC  
+> **Status:** Ongoing Project — Day 13: Candlestick Feature Engine  
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -26,7 +26,7 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
 When fully developed, the end-user workflow will operate as follows:
 
 1. **User Interaction:** Select an Indian ticker (e.g., `RELIANCE`, `TCS`, `INFY`) and request a prediction.
-2. **Data Orchestration:** Historical OHLCV, technical indicators, current live movement, market breadth, and sector/NIFTY context are retrieved.
+2. **Data Orchestration:** Historical OHLCV, technical indicators, candlestick features, current live movement, market breadth, and sector/NIFTY context are retrieved.
 3. **Information Pipelines:** Real-time financial news and macroeconomic/regulatory events are collected, deduplicated, and timestamp-indexed.
 4. **Independent Model Evaluation:**
    - **Numerical ML:** A gradient-boosted time-series model (e.g., XGBoost / LightGBM) computes expected price movement and directional probability.
@@ -43,7 +43,7 @@ When fully developed, the end-user workflow will operate as follows:
 - **`app/api/`**: FastAPI application endpoints and route handlers (planned).
 - **`app/core/`**: Centralized configuration (`config.py`), logging foundation (`logging_config.py`), and canonical schema contracts (`schemas.py`).
 - **`app/database/`**: Relational database persistence (SQLite initially, PostgreSQL migration path).
-- **`app/market/`**: Market data acquisition, cleaning, technical feature engineering (returns, volatility, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC), market breadth, pipeline orchestration, and visualization.
+- **`app/market/`**: Market data acquisition, cleaning, technical feature engineering (returns, volatility, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features), market breadth, pipeline orchestration, and visualization.
 - **`app/news/`**: Financial news ingestion, deduplication, and entity linking.
 - **`app/nlp/`**: FinBERT sentiment scoring and textual analysis.
 - **`app/prediction/`**: Numerical ML predictor, LLM predictor, and ensemble synthesis.
@@ -52,9 +52,9 @@ When fully developed, the end-user workflow will operate as follows:
 
 ---
 
-## 4. Current Status: Day 12 (Volatility and Momentum Features: ATR + ROC)
+## 4. Current Status: Day 13 (Candlestick Feature Engine)
 
-Day 12 implements Average True Range (ATR) and Rate of Change (ROC) technical indicators on top of the technical indicator suite, confirms full point-in-time integrity, safe zero-denominator handling, and real-data verification on `BHARTIARTL.NS`.
+Day 13 implements a reusable, typed candlestick feature engine calculating single-session OHLC geometric properties, wick and body dimensions, ratios, close location, percentage intra-session return, and candle direction. It guarantees strict point-in-time calculation, safe zero-denominator handling, and real-data verification on `BHARTIARTL.NS`.
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.
@@ -83,51 +83,41 @@ Day 12 implements Average True Range (ATR) and Rate of Change (ROC) technical in
   - Exponential Moving Average (`calculate_ema`) with recursive smoothing factor $\alpha = \frac{2}{W + 1}$ and `allow_negative` parameter for oscillator series.
   - Relative Strength Index (`calculate_rsi`) using Wilder's smoothing method ($\alpha = 1 / W$) with configurable periods (standard 14-session default).
   - Moving Average Convergence Divergence (`calculate_macd`):
-    - Fast EMA period: 12 default ($EMA_{12}$).
-    - Slow EMA period: 26 default ($EMA_{26}$).
-    - Signal EMA period: 9 default ($EMA_9$).
-    - MACD Line: $EMA_{fast} - EMA_{slow}$.
-    - Signal Line: 9-period EMA of the MACD line.
-    - MACD Histogram: $MACD - Signal$ (verified strictly via floating-point identity).
-    - Unpacking protocol: `macd, signal, hist = calculate_macd(prices)`.
-    - Dedicated immutable container `MACDSeries` supporting both sequence unpacking and attribute access.
+    - Fast EMA period: 12 default ($EMA_{12}$); Slow EMA period: 26 default ($EMA_{26}$); Signal EMA period: 9 default ($EMA_9$).
+    - MACD Line, Signal Line, and MACD Histogram with 3-tuple sequence unpacking and dedicated `MACDSeries` container.
   - Bollinger Bands (`calculate_bollinger_bands`):
-    - Default window: 20 sessions; default multiplier: 2.0; default degrees of freedom: `ddof=0` (canonical population standard deviation).
-    - Middle Band: 20-session rolling SMA of closing prices.
-    - Upper Band: $Middle + multiplier \times \sigma$.
-    - Lower Band: $Middle - multiplier \times \sigma$.
-    - Band Width: $(Upper - Lower) / Middle$ (evaluates safely to `0.0` for flat series, `None` for non-positive middle band).
-    - Percent B: $(Close - Lower) / (Upper - Lower)$ (evaluates safely to `None` for flat series where $Upper == Lower$).
-    - Unpacking protocol: `middle, upper, lower, bandwidth, percent_b = calculate_bollinger_bands(prices)`.
-    - Dedicated immutable container `BollingerBandsSeries` supporting sequence unpacking and attribute access (`.middle`, `.upper`, `.lower`, `.bandwidth`, `.band_width`, `.percent_b`).
+    - Default window: 20 sessions; multiplier: 2.0; population standard deviation (`ddof=0`).
+    - Middle Band, Upper Band, Lower Band, Band Width, and %B with 5-tuple sequence unpacking and `BollingerBandsSeries` container.
   - Average True Range (`calculate_atr` & `calculate_true_range`):
-    - True Range: $\max(High_t - Low_t, |High_t - Close_{t-1}|, |Low_t - Close_{t-1}|)$.
-    - First session initialization policy ($t=0$): uses $High_0 - Low_0$ when valid.
+    - True Range: $\max(High_t - Low_t, |High_t - Close_{t-1}|, |Low_t - Close_{t-1}|)$. First session policy uses $High_0 - Low_0$.
     - Wilder's smoothing recurrence: initial ATR seeded with arithmetic mean of first 14 TR values ($t=13$), followed by $ATR_t = ((period - 1) \times ATR_{t-1} + TR_t) / period$.
-    - Configurable positive integer period (default: 14 sessions).
-    - Non-directional volatility metric: strictly measures trading range magnitude without directional bias.
   - Rate of Change (`calculate_roc`):
-    - Formula: $ROC_t = ((Close_t / Close_{t-n}) - 1) \times 100$.
-    - Configurable positive integer lookback (default: 10 sessions).
-    - Safe non-positive price and division-by-zero protection; flat series evaluates safely to `0.0`.
-    - Relative momentum metric: measures price velocity over the specified lookback window.
-  - Explicit RSI edge-case handling: neutral 50.0 for flat prices, 100.0 for pure gains, 0.0 for pure losses; bounded strictly within $[0.0, 100.0]$.
-  - Multi-session indicator orchestrator (`compute_moving_averages` / `compute_technical_indicators`) producing immutable `MovingAverageFeatures` dataclasses with `rsi_14`, `macd_line`, `signal_line`, `histogram`, `bollinger_middle`, `bollinger_upper`, `bollinger_lower`, `bollinger_bandwidth`, `bollinger_percent_b`, `atr_14`, and `roc_10` properties and flat `.to_dict()` export.
-  - Strict point-in-time guarantees preventing future-data leakage.
-  - Un-warmed window sessions ($t < W - 1$ for MAs and Bollinger Bands, $t < W$ for RSI, $t < slow - 1$ for MACD line, $t < slow + signal - 2$ for Signal line and Histogram, $t < 13$ for ATR-14, $t < 10$ for ROC-10) safely return `None`.
-  - Raw price basis: strictly unadjusted closing prices (`close`).
-  - Non-predictive disclaimer: band touches and indicator extremes are quantitative features, never guaranteed buy or sell signals.
+    - Formula: $ROC_t = ((Close_t / Close_{t-n}) - 1) \times 100$. Default 10 sessions.
+- Candlestick Feature Engine (`app/market/candlestick.py`):
+  - Signed Body: $Close - Open$.
+  - Absolute Body: $|Close - Open|$.
+  - Candle Range: $High - Low$.
+  - Upper Wick: $High - \max(Open, Close)$.
+  - Lower Wick: $\min(Open, Close) - Low$.
+  - Body-to-Range Ratio: $|Close - Open| / (High - Low)$, when $Range > 0$ (else `None`).
+  - Upper-Wick-to-Range Ratio: $UpperWick / (High - Low)$, when $Range > 0$ (else `None`).
+  - Lower-Wick-to-Range Ratio: $LowerWick / (High - Low)$, when $Range > 0$ (else `None`).
+  - Close Location within Range: $(Close - Low) / (High - Low)$, when $Range > 0$ (else `None`).
+  - Body Return Percentage: $((Close / Open) - 1) \times 100$, when $Open > 0$ (else `None`).
+  - Candle Direction: `bullish` if $Close > Open$, `bearish` if $Close < Open$, and `neutral` if $Close == Open$.
+  - Geometric Partition Invariant: $Body_{abs} + UpperWick + LowerWick = Range$.
+  - Ratio Partition Invariant: $Ratio_{body} + Ratio_{upper} + Ratio_{lower} = 1.0$ (when $Range > 0$).
+  - Safe zero-range handling: zero body and range values are preserved; ratios evaluate strictly to `None`; direction is `neutral`.
+  - Physical OHLC geometry validation: verifies $High \ge Low$, $High \ge \max(Open, Close)$, and $Low \le \min(Open, Close)$; invalid geometry safely masks features with `None`.
+  - Dedicated immutable typed container `CandlestickFeatures` with `.to_dict()` serialization and convenience properties.
+  - Multi-symbol isolation and chronological sorting via `compute_candlestick_features`.
+  - Non-predictive disclaimer: candlestick features quantify single-bar geometry without asserting predictive price direction.
 - Market Data Pipeline Orchestrator (`app/market/pipeline.py`):
-  - Unified pipeline connecting provider retrieval, data cleaning, return/volatility feature computation, and technical indicators (`run_market_data_pipeline` and `process_market_data`).
-  - Supports configurable `macd_fast=12`, `macd_slow=26`, `macd_signal=9`, `bb_window=20`, `bb_multiplier=2.0`, `bb_ddof=0`, `atr_periods=(14,)`, `roc_periods=(10,)` parameters with complete feature preservation.
-  - Supports flexible historical range lookbacks via `lookback_days` (defaulting to 180 days / ~6 months, or 365 days / ~12 months) when `start_date` is omitted, while retaining deterministic explicit date support.
-  - Immutable pipeline container (`MarketDataPipelineResult`) preserving raw records, cleaned records, cleaning summary, return features, and technical indicators.
+  - Unified pipeline connecting provider retrieval, data cleaning, return/volatility feature computation, technical indicators, and candlestick features (`run_market_data_pipeline` and `process_market_data`).
+  - Immutable pipeline container (`MarketDataPipelineResult`) preserving raw records, cleaned records, cleaning summary, return features, technical indicators, and candlestick features (`result.candlesticks`, `.to_candlestick_dicts()`, and `.to_dict()`).
 - Historical Market Visualizer (`app/market/visualizer.py`):
   - Headless Matplotlib rendering (`Agg` backend) generating publication-quality PNG charts.
-  - Historical closing price chart (`plot_closing_prices`) with formatted INR pricing and session date labels.
-  - Daily percentage returns chart (`plot_daily_returns`) with color-coded positive/negative bars and zero baseline.
-  - Batch chart generator (`generate_market_charts`) saving to `data/processed/charts/` (strictly ignored by `.gitignore`).
-- 145 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, and visualizer.
+- 158 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, and visualizer.
 
 ---
 

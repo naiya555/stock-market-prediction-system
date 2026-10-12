@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Sequence
 from app.core.logging_config import get_logger
 from app.core.schemas import MarketOHLCV
 from app.market.cleaner import CleaningSummary, clean_market_data
+from app.market.candlestick import CandlestickFeatures, compute_candlestick_features
 from app.market.indicators import MovingAverageFeatures, compute_moving_averages
 from app.market.providers.base import BaseMarketDataProvider
 from app.market.providers.yfinance_provider import YFinanceProvider
@@ -30,6 +31,7 @@ class MarketDataPipelineResult:
     cleaning_summary: CleaningSummary
     features: List[ReturnFeatures]
     indicators: List[MovingAverageFeatures] = field(default_factory=list)
+    candlesticks: List[CandlestickFeatures] = field(default_factory=list)
 
     @property
     def is_empty(self) -> bool:
@@ -49,6 +51,10 @@ class MarketDataPipelineResult:
         """Convert computed moving average features to flat dictionary list."""
         return [ind.to_dict() for ind in self.indicators]
 
+    def to_candlestick_dicts(self) -> List[Dict[str, Any]]:
+        """Convert computed candlestick features to flat dictionary list."""
+        return [c.to_dict() for c in self.candlesticks]
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert entire pipeline summary to dictionary for logging and audits."""
         return {
@@ -57,6 +63,7 @@ class MarketDataPipelineResult:
             "cleaned_count": len(self.cleaned_records),
             "feature_count": len(self.features),
             "indicator_count": len(self.indicators),
+            "candlestick_count": len(self.candlesticks),
             "cleaning_summary": self.cleaning_summary.to_dict(),
         }
 
@@ -135,13 +142,16 @@ def process_market_data(
         roc_periods=roc_periods,
     )
 
+    candlesticks = compute_candlestick_features(cleaned_list)
+
     logger.info(
-        "Pipeline completed for %s: %d raw -> %d clean -> %d feature records -> %d indicator records",
+        "Pipeline completed for %s: %d raw -> %d clean -> %d feature records -> %d indicator records -> %d candlestick records",
         symbol or "EMPTY",
         len(raw_list),
         len(cleaned_list),
         len(features),
         len(indicators),
+        len(candlesticks),
     )
 
     return MarketDataPipelineResult(
@@ -151,6 +161,7 @@ def process_market_data(
         cleaning_summary=cleaning_sum,
         features=features,
         indicators=indicators,
+        candlesticks=candlesticks,
     )
 
 

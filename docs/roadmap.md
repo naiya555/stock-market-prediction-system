@@ -41,7 +41,8 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 
 ### Phase 3: Technical Feature Engine
 - Implement time-series features: Simple and Exponential Moving Averages (SMA/EMA).
-- Momentum and volatility indicators: RSI, MACD, ATR, Bollinger Bands.
+- Momentum and volatility indicators: RSI, MACD, ATR, Bollinger Bands, ROC.
+- Candlestick geometric features: body, range, wicks, normalizing ratios, close location, return %, and direction.
 - Continuous returns, volume z-scores, and rolling drawdown measures.
 
 ### Phase 4: First ML Model

@@ -16,6 +16,12 @@ import pandas as pd
 
 from app.core.logging_config import get_logger
 from app.core.schemas import MarketOHLCV
+from app.market.candlestick import (
+    CandlestickFeatures,
+    calculate_candlestick_features,
+    calculate_single_candlestick,
+    compute_candlestick_features,
+)
 
 logger = get_logger(__name__)
 
@@ -96,6 +102,17 @@ class MovingAverageFeatures:
     bb_percent_b: Optional[float] = None
     atr: Dict[int, Optional[float]] = field(default_factory=dict)
     roc: Dict[int, Optional[float]] = field(default_factory=dict)
+    candle_body: Optional[float] = None
+    candle_body_abs: Optional[float] = None
+    candle_range: Optional[float] = None
+    candle_upper_wick: Optional[float] = None
+    candle_lower_wick: Optional[float] = None
+    candle_body_ratio: Optional[float] = None
+    candle_upper_wick_ratio: Optional[float] = None
+    candle_lower_wick_ratio: Optional[float] = None
+    candle_close_location: Optional[float] = None
+    candle_body_return_pct: Optional[float] = None
+    candle_direction: Optional[str] = None
 
     @property
     def sma_5(self) -> Optional[float]:
@@ -207,6 +224,17 @@ class MovingAverageFeatures:
             out[f"atr_{p}"] = val
         for p, val in sorted(self.roc.items()):
             out[f"roc_{p}"] = val
+        out["candle_body"] = self.candle_body
+        out["candle_body_abs"] = self.candle_body_abs
+        out["candle_range"] = self.candle_range
+        out["candle_upper_wick"] = self.candle_upper_wick
+        out["candle_lower_wick"] = self.candle_lower_wick
+        out["candle_body_ratio"] = self.candle_body_ratio
+        out["candle_upper_wick_ratio"] = self.candle_upper_wick_ratio
+        out["candle_lower_wick_ratio"] = self.candle_lower_wick_ratio
+        out["candle_close_location"] = self.candle_close_location
+        out["candle_body_return_pct"] = self.candle_body_return_pct
+        out["candle_direction"] = self.candle_direction
         return out
 
 
@@ -1000,6 +1028,9 @@ def compute_moving_averages(
         for p in roc_periods:
             roc_results[p] = calculate_roc(prices, period=p)
 
+        # Compute Candlestick Features
+        candle_features = calculate_candlestick_features(sorted_bars)
+
         # Assemble per-bar feature records
         for i, bar in enumerate(sorted_bars):
             bar_smas = {w: sma_results[w][i] for w in sma_windows}
@@ -1007,6 +1038,7 @@ def compute_moving_averages(
             bar_rsi = {p: rsi_results[p][i] for p in rsi_periods}
             bar_atr = {p: atr_results[p][i] for p in atr_periods}
             bar_roc = {p: roc_results[p][i] for p in roc_periods}
+            c_feat = candle_features[i]
 
             features = MovingAverageFeatures(
                 symbol=bar.symbol,
@@ -1025,6 +1057,17 @@ def compute_moving_averages(
                 bb_percent_b=bb_series.percent_b[i],
                 atr=bar_atr,
                 roc=bar_roc,
+                candle_body=c_feat.candle_body,
+                candle_body_abs=c_feat.candle_body_abs,
+                candle_range=c_feat.candle_range,
+                candle_upper_wick=c_feat.candle_upper_wick,
+                candle_lower_wick=c_feat.candle_lower_wick,
+                candle_body_ratio=c_feat.candle_body_ratio,
+                candle_upper_wick_ratio=c_feat.candle_upper_wick_ratio,
+                candle_lower_wick_ratio=c_feat.candle_lower_wick_ratio,
+                candle_close_location=c_feat.candle_close_location,
+                candle_body_return_pct=c_feat.candle_body_return_pct,
+                candle_direction=c_feat.candle_direction,
             )
             all_features.append(features)
 

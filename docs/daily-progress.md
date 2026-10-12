@@ -1077,4 +1077,104 @@ Executed `scripts/verify_indicators.py` on real `BHARTIARTL.NS` historical data:
 - Current indicator suite includes SMA, EMA, RSI, MACD, Bollinger Bands, ATR, and ROC.
 - Next scheduled scope (Day 13): Candlestick pattern recognition and feature engineering.
 
+---
+
+## Day 13: Candlestick Feature Engine
+
+### Goal
+Implement a reusable, typed candlestick feature engine capturing single-session OHLC geometric properties, wick and body dimensions, ratios, close location, percentage intra-session return, and candle direction; enforce strict point-in-time calculation, safe zero-denominator handling, and physical OHLC geometry validation; integrate into the market data pipeline and test against real data for `BHARTIARTL.NS`.
+
+### Pre-Checks
+- Current branch: `main`, clean working tree at commit `111632102865bf16a7953825dd1ae721b1df56e7`.
+- Verified 145 passing tests prior to starting.
+- Roo Code remained disabled.
+
+### What Was Built
+1. **Candlestick Feature Module (`app/market/candlestick.py`):**
+   - Implemented immutable `CandlestickFeatures` dataclass encapsulating:
+     - `symbol: str`, `timestamp: datetime`
+     - `open`, `high`, `low`, `close`
+     - `candle_body = Close - Open` (signed)
+     - `candle_body_abs = abs(Close - Open)`
+     - `candle_range = High - Low`
+     - `candle_upper_wick = High - max(Open, Close)`
+     - `candle_lower_wick = min(Open, Close) - Low`
+     - `candle_body_ratio = candle_body_abs / candle_range` when $Range > 0$ (else `None`)
+     - `candle_upper_wick_ratio = candle_upper_wick / candle_range` when $Range > 0$ (else `None`)
+     - `candle_lower_wick_ratio = candle_lower_wick / candle_range` when $Range > 0$ (else `None`)
+     - `candle_close_location = (Close - Low) / (High - Low)` when $Range > 0$ (else `None`)
+     - `candle_body_return_pct = ((Close / Open) - 1.0) * 100.0` when $Open > 0$ (else `None`)
+     - `candle_direction`: `"bullish"` if $Close > Open$, `"bearish"` if $Close < Open$, and `"neutral"` if $Close == Open$.
+     - Convenience aliases: `.body`, `.body_abs`, `.range`, `.upper_wick`, `.lower_wick`, `.body_ratio`, `.upper_wick_ratio`, `.lower_wick_ratio`, `.close_location`, `.body_return_pct`, `.direction`, `.is_bullish`, `.is_bearish`, `.is_neutral`.
+     - `.to_dict()` serializing all features with ISO formatted timestamps.
+   - Core functional calculator: `calculate_candlestick_features` supporting either a sequence of `MarketOHLCV` bars or separate parallel float sequences.
+   - Single-bar calculator: `calculate_single_candlestick`.
+   - Multi-symbol orchestrator: `compute_candlestick_features` providing ticker isolation and chronological sorting by timestamp ascending.
+2. **Mathematical Invariants & Geometry Validation:**
+   - Physical OHLC geometry validation: verifies $High \ge Low$, $High \ge \max(Open, Close)$, and $Low \le \min(Open, Close)$. Invalid geometry, non-positive prices, or non-finite numbers safely mask all features with `None`.
+   - Safe zero-range policy: for flat sessions ($High == Low == Open == Close$), valid zero dimensions ($0.0$) are preserved, body return evaluates to $0.0\%$, candle direction evaluates to `"neutral"`, and undefined ratios evaluate strictly to `None` without division-by-zero crashes.
+   - Geometric partition invariant: $Body_{abs} + UpperWick + LowerWick = Range$.
+   - Ratio partition invariant: $Ratio_{body} + Ratio_{upper} + Ratio_{lower} = 1.0$ (when $Range > 0$).
+   - Strict point-in-time calculation: strictly uses contemporaneous candle prices; zero future observations affect earlier features.
+   - Non-predictive disclaimer: candlestick features represent single-bar price action and geometry without asserting predictive signals or guaranteed market direction.
+3. **Feature Container & Pipeline Integration:**
+   - Extended `MovingAverageFeatures` in `app/market/indicators.py` with candle fields and `.to_dict()` keys.
+   - Updated `compute_moving_averages` to compute candlestick features per bar.
+   - Extended `MarketDataPipelineResult` in `app/market/pipeline.py` with `candlesticks: List[CandlestickFeatures]`, `.to_candlestick_dicts()`, and `"candlestick_count"` in summary dictionary.
+   - Updated `process_market_data` to compute candlestick features and attach to pipeline result.
+4. **Package Exports (`app/market/__init__.py`):**
+   - Cleanly exported `CandlestickFeatures`, `calculate_candlestick_features`, `calculate_single_candlestick`, `compute_candlestick_features`.
+5. **Application Entry Point Update (`main.py`):**
+   - Added `print("Day 13 candlestick features ready")`.
+6. **Real-Data Verification Script (`scripts/verify_candlestick.py`):**
+   - Built dedicated verification script testing real market data, edge cases, zero-range handling, and regression scenarios.
+
+### Real Data Verification
+Executed `scripts/verify_candlestick.py` on real `BHARTIARTL` historical market data:
+- **Part 1: Expanded Historical Range (lookback_days=180, ~6 months):**
+  - Raw bars collected: 124
+  - Cleaned bars produced: 124
+  - Candlestick records: 124
+  - Date Range: 2026-04-15 to 2026-10-12 (124 trading sessions)
+  - Chronological ordering & 1:1 alignment: Verified across all 124 sessions.
+  - Mathematical identities verified:
+    - Geometric partition identity ($Body_{abs} + Upper + Lower == Range$) verified on all 124 bars.
+    - Ratio partition identity ($BodyRatio + UpperRatio + LowerRatio == 1.0$) verified on all non-zero bars.
+    - Close location within bounds $[0.0, 1.0]$ verified on all bars.
+    - Candle directions distribution: 57 Bullish, 67 Bearish, 0 Neutral.
+  - Recent Observations:
+    - 2026-10-06: O=₹1777.00, H=₹1810.50, L=₹1771.40, C=₹1810.50 -> BULLISH (body=+33.50, range=39.10, body_ratio=0.857, ret=+1.89%)
+    - 2026-10-07: O=₹1823.00, H=₹1854.70, L=₹1810.50, C=₹1833.90 -> BULLISH (body=+10.90, range=44.20, body_ratio=0.247, ret=+0.60%)
+    - 2026-10-08: O=₹1847.80, H=₹1847.80, L=₹1789.70, C=₹1804.60 -> BEARISH (body=-43.20, range=58.10, body_ratio=0.744, ret=-2.34%)
+    - 2026-10-09: O=₹1804.60, H=₹1820.00, L=₹1801.40, C=₹1805.10 -> BULLISH (body=+0.50, range=18.60, body_ratio=0.027, ret=+0.03%)
+    - 2026-10-12: O=₹1805.30, H=₹1809.00, L=₹1758.60, C=₹1770.00 -> BEARISH (body=-35.30, range=50.40, body_ratio=0.700, ret=-1.96%)
+- **Part 2: Edge-Case, Zero-Range & Geometry Verification:**
+  - Zero-range candle safe division: dimensions=0.0, ratios=None, direction='neutral' passed.
+  - Invalid geometry (High < Close, Low > Close) correctly masked with None.
+  - Non-positive prices correctly masked with None.
+- **Part 3: Regression Verification (original 6-session fixture 2026-09-01 to 2026-09-08):**
+  - Clean bars: 6, all 6 bars produced valid candlestick features.
+  - Verified exit code 0 across both `scripts/verify_candlestick.py` and `scripts/verify_indicators.py`.
+
+### Tests
+- Added 13 new unit tests in `tests/test_candlestick.py`.
+- **Full Test Suite Execution:**
+  - **158 passed in 4.85s** (`pytest -v`). Zero external network dependencies, zero regressions.
+
+### Review
+- **CodeRabbit:** CodeRabbit CLI is not installed in the local environment; noted accurately. Clean senior developer review conducted following Ponytail mode: type safety, mathematical invariants, zero code duplication, zero unnecessary dependencies, and safe edge-case division.
+- **Roo Code:** Remained disabled.
+- **Ponytail / Senior Dev Mode:** Concise pure Python calculations adhering to mathematical definitions, zero bloat, shortest working diff with complete test verification.
+
+### Documentation
+- Updated `README.md` to Day 13 status with 158 passing tests.
+- Updated `docs/architecture.md` Section 4.8 with Candlestick Feature Engine formulation and schedule boundaries.
+- Updated `docs/decisions.md` with ADR 40.
+- Updated `docs/daily-progress.md` with Day 13 development log.
+
+### Known Limitations & Next Steps
+- Current indicator suite includes SMA, EMA, RSI, MACD, Bollinger Bands, ATR, ROC, and single-bar candlestick features.
+- Next scheduled scope (Day 14): Trend and regime detection engine / technical feature matrix assembly.
+
+
 
