@@ -31,6 +31,16 @@ from app.market.pipeline import (
     process_market_data,
     run_market_data_pipeline,
 )
+from app.market.trend import (
+    SwingPoint,
+    TrendAnalysisResult,
+    TrendClassification,
+    analyze_market_trend,
+    classify_market_structure,
+    compute_rolling_trends,
+    identify_swings,
+    label_market_structure,
+)
 from app.market.providers.base import BaseMarketDataProvider
 from app.market.providers.yfinance_provider import YFinanceProvider
 from app.market.returns import (
@@ -82,6 +92,14 @@ __all__ = [
     "MarketDataPipelineResult",
     "process_market_data",
     "run_market_data_pipeline",
+    "SwingPoint",
+    "TrendAnalysisResult",
+    "TrendClassification",
+    "identify_swings",
+    "label_market_structure",
+    "classify_market_structure",
+    "analyze_market_trend",
+    "compute_rolling_trends",
     "plot_closing_prices",
     "plot_daily_returns",
     "generate_market_charts",

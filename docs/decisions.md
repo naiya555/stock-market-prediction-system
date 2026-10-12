@@ -485,4 +485,38 @@ This document formalizes the architectural decisions made on Day 1. All future i
      - Candlestick features are strictly quantitative representations of single-bar geometry; they do not constitute guaranteed directional trading signals or predictive forecasts.
 - **Consequences:** Guarantees leak-free, mathematically verified candlestick features adhering to strict geometric validation, safe zero-denominator handling, and seamless pipeline integration.
 
+---
 
+## ADR 41: Trend Engine Architecture, Swing Confirmation Timing, and Market Structure Classification
+- **Status:** Accepted
+- **Context:** Downstream technical feature engineering and baseline price classification require identifying broader market regimes (uptrend, downtrend, or sideways) from historical OHLC price action. Naive swing detection or moving-average heuristics often suffer from:
+  1. Look-ahead bias: labeling a historical price peak or trough as a "swing point" at the exact moment it occurs, ignoring that confirmation requires subsequent candles ($t + k$).
+  2. Ambiguous trend definitions: misclassifying consolidation, broadening patterns, or insufficient history as sideways or directional trends without explicit rules.
+  3. Insufficient data confusion: mislabeling warm-up periods or sparse data as `SIDEWAYS` rather than explicitly reporting `None` / `INSUFFICIENT_DATA`.
+  4. Flaky tie-breaking on flat tops/bottoms: duplicate or consecutive identical swing extremes corrupting sequence counts.
+  5. Tight coupling to execution or forecasting: conflating descriptive market structure with directional price predictions or trading advice.
+- **Decision:**
+  1. **Deterministic Local Extreme Rule & Configurable Flank Window:**
+     - A bar at index $t$ is an identified **Swing High** if its `high` is strictly greater than all preceding $k$ bars ($t - k \dots t - 1$) and greater than or equal to all subsequent $k$ bars ($t + 1 \dots t + k$).
+     - A bar at index $t$ is an identified **Swing Low** if its `low` is strictly less than all preceding $k$ bars ($t - k \dots t - 1$) and less than or equal to all subsequent $k$ bars ($t + 1 \dots t + k$).
+     - Asymmetric strictness on the left flank prevents duplicate consecutive pivots during flat multi-bar extremes.
+     - Default window $k=2$ is fully configurable via parameter `swing_window`.
+  2. **Explicit Confirmation Timing & Look-Ahead Prevention:**
+     - A swing pivot occurring at bar index $t$ becomes confirmed strictly at bar index $t + k$.
+     - When analyzing historical data as-of cutoff index $T$, only swing points with `confirmation_index <= T` are considered confirmed and visible.
+     - Candidate pivots occurring within the trailing $k$ bars ($t > T - k$) remain unconfirmed and are invisible to point-in-time decision logic.
+  3. **Sequential Market Structure Labeling:**
+     - Confirmed swings are compared to the immediately preceding confirmed swing of the same type:
+       - Highs: Higher High (`HH` if $Price_n > Price_{n-1}$), Lower High (`LH` if $Price_n < Price_{n-1}$), Equal High (`EH` if $Price_n == Price_{n-1}$).
+       - Lows: Higher Low (`HL` if $Price_n > Price_{n-1}$), Lower Low (`LL` if $Price_n < Price_{n-1}$), Equal Low (`EL` if $Price_n == Price_{n-1}$).
+  4. **Strict Trend Classification Matrix:**
+     - Requires at least `min_swings` (default 2) confirmed swing highs and 2 confirmed swing lows. If fewer confirmed swings exist, classification evaluates to `None` with status `INSUFFICIENT_DATA`.
+     - `UPTREND`: Latest confirmed high is `HH` and latest confirmed low is `HL`.
+     - `DOWNTREND`: Latest confirmed high is `LH` and latest confirmed low is `LL`.
+     - `SIDEWAYS`: Sufficient confirmed swings exist, but structural relationships are mixed or conflicting (e.g. `HH` + `LL`, `LH` + `HL`, `EH`, `EL`).
+  5. **Point-in-Time Rolling Series Alignment:**
+     - Provided `compute_rolling_trends` which evaluates structure at each bar $t$ using exclusively historical data up to $t$, generating a 1:1 aligned sequence with zero future leakage.
+  6. **Pipeline Integration & Non-Predictive Baseline Disclaimer:**
+     - Integrated `trend: Optional[TrendAnalysisResult]` into `MarketDataPipelineResult` and `process_market_data` with complete dictionary serialization (`.to_dict()`).
+     - Explicitly documented that trend classifications represent descriptive structural geometry and do not constitute forward price predictions or trading recommendations.
+- **Consequences:** Guarantees deterministic, leak-free, typed market structure analysis and trend classification with zero lookahead bias, fully tested across synthetic fixtures, edge cases, and real market data.

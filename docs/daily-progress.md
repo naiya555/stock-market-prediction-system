@@ -1176,5 +1176,100 @@ Executed `scripts/verify_candlestick.py` on real `BHARTIARTL` historical market 
 - Current indicator suite includes SMA, EMA, RSI, MACD, Bollinger Bands, ATR, ROC, and single-bar candlestick features.
 - Next scheduled scope (Day 14): Trend and regime detection engine / technical feature matrix assembly.
 
+---
 
+## Day 14 - Trend Engine & Market Structure Analysis
 
+### Goal
+Implement a reusable, production-conscious Trend Engine that classifies historical stock price structure into `UPTREND`, `DOWNTREND`, or `SIDEWAYS`:
+1. Deterministic swing high and swing low identification from historical OHLC data with configurable flank window ($k$).
+2. Explicit swing confirmation timing ($t + k$) strictly preventing look-ahead bias and premature trend claims.
+3. Sequential market structure transition labeling: Higher High (`HH`), Higher Low (`HL`), Lower High (`LH`), Lower Low (`LL`).
+4. Strict trend classification rules:
+   - `UPTREND`: Sufficient Higher Highs and Higher Lows.
+   - `DOWNTREND`: Sufficient Lower Highs and Lower Lows.
+   - `SIDEWAYS`: Sufficient confirmed swings exist, but directional structure is mixed or consolidating.
+   - `None` (`INSUFFICIENT_DATA`): Safe representation when fewer than minimum required confirmed swings exist (never mislabeled as `SIDEWAYS`).
+5. Point-in-time rolling series alignment (`compute_rolling_trends`) with zero future leakage.
+6. Seamless pipeline integration into `MarketDataPipelineResult` and backward compatibility with all existing indicators.
+7. Unit tests and real-data verification on `BHARTIARTL.NS`.
+
+### Implementation
+1. **Trend Engine Core Module (`app/market/trend.py`):**
+   - Implemented `SwingPoint` dataclass: encapsulates `index`, `timestamp`, `price`, `swing_type` (`HIGH`/`LOW`), `confirmation_index` ($t + k$), `confirmation_timestamp`, `structure_label` (`HH`, `LH`, `HL`, `LL`), and `.to_dict()`.
+   - Implemented `TrendAnalysisResult` dataclass: encapsulates `symbol`, `as_of_timestamp`, `classification` (`UPTREND`, `DOWNTREND`, `SIDEWAYS`, or `None`), `status` (`CONFIRMED`, `INSUFFICIENT_DATA`), `swing_window`, `min_swings`, `total_bars`, `swing_highs`, `swing_lows`, `last_high_structure`, `last_low_structure`, boolean properties (`is_uptrend`, `is_downtrend`, `is_sideways`, `is_confirmed`), and `.to_dict()`.
+   - Implemented `identify_swings(bars, swing_window=2)`: Deterministic local extreme detector with asymmetric left/right flank comparison preventing duplicate consecutive pivots on flat tops/bottoms.
+   - Implemented `label_market_structure(swings)`: Labels consecutive confirmed swings as `HH`/`LH`/`EH` (highs) or `HL`/`LL`/`EL` (lows).
+   - Implemented `classify_market_structure(swing_highs, swing_lows, min_swings=2)`: Strictly applies market structure classification matrix with explicit `INSUFFICIENT_DATA` gating.
+   - Implemented `analyze_market_trend(bars, swing_window=2, min_swings=2, as_of_index=None)`: Evaluates market structure point-in-time up to cutoff `as_of_index`, strictly filtering out unconfirmed swings.
+   - Implemented `compute_rolling_trends(bars, swing_window=2, min_swings=2)`: Generates 1:1 aligned rolling trend classification sequence across all bars with zero lookahead bias.
+2. **Pipeline Integration (`app/market/pipeline.py`):**
+   - Extended `MarketDataPipelineResult` with `trend: Optional[TrendAnalysisResult] = None`.
+   - Updated `process_market_data` and `run_market_data_pipeline` to accept `swing_window=2` and `min_swings=2` and attach trend analysis to pipeline results.
+   - Updated pipeline serialization (`.to_dict()`) with `"trend"` details and `"trend_classification"`.
+3. **Package Exports (`app/market/__init__.py`):**
+   - Cleanly exported `SwingPoint`, `TrendAnalysisResult`, `TrendClassification`, `identify_swings`, `label_market_structure`, `classify_market_structure`, `analyze_market_trend`, `compute_rolling_trends`.
+4. **Application Entry Point Update (`main.py`):**
+   - Added `print("Day 14 trend engine ready")`.
+5. **Real-Data Verification Script (`scripts/verify_trend.py`):**
+   - Validates real data acquisition on `BHARTIARTL.NS`, chronological ordering, confirmed swing points, structural transitions, classification rules consistency, absence of lookahead leakage across temporal cutoffs, and rolling alignment.
+
+### Trend Classification Rules & Look-Ahead Bias Safeguards
+- **Confirmation Timing Rule:** A swing extreme occurring at bar $t$ requires $k$ subsequent bars to confirm; confirmation occurs strictly at bar $t + k$.
+- **Look-Ahead Prevention Rule:** In any point-in-time evaluation at index $T$, any pivot with confirmation index $> T$ is unconfirmed and strictly excluded from evidence.
+- **Classification Matrix:**
+  - `UPTREND`: Latest confirmed high is `HH` and latest confirmed low is `HL`.
+  - `DOWNTREND`: Latest confirmed high is `LH` and latest confirmed low is `LL`.
+  - `SIDEWAYS`: Confirmed swings $\ge min\_swings$, but mixed structure (e.g. `HH` + `LL`, `LH` + `HL`, `EH`, `EL`).
+  - `None` (`INSUFFICIENT_DATA`): Confirmed highs $< min\_swings$ or confirmed lows $< min\_swings$.
+- **Non-Predictive Baseline Disclaimer:** Trend classifications describe historical price action structure; they do not predict future returns, directional continuation, or provide trading signals.
+
+### Real Data Verification
+Executed `scripts/verify_trend.py` on real `BHARTIARTL` historical market data:
+- **Symbol:** `BHARTIARTL`
+- **Data Range:** 2026-04-15 to 2026-10-12 (124 usable historical sessions)
+- **Parameters:** `swing_window=2`, `min_swings=2`
+- **Results:**
+  - Confirmed Swing Highs: 14
+  - Confirmed Swing Lows: 18
+  - Latest High Structure: `LH` (Lower High at Bar 120, ₹1854.70 confirmed at Bar 122)
+  - Latest Low Structure: `LL` (Lower Low at Bar 117, ₹1726.30 confirmed at Bar 119)
+  - Trend Classification: `DOWNTREND` (satisfies `LH` + `LL` => `DOWNTREND`)
+- **Temporal Sub-Window Look-Ahead Leakage Test:** Passed on all sub-windows ($T = 41, 62, 119$). All visible swings strictly satisfied `confirmation_index <= T`.
+- **Rolling Series Alignment:** 124 bars evaluated, exactly aligned with static evaluation. Exit code: 0.
+
+### Tests
+- Created `tests/test_trend.py` with 14 comprehensive unit tests:
+  1. Uptrend with HH and HL
+  2. Downtrend with LH and LL
+  3. Sideways range-bound contracting triangle
+  4. Mixed broadening megaphone (HH + LL) handled as SIDEWAYS
+  5. Insufficient historical candles policy (None / INSUFFICIENT_DATA, never mislabeled as SIDEWAYS)
+  6. Missing, NaN, and non-finite values handled safely
+  7. Invalid unphysical OHLC geometry handled safely
+  8. Duplicate highs/lows and equal-price tie-breaking
+  9. Swing confirmation timing ($t + k$) and zero lookahead leakage
+  10. Deterministic results across repeated runs
+  11. Configurable swing window and minimum swings
+  12. Point-in-time rolling trend series alignment
+  13. Pipeline integration and serialization
+  14. SwingPoint and TrendAnalysisResult `.to_dict()` serialization
+- **Test Suite Results:**
+  - Previous baseline: 158 tests passing
+  - New total: **172 passed in 4.60s** (14 new trend tests, 0 regressions). Zero external network dependencies.
+
+### Review
+- **CodeRabbit:** CodeRabbit CLI is not installed locally; reported accurately. Manual senior dev code review conducted: clean type hints, frozen dataclasses, strict lookahead prevention, no unnecessary dependencies, and standard library datetime/math.
+- **Roo Code:** Remained disabled.
+- **Ponytail / Senior Dev Mode:** Shortest working diff, reusable modular functions, explicit confirmation timing, full edge-case coverage.
+
+### Documentation
+- Updated `README.md` to Day 14 status with 172 passing tests.
+- Updated `docs/architecture.md` with Section 4.9 detailing Trend Engine, swing detection, confirmation timing, and classification logic.
+- Updated `docs/decisions.md` with ADR 41.
+- Updated `docs/roadmap.md` with Day 14 completion details.
+- Updated `docs/daily-progress.md` with Day 14 development entry.
+
+### Known Limitations & Next Steps
+- Current trend classification provides descriptive structural regime labeling based on confirmed swing points.
+- Next scheduled scope (Day 15): Technical feature matrix assembly and tabular dataset generation.

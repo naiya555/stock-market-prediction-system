@@ -17,6 +17,7 @@ from app.market.indicators import MovingAverageFeatures, compute_moving_averages
 from app.market.providers.base import BaseMarketDataProvider
 from app.market.providers.yfinance_provider import YFinanceProvider
 from app.market.returns import ReturnFeatures, compute_market_returns
+from app.market.trend import TrendAnalysisResult, analyze_market_trend
 
 logger = get_logger(__name__)
 
@@ -32,6 +33,7 @@ class MarketDataPipelineResult:
     features: List[ReturnFeatures]
     indicators: List[MovingAverageFeatures] = field(default_factory=list)
     candlesticks: List[CandlestickFeatures] = field(default_factory=list)
+    trend: Optional[TrendAnalysisResult] = None
 
     @property
     def is_empty(self) -> bool:
@@ -64,6 +66,8 @@ class MarketDataPipelineResult:
             "feature_count": len(self.features),
             "indicator_count": len(self.indicators),
             "candlestick_count": len(self.candlesticks),
+            "trend": self.trend.to_dict() if self.trend else None,
+            "trend_classification": self.trend.classification if self.trend else None,
             "cleaning_summary": self.cleaning_summary.to_dict(),
         }
 
@@ -84,6 +88,8 @@ def process_market_data(
     bb_ddof: int = 0,
     atr_periods: Sequence[int] = (14,),
     roc_periods: Sequence[int] = (10,),
+    swing_window: int = 2,
+    min_swings: int = 2,
 ) -> MarketDataPipelineResult:
     """Process an existing sequence of raw MarketOHLCV records through cleaning, returns, and indicators.
 
@@ -106,10 +112,12 @@ def process_market_data(
         bb_ddof: Degrees of freedom for Bollinger standard deviation (default 0).
         atr_periods: Periods to compute for Average True Range (default (14,)).
         roc_periods: Lookbacks to compute for Rate of Change (default (10,)).
+        swing_window: Pivot lookback/lookforward window for trend engine (default 2).
+        min_swings: Minimum confirmed swings per type for trend classification (default 2).
 
     Returns:
         MarketDataPipelineResult containing raw records, cleaned records, cleaning summary,
-        computed return/volatility features, and technical indicators.
+        computed return/volatility features, technical indicators, candlesticks, and trend.
     """
     raw_list = list(raw_records)
     symbol = raw_list[0].symbol if raw_list else ""
@@ -144,14 +152,21 @@ def process_market_data(
 
     candlesticks = compute_candlestick_features(cleaned_list)
 
+    trend = analyze_market_trend(
+        cleaned_list,
+        swing_window=swing_window,
+        min_swings=min_swings,
+    )
+
     logger.info(
-        "Pipeline completed for %s: %d raw -> %d clean -> %d feature records -> %d indicator records -> %d candlestick records",
+        "Pipeline completed for %s: %d raw -> %d clean -> %d feature records -> %d indicator records -> %d candlestick records (trend=%s)",
         symbol or "EMPTY",
         len(raw_list),
         len(cleaned_list),
         len(features),
         len(indicators),
         len(candlesticks),
+        trend.classification or "NONE",
     )
 
     return MarketDataPipelineResult(
@@ -162,6 +177,7 @@ def process_market_data(
         features=features,
         indicators=indicators,
         candlesticks=candlesticks,
+        trend=trend,
     )
 
 
@@ -186,6 +202,8 @@ def run_market_data_pipeline(
     bb_ddof: int = 0,
     atr_periods: Sequence[int] = (14,),
     roc_periods: Sequence[int] = (10,),
+    swing_window: int = 2,
+    min_swings: int = 2,
 ) -> MarketDataPipelineResult:
     """Execute end-to-end market data acquisition, cleaning, feature engineering, and indicator computation.
 
@@ -194,6 +212,8 @@ def run_market_data_pipeline(
     2. Data cleaning, duplicate resolution, and domain validation via clean_market_data
     3. Return and volatility feature computation via compute_market_returns
     4. Technical indicator computation (SMA, EMA, RSI, MACD, Bollinger Bands, ATR, ROC) via compute_moving_averages
+    5. Candlestick feature computation via compute_candlestick_features
+    6. Trend engine analysis via analyze_market_trend
 
     Args:
         symbol: Market ticker symbol (e.g. 'BHARTIARTL').
@@ -216,6 +236,8 @@ def run_market_data_pipeline(
         bb_ddof: Degrees of freedom for Bollinger standard deviation (default 0).
         atr_periods: Periods to compute for Average True Range (default (14,)).
         roc_periods: Lookbacks to compute for Rate of Change (default (10,)).
+        swing_window: Pivot lookback/lookforward window for trend engine (default 2).
+        min_swings: Minimum confirmed swings per type for trend classification (default 2).
 
     Returns:
         MarketDataPipelineResult with all pipeline stage artifacts.
@@ -260,4 +282,6 @@ def run_market_data_pipeline(
         bb_ddof=bb_ddof,
         atr_periods=atr_periods,
         roc_periods=roc_periods,
+        swing_window=swing_window,
+        min_swings=min_swings,
     )

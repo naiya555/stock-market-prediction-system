@@ -344,11 +344,45 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   - **Day 11 (Complete):** Bollinger Bands technical indicator (middle, upper, lower bands, bandwidth, percent B, configurable window/multiplier/ddof, safe zero-denominator handling).
   - **Day 12 (Complete):** Volatility and momentum technical features: Average True Range (ATR-14 with Wilder's recurrence and first-session policy) and Rate of Change (ROC-10 with safe division and flat-price zero handling).
   - **Day 13 (Complete):** Candlestick feature engine (signed/abs body, range, upper/lower wicks, normalizing ratios, close location, return %, direction, zero-range safe division, physical geometry validation, pipeline integration).
-  - **Day 14 (Planned):** Trend and regime detection engine / technical feature matrix assembly.
+  - **Day 14 (Complete):** Trend engine and market structure analysis layer (confirmed swing highs/lows with $t + k$ confirmation timing, market structure labeling HH/HL/LH/LL, UPTREND/DOWNTREND/SIDEWAYS classification, rolling point-in-time alignment, pipeline integration).
+  - **Day 15 (Planned):** Technical feature matrix assembly / tabular dataset export.
 
-
-
-
-
-
-
+### 4.9. Trend Engine & Market Structure Analysis Layer (`app/market/trend.py`)
+- **Trend Engine Structural Flow:**
+  ```text
+  Clean Chronological Bars (MarketOHLCV)
+             ↓
+  Deterministic Local Swing Detection (identify_swings with configurable flank window k)
+             ↓
+  Enforce Explicit Confirmation Timing (Pivots at t confirm strictly at t + k)
+             ↓
+  Point-in-Time Cutoff Filtering (Only pivots confirmed at or before evaluation index T are visible)
+             ↓
+  Market Structure Transition Labeling (HH, HL, LH, LL relative to preceding confirmed swing)
+             ↓
+  Rule-Based Structural Trend Classification (UPTREND, DOWNTREND, SIDEWAYS, INSUFFICIENT_DATA)
+             ↓
+  TrendAnalysisResult Dataclass (.to_dict() serialization, summary metrics, pipeline integration)
+  ```
+- **Swing Detection Rules:**
+  - **Swing High:** A bar at index $t$ is an identified swing high if $High_t > High_{t-i}$ for all $1 \le i \le k$ (left flank) and $High_t \ge High_{t+j}$ for all $1 \le j \le k$ (right flank). The asymmetric strictness on the left flank prevents duplicate identical pivots during multi-bar price peaks.
+  - **Swing Low:** A bar at index $t$ is an identified swing low if $Low_t < Low_{t-i}$ for all $1 \le i \le k$ (left flank) and $Low_t \le Low_{t+j}$ for all $1 \le j \le k$ (right flank).
+  - **Configurable Comparison Window:** The flank window parameter $k$ (`swing_window`, default 2) is configurable.
+- **Confirmation Timing & Look-Ahead Bias Safeguards:**
+  - A swing pivot occurring at bar index $t$ is confirmed strictly when bar $t + k$ closes.
+  - When evaluating market structure at bar $T$ (as-of index), only swing points with `confirmation_index <= T` are considered confirmed and accessible to classification.
+  - Unconfirmed candidate pivots in the trailing $k$ bars ($t > T - k$) remain strictly invisible point-in-time.
+- **Market Structure Classification Rules:**
+  - **Higher High (HH):** $High_n > High_{n-1}$.
+  - **Lower High (LH):** $High_n < High_{n-1}$.
+  - **Higher Low (HL):** $Low_n > Low_{n-1}$.
+  - **Lower Low (LL):** $Low_n < Low_{n-1}$.
+  - **Evidence Requirements:** Minimum of `min_swings` (default 2) confirmed swing highs and 2 confirmed swing lows required.
+  - **Classification Matrix:**
+    - `UPTREND`: Latest confirmed swing high is `HH` AND latest confirmed swing low is `HL`.
+    - `DOWNTREND`: Latest confirmed swing high is `LH` AND latest confirmed swing low is `LL`.
+    - `SIDEWAYS`: Sufficient confirmed swings exist, but directional evidence is mixed, conflicting, or consolidating (e.g. `HH` + `LL`, `LH` + `HL`, `EH`, `EL`).
+    - `None` (`INSUFFICIENT_DATA`): Evaluates safely to `None` with status `INSUFFICIENT_DATA` when fewer than `min_swings` confirmed pivots exist. Insufficient history is never mislabeled as `SIDEWAYS`.
+- **Pipeline Integration:** Orchestrated within `MarketDataPipelineResult.trend` via `analyze_market_trend` and attached to summary dictionaries (`"trend_classification"`, `"trend"`).
+- **Point-in-Time Rolling Series Alignment:** `compute_rolling_trends` generates a 1:1 aligned sequence of historical classifications across all bars with zero future leakage.
+- **Non-Predictive Disclaimer:** Trend classification reflects historical structural price action geometry; it is strictly descriptive and does not constitute guaranteed directional continuation, price forecasting, or investment advice.

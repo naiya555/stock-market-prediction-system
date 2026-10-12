@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 13: Candlestick Feature Engine  
+> **Status:** Ongoing Project — Day 14: Trend Engine Implementation<br/>
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -26,7 +26,7 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
 When fully developed, the end-user workflow will operate as follows:
 
 1. **User Interaction:** Select an Indian ticker (e.g., `RELIANCE`, `TCS`, `INFY`) and request a prediction.
-2. **Data Orchestration:** Historical OHLCV, technical indicators, candlestick features, current live movement, market breadth, and sector/NIFTY context are retrieved.
+2. **Data Orchestration:** Historical OHLCV, technical indicators, candlestick features, trend structure, current live movement, market breadth, and sector/NIFTY context are retrieved.
 3. **Information Pipelines:** Real-time financial news and macroeconomic/regulatory events are collected, deduplicated, and timestamp-indexed.
 4. **Independent Model Evaluation:**
    - **Numerical ML:** A gradient-boosted time-series model (e.g., XGBoost / LightGBM) computes expected price movement and directional probability.
@@ -43,7 +43,7 @@ When fully developed, the end-user workflow will operate as follows:
 - **`app/api/`**: FastAPI application endpoints and route handlers (planned).
 - **`app/core/`**: Centralized configuration (`config.py`), logging foundation (`logging_config.py`), and canonical schema contracts (`schemas.py`).
 - **`app/database/`**: Relational database persistence (SQLite initially, PostgreSQL migration path).
-- **`app/market/`**: Market data acquisition, cleaning, technical feature engineering (returns, volatility, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features), market breadth, pipeline orchestration, and visualization.
+- **`app/market/`**: Market data acquisition, cleaning, technical feature engineering (returns, volatility, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features), trend engine (swing points, market structure, trend classification), market breadth, pipeline orchestration, and visualization.
 - **`app/news/`**: Financial news ingestion, deduplication, and entity linking.
 - **`app/nlp/`**: FinBERT sentiment scoring and textual analysis.
 - **`app/prediction/`**: Numerical ML predictor, LLM predictor, and ensemble synthesis.
@@ -52,9 +52,9 @@ When fully developed, the end-user workflow will operate as follows:
 
 ---
 
-## 4. Current Status: Day 13 (Candlestick Feature Engine)
+## 4. Current Status: Day 14 (Trend Engine & Market Structure Analysis)
 
-Day 13 implements a reusable, typed candlestick feature engine calculating single-session OHLC geometric properties, wick and body dimensions, ratios, close location, percentage intra-session return, and candle direction. It guarantees strict point-in-time calculation, safe zero-denominator handling, and real-data verification on `BHARTIARTL.NS`.
+Day 14 implements a reusable, production-conscious Trend Engine that classifies historical stock-price structure into `UPTREND`, `DOWNTREND`, or `SIDEWAYS` using confirmed swing highs and swing lows. It features explicit confirmation timing ($t + k$) to strictly prevent look-ahead bias, sequential market structure transition labeling (`HH`, `HL`, `LH`, `LL`), 1:1 aligned rolling trend series generation, and seamless integration into the market data pipeline.
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.
@@ -112,12 +112,27 @@ Day 13 implements a reusable, typed candlestick feature engine calculating singl
   - Dedicated immutable typed container `CandlestickFeatures` with `.to_dict()` serialization and convenience properties.
   - Multi-symbol isolation and chronological sorting via `compute_candlestick_features`.
   - Non-predictive disclaimer: candlestick features quantify single-bar geometry without asserting predictive price direction.
+- Trend Engine & Market Structure Analysis (`app/market/trend.py`):
+  - Deterministic swing detection (`identify_swings`) using configurable flank window $k$ (default 2) with asymmetric left/right flank comparison preventing duplicate consecutive pivots on flat tops/bottoms.
+  - Explicit swing confirmation timing: a pivot occurring at bar index $t$ becomes confirmed strictly at bar index $t + k$.
+  - Zero look-ahead bias: in any point-in-time evaluation at index $T$, candidate pivots pending confirmation ($t > T - k$) are strictly excluded.
+  - Sequential market structure labeling (`label_market_structure`):
+    - Highs: Higher High (`HH`), Lower High (`LH`), Equal High (`EH`).
+    - Lows: Higher Low (`HL`), Lower Low (`LL`), Equal Low (`EL`).
+  - Strict rule-based trend classification matrix (`classify_market_structure`):
+    - `UPTREND`: Latest confirmed high is `HH` and latest confirmed low is `HL`.
+    - `DOWNTREND`: Latest confirmed high is `LH` and latest confirmed low is `LL`.
+    - `SIDEWAYS`: Confirmed swings $\ge min\_swings$, but mixed or consolidating structure (e.g. `HH` + `LL`, `LH` + `HL`).
+    - `None` (`INSUFFICIENT_DATA`): Evaluates safely to `None` with status `INSUFFICIENT_DATA` when fewer than `min_swings` (default 2) confirmed pivots exist. Insufficient history is never mislabeled as `SIDEWAYS`.
+  - Point-in-time rolling trend series alignment (`compute_rolling_trends`): generates 1:1 aligned rolling trend classifications across all bars with zero future leakage.
+  - Typed immutable results container (`TrendAnalysisResult`) and swing representation (`SwingPoint`) with complete `.to_dict()` serialization and boolean flags (`.is_uptrend`, `.is_downtrend`, `.is_sideways`, `.is_confirmed`).
+  - Non-predictive baseline disclaimer: trend classifications describe historical price action structure; they do not predict future returns, directional continuation, or provide trading signals.
 - Market Data Pipeline Orchestrator (`app/market/pipeline.py`):
-  - Unified pipeline connecting provider retrieval, data cleaning, return/volatility feature computation, technical indicators, and candlestick features (`run_market_data_pipeline` and `process_market_data`).
-  - Immutable pipeline container (`MarketDataPipelineResult`) preserving raw records, cleaned records, cleaning summary, return features, technical indicators, and candlestick features (`result.candlesticks`, `.to_candlestick_dicts()`, and `.to_dict()`).
+  - Unified pipeline connecting provider retrieval, data cleaning, return/volatility feature computation, technical indicators, candlestick features, and trend analysis (`run_market_data_pipeline` and `process_market_data`).
+  - Immutable pipeline container (`MarketDataPipelineResult`) preserving raw records, cleaned records, cleaning summary, return features, technical indicators, candlestick features, and trend analysis (`result.trend`, `trend_classification`, and `.to_dict()`).
 - Historical Market Visualizer (`app/market/visualizer.py`):
   - Headless Matplotlib rendering (`Agg` backend) generating publication-quality PNG charts.
-- 158 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, and visualizer.
+- 172 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, and visualizer.
 
 ---
 
