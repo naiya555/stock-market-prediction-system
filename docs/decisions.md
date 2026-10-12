@@ -551,3 +551,36 @@ This document formalizes the architectural decisions made on Day 1. All future i
   5. **Component Separation:**
      - Target generation logic is isolated in `app/prediction/target.py` and kept strictly separate from feature calculation (`app/market/`) and model training (`app/training/`).
 - **Consequences:** Provides a leak-free, deterministic, mathematically verified prediction target adhering to project return conventions, with robust handling of market calendar gaps and zero returns.
+
+---
+
+## ADR 43: Technical Feature Matrix Assembly, Model-Input/Target Isolation, and Natural Missing-Value Policy
+- **Status:** Accepted
+- **Context:** Supervised machine learning algorithms (such as gradient boosting models planned for Day 17) require tabular training datasets ($X, y$) constructed by joining historical technical features with forward prediction targets. Assembling tabular datasets in time-series finance introduces subtle hazards:
+  1. Subtle target leakage: Accidental inclusion of future outcome columns (`next_close`, `target_return`, `target_direction`, `target_binary`) in feature matrix $X$, causing artificially inflated training metrics and total real-world failure.
+  2. Blind global imputation: Filling rolling indicator warmup periods (e.g. SMA-10, MACD-26, Bollinger-20, ATR-14) with zeros prior to cross-validation splits. Blind zero-filling distorts distributions (e.g. replacing missing RSI with 0.0 falsely implies extreme oversold conditions) and fitting scalers/imputers across the full dataset causes global data leakage.
+  3. Row misalignment: Joining features and targets by implicit array position rather than explicit timestamps, which can silently misalign samples if any row is dropped or shifted.
+  4. Silent row dropping: Dropping warmup rows or unlabeled rows without transparent accounting, making audit verification impossible.
+- **Decision:**
+  1. **Strict Feature Matrix (X) and Target (y) Isolation:**
+     - The assembly pipeline isolates numerical feature columns in `X`, binary labels in `y`, and audit fields in `metadata`.
+     - Built-in validation guard (`validate_feature_matrix_isolation`) scans all columns in $X$ and strictly rejects any column containing forbidden terms (`target`, `next_`, `future`, `outcome`).
+  2. **Canonical 37-Feature Schema:**
+     - Features include exclusively information available at or before session $t$:
+       - OHLCV Price & Volume: `open`, `high`, `low`, `close`, `volume`.
+       - Returns & Volatility: `daily_return`, `rolling_return_3d`, `rolling_return_5d`, `rolling_volatility_5d`, `annualized_volatility_5d`.
+       - Moving Averages: `sma_5`, `sma_10`, `ema_5`, `ema_10`.
+       - Momentum & Oscillators: `rsi_14`, `macd`, `macd_signal`, `macd_histogram`.
+       - Volatility Bands: `bb_middle`, `bb_upper`, `bb_lower`, `bb_bandwidth`, `bb_percent_b`.
+       - True Range & Relative Velocity: `atr_14`, `roc_10`.
+       - Candlestick Geometry: `candle_body`, `candle_body_abs`, `candle_range`, `candle_upper_wick`, `candle_lower_wick`, `candle_body_ratio`, `candle_upper_wick_ratio`, `candle_lower_wick_ratio`, `candle_close_location`, `candle_body_return_pct`, `candle_direction_encoded`.
+       - Market Structure: `trend_regime_encoded` (point-in-time confirmed swing structure).
+  3. **Explicit Key Joins & Integrity Validation:**
+     - Target observations from Day 15 are joined strictly by `(symbol, timestamp)`. Missing join keys or mismatched timestamps fail loudly.
+     - Input records are verified for duplicate timestamps and chronological order before assembly.
+  4. **Preservation of Natural Warmup Missing Values:**
+     - Missing values resulting from rolling indicator warmups are preserved as `np.nan` in the assembled dataset. Zero-filling is strictly avoided.
+     - Documented requirement: Any imputation or scaling must be fitted strictly on training folds during cross-validation (Day 17) to prevent temporal data leakage.
+  5. **Transparent Labeled Subset Extraction:**
+     - `FeatureMatrixDataset.get_labeled_dataset()` provides transparent accounting: initial total rows, unlabeled final row exclusions ($y=NaN$), optional warmup row exclusions, and final retained row counts.
+- **Consequences:** Guarantees leak-free, mathematically verified tabular dataset assembly with strictly isolated feature matrix $X$, verified alignment to Day 15 targets, and complete preservation of natural warmup missing values.

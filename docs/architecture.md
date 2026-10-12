@@ -346,8 +346,8 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   - **Day 13 (Complete):** Candlestick feature engine (signed/abs body, range, upper/lower wicks, normalizing ratios, close location, return %, direction, zero-range safe division, physical geometry validation, pipeline integration).
   - **Day 14 (Complete):** Trend engine and market structure analysis layer (confirmed swing highs/lows with $t + k$ confirmation timing, market structure labeling HH/HL/LH/LL, UPTREND/DOWNTREND/SIDEWAYS classification, rolling point-in-time alignment, pipeline integration).
   - **Day 15 (Complete):** ML prediction target definition (next-session direction, close-to-close return formulation, zero-return baseline policy, non-calendar trading session alignment, missing final target invariant, zero temporal leakage).
-  - **Day 16 (Planned):** Technical feature matrix assembly / tabular dataset export.
-  - **Day 17 (Planned):** First baseline ML model training and walk-forward evaluation.
+  - **Day 16 (Complete):** Technical feature matrix assembly (canonical 37 numeric features, strict X/y isolation guard, explicit timestamp key joins, natural warmup missing-value preservation, transparent labeled subset extraction accounting).
+  - **Day 17 (Planned):** First baseline ML model training (XGBoost/LightGBM) and walk-forward evaluation.
 
 ### 4.9. Trend Engine & Market Structure Analysis Layer (`app/market/trend.py`)
 - **Trend Engine Structural Flow:**
@@ -421,3 +421,40 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   - Future closing prices ($Close_{t+1}$) and forward returns are strictly outcome labels, never included as input features.
   - For the final session in the dataset ($t = N - 1$), the target evaluates strictly to `None` with `has_target=False` (never forward-filled or fabricated).
 - **Component Separation:** Target definitions are isolated in `app/prediction/target.py`, separate from technical feature calculators (`app/market/`) and model training (`app/training/`).
+
+### 4.11. Technical Feature Matrix Assembly Layer (`app/training/feature_matrix.py`)
+- **Dataset Assembly Workflow:**
+  ```text
+  Clean Market Records (MarketOHLCV)
+             ↓
+  Orchestrate Pipelines:
+    - Technical Indicators (SMA, EMA, RSI, MACD, Bollinger Bands, ATR, ROC, Candlesticks)
+    - Point-in-Time Trend Regimes (compute_rolling_trends)
+    - Day 15 Direction Targets (generate_direction_targets)
+             ↓
+  Explicit Timestamp Key Join on (symbol, timestamp)
+             ↓
+  Feature Matrix (X) & Target (y) Strict Isolation Guard:
+    - Verifies zero forbidden columns in X (next_*, target_*, outcome_*, future_*)
+             ↓
+  Preserve Natural Warmup Missing Values (NaN) without blind zero-filling
+             ↓
+  FeatureMatrixDataset Container (.df, .X, .y, .metadata, .get_labeled_dataset())
+  ```
+- **Canonical 37 Numeric Features in Matrix $X$:**
+  1. *OHLCV Raw Dynamics:* `open`, `high`, `low`, `close`, `volume`.
+  2. *Returns & Volatility:* `daily_return`, `rolling_return_3d`, `rolling_return_5d`, `rolling_volatility_5d`, `annualized_volatility_5d`.
+  3. *Moving Averages:* `sma_5`, `sma_10`, `ema_5`, `ema_10`.
+  4. *Momentum Oscillators:* `rsi_14`, `macd`, `macd_signal`, `macd_histogram`.
+  5. *Volatility Bands:* `bb_middle`, `bb_upper`, `bb_lower`, `bb_bandwidth`, `bb_percent_b`.
+  6. *Range Volatility & Velocity:* `atr_14`, `roc_10`.
+  7. *Candlestick Geometry & Direction:* `candle_body`, `candle_body_abs`, `candle_range`, `candle_upper_wick`, `candle_lower_wick`, `candle_body_ratio`, `candle_upper_wick_ratio`, `candle_lower_wick_ratio`, `candle_close_location`, `candle_body_return_pct`, `candle_direction_encoded` (+1.0 bullish, -1.0 bearish, 0.0 neutral).
+  8. *Trend Structure:* `trend_regime_encoded` (+1.0 UPTREND, -1.0 DOWNTREND, 0.0 SIDEWAYS, NaN unconfirmed).
+- **Strict Leakage Prevention & Guard:**
+  - Automated `validate_feature_matrix_isolation(X)` ensures target direction, binary target, forward return, next-session close, and outcome timestamps cannot enter the feature space.
+  - Final historical observation strictly has target `y = NaN` (unlabeled).
+- **Preservation of Warmup Missing Values:**
+  - Indicator warmups (e.g. 33 un-warmed sessions for MACD-26/Signal-9) naturally produce `np.nan`.
+  - Zero-filling is strictly forbidden; imputation and scaling must be fitted on training folds only (Day 17) to prevent global leakage.
+- **Labeled Dataset Extraction Accounting:**
+  - `FeatureMatrixDataset.get_labeled_dataset()` transparently reports initial rows, unlabeled final row exclusions, optional warmup exclusions, and retained training rows.

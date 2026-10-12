@@ -1377,3 +1377,90 @@ Executed `scripts/verify_target.py` on real `BHARTIARTL` historical market data:
 ### Known Limitations & Next Steps
 - Target definition provides the forward binary label for single-step directional forecasting.
 - Next scheduled scope (Day 16): Technical feature matrix assembly and tabular dataset generation connecting features to targets.
+
+---
+
+## Day 16 - Technical Feature Matrix Assembly
+
+### Goal
+Build a reusable, deterministic feature-matrix assembly pipeline that combines the existing market features with the Day 15 next-session direction targets:
+1. Reusable assembly module under `app/training/feature_matrix.py` joining all technical features available at session $t$ with forward targets realized at session $t+1$.
+2. Strict isolation between feature matrix $X$ and target $y$, enforced by an automated isolation guard rejecting target/future columns in $X$.
+3. Canonical schema of 37 numeric features across 8 domains (OHLCV, returns, volatility, moving averages, momentum oscillators, Bollinger Bands, ATR/ROC, candlestick geometry, and trend regimes).
+4. Explicit timestamp join on `(symbol, timestamp)` with duplicate and non-chronological integrity validation.
+5. Natural missing-value preservation policy: rolling indicator warm-up periods naturally produce NaNs; preserve them without arbitrary zero-filling so that imputation/scaling can be fitted strictly on cross-validation folds.
+6. Transparent labeled subset extraction mechanism (`get_labeled_dataset()`) reporting exact row counts and exclusion reasons.
+7. Verification on real `BHARTIARTL.NS` historical market data and comprehensive deterministic unit tests.
+
+### Implementation
+1. **Feature Matrix Assembly Module (`app/training/feature_matrix.py`):**
+   - Implemented `FEATURE_COLUMNS`: Ordered list of 37 numeric features (`open`, `high`, `low`, `close`, `volume`, `daily_return`, `rolling_return_3d`, `rolling_return_5d`, `rolling_volatility_5d`, `annualized_volatility_5d`, `sma_5`, `sma_10`, `ema_5`, `ema_10`, `rsi_14`, `macd`, `macd_signal`, `macd_histogram`, `bb_middle`, `bb_upper`, `bb_lower`, `bb_bandwidth`, `bb_percent_b`, `atr_14`, `roc_10`, `candle_body`, `candle_body_abs`, `candle_range`, `candle_upper_wick`, `candle_lower_wick`, `candle_body_ratio`, `candle_upper_wick_ratio`, `candle_lower_wick_ratio`, `candle_close_location`, `candle_body_return_pct`, `candle_direction_encoded`, `trend_regime_encoded`).
+   - Implemented `METADATA_COLUMNS`: `symbol`, `timestamp`, `next_timestamp`, `current_close`, `next_close`.
+   - Implemented `TARGET_COLUMNS`: `target_return`, `target_direction`, `target_binary`.
+   - Implemented categorical numerical encoders: `encode_candle_direction` (+1.0 bullish, -1.0 bearish, 0.0 neutral), `encode_trend_regime` (+1.0 UPTREND, -1.0 DOWNTREND, 0.0 SIDEWAYS, NaN unconfirmed).
+   - Implemented `validate_feature_matrix_isolation(X)`: Automated guard rejecting columns matching forbidden patterns (`target`, `next_`, `future`, `outcome`).
+   - Implemented `validate_chronological_integrity(records)`: Enforces chronological ordering and catches duplicate timestamps.
+   - Implemented `FeatureMatrixDataset` dataclass: Encapsulates `symbol`, `df`, `X`, `y`, `metadata`, `feature_names`, `total_rows`, `labeled_rows`, `unlabeled_rows`, `.missing_value_summary()`, `.get_labeled_dataset(drop_incomplete_warmup)`, and `.to_dict()`.
+   - Implemented `assemble_feature_matrix(data)`: High-level orchestrator connecting pipeline features, point-in-time rolling trends, and Day 15 prediction targets.
+2. **Package Exports (`app/training/__init__.py`):**
+   - Cleanly exported `FEATURE_COLUMNS`, `FORBIDDEN_FEATURE_PATTERNS`, `METADATA_COLUMNS`, `TARGET_COLUMNS`, `FeatureMatrixDataset`, `assemble_feature_matrix`, `validate_feature_matrix_isolation`.
+3. **Application Entry Point Update (`main.py`):**
+   - Added `print("Day 16 technical feature matrix ready")`.
+4. **Real-Data Verification Script (`scripts/verify_feature_matrix.py`):**
+   - End-to-end verification script for `BHARTIARTL.NS` (124 sessions), validating row alignment, zero leakage, warmup missing values accounting, class balance, and labeled training extraction.
+
+### Feature Matrix Schema & Isolation Guards
+- **Observation Alignment Invariant:** Each row $t$ contains features available at or before session $t$.
+- **Strict Model-Input / Target Isolation:** $X$ contains strictly 37 numeric feature columns. Target labels ($y$), future prices ($Close_{t+1}$), and outcome timestamps are strictly isolated in `y` and `metadata`.
+- **Final Observation Policy:** The final historical observation ($t = N - 1$) has no realized next session; $y$ is strictly `NaN` (unlabeled).
+- **Missing Value Preservation:** Warmup periods naturally produce NaNs (e.g. 33 sessions for MACD/Signal); these are preserved without zero-filling. Imputers and scalers must be fitted on training folds only (Day 17) to prevent global leakage.
+
+### Real Data Verification
+Executed `scripts/verify_feature_matrix.py` on real `BHARTIARTL` historical market data:
+- **Symbol:** `BHARTIARTL`
+- **Data Range:** 2026-04-15 to 2026-10-12 (124 usable historical sessions)
+- **Results:**
+  - Total Aligned Rows: 124
+  - Feature Columns in X: 37 (Zero target/future columns present)
+  - Labeled Rows: 123 (y in {0.0, 1.0})
+  - Unlabeled Final Row: 1 (y = NaN)
+  - Target Class Balance: UP = 60 (48.8%), DOWN = 63 (51.2%)
+  - Warmup Missing Values: OHLCV (0), Returns (5), SMAs (9), MACD/RSI (33), Bollinger (19), ATR/ROC (13), Candlesticks (0), Trend (15)
+  - Supervised Training Subset Extraction: 124 initial -> 1 unlabeled excluded -> 33 incomplete warmup excluded -> 90 complete training rows
+- **Exit Code:** 0.
+
+### Tests
+- Created `tests/test_feature_matrix.py` with 14 comprehensive unit tests:
+  1. Correct feature-column schema and order (37 canonical features)
+  2. Correct timestamp alignment with Day 15 targets
+  3. Final unlabeled observation (y = NaN)
+  4. Duplicate timestamp rejection (raises ValueError)
+  5. Unsorted input ordered chronologically
+  6. Missing values preserved for indicator warmup
+  7. Target leakage rejection guard (raises ValueError on contaminated X)
+  8. Future outcome columns strictly excluded from X
+  9. Trend confirmation timing in feature matrix
+  10. Stable row counts and deterministic repeated results
+  11. Empty and insufficient input handled gracefully
+  12. get_labeled_dataset accounting and optional complete warmup filtering
+  13. Compatibility with existing MarketDataPipelineResult and raw bars
+  14. Categorical numerical encoders mapping
+- **Test Suite Results:**
+  - Previous baseline: 185 passed
+  - New total: **199 passed in 1.99s** (14 new feature matrix tests, 0 regressions). Zero external network dependencies.
+
+### Review
+- **CodeRabbit:** CodeRabbit CLI tool is not installed in the local environment; reported accurately. Clean senior developer review conducted following Ponytail mode: type safety, mathematical invariants, zero code duplication, zero unnecessary dependencies, and safe edge-case handling.
+- **Roo Code:** Remained disabled.
+- **Ponytail / Senior Dev Mode:** Concise pandas and pure Python orchestration adhering to architectural boundaries, shortest working diff with complete test verification.
+
+### Documentation
+- Updated `README.md` to Day 16 status with 199 passing tests.
+- Updated `docs/architecture.md` with Section 4.11 detailing Technical Feature Matrix Assembly Layer and schedule boundaries.
+- Updated `docs/decisions.md` with ADR 43.
+- Updated `docs/roadmap.md` with Day 16 completion details.
+- Updated `docs/daily-progress.md` with Day 16 development entry.
+
+### Known Limitations & Next Steps
+- Day 16 focuses exclusively on tabular dataset assembly, target joining, and leakage validation. No ML models were trained, tuned, or evaluated.
+- Next scheduled scope (Day 17): First baseline ML model training (e.g. XGBoost/LightGBM) with walk-forward validation and evaluation.

@@ -32,6 +32,7 @@ def main() -> int:
     print("Day 13 candlestick features ready")
     print("Day 14 trend engine ready")
     print("Day 15 ML prediction target ready")
+    print("Day 16 technical feature matrix ready")
     print(f"Python runtime: {sys.version.split()[0]}")
     print(f"Environment: {settings.environment}")
     print(f"Project root: {Path(__file__).resolve().parent}")

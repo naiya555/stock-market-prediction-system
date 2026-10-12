@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 15: Define the ML Prediction Target<br/>
+> **Status:** Ongoing Project — Day 16: Technical Feature Matrix Assembly<br/>
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -52,9 +52,9 @@ When fully developed, the end-user workflow will operate as follows:
 
 ---
 
-## 4. Current Status: Day 15 (Define the ML Prediction Target)
+## 4. Current Status: Day 16 (Technical Feature Matrix Assembly)
 
-Day 15 defines a mathematically precise, leakage-safe target for the first stock-market ML model. It formulates next-session directional prediction using close-to-close returns, implements an initial binary baseline where zero returns are deterministically grouped into `DOWN`, indexes natural trading-session spacing without calendar day gaps, and enforces that the final session has an explicitly missing target.
+Day 16 implements a reusable, deterministic technical feature matrix assembly pipeline (`app/training/feature_matrix.py`) combining 37 canonical features with Day 15 next-session prediction targets. It enforces strict model-input/target isolation, point-in-time timestamp joins, natural preservation of indicator warmup missing values, and explicit rejection of target leakage fields from the feature set.
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.
@@ -134,12 +134,20 @@ Day 15 defines a mathematically precise, leakage-safe target for the first stock
   - Non-calendar trading session alignment: consecutive records index the next available trading day (handles weekends and exchange holidays naturally).
   - Missing final target invariant: the latest session $t = N - 1$ has no realized future and strictly receives `None` (`has_target=False`), preventing temporal leakage.
   - Typed immutable container `TargetObservation` with complete `.to_dict()` serialization.
+- Technical Feature Matrix Assembly (`app/training/feature_matrix.py`):
+  - 37 canonical numeric features across 8 domains: OHLCV (5), Returns & Volatility (5), Moving Averages (4), Momentum & Oscillators (4), Volatility Bands (5), Range Volatility & Relative Velocity (2), Candlestick Geometry (11), and Market Structure (1).
+  - Explicit numeric encodings: `candle_direction_encoded` (bullish=1, neutral=0, bearish=-1) and `trend_regime_encoded` (UPTREND=1, SIDEWAYS=0, DOWNTREND=-1, INSUFFICIENT_DATA=NaN).
+  - Explicit timestamp-keyed join on `(symbol, timestamp)` aligning feature bar $t$ with Day 15 target computed from $t+1$.
+  - Strict model-input/target isolation: guards against `target_*`, `next_*`, `future_*`, `outcome_*` appearing in $X$.
+  - Natural indicator warmup preservation: missing values from rolling windows are preserved as `NaN` (zero blind imputation/scaling across the dataset).
+  - Separate labeled training selector: `dataset.get_labeled_dataset(drop_incomplete_warmup=True)` providing transparent row accounting without mutating the aligned dataset.
+  - Final observation ($t = N - 1$) explicitly identified as unlabeled (`has_target=False`).
 - Market Data Pipeline Orchestrator (`app/market/pipeline.py`):
   - Unified pipeline connecting provider retrieval, data cleaning, return/volatility feature computation, technical indicators, candlestick features, and trend analysis (`run_market_data_pipeline` and `process_market_data`).
   - Immutable pipeline container (`MarketDataPipelineResult`) preserving raw records, cleaned records, cleaning summary, return features, technical indicators, candlestick features, and trend analysis (`result.trend`, `trend_classification`, and `.to_dict()`).
 - Historical Market Visualizer (`app/market/visualizer.py`):
   - Headless Matplotlib rendering (`Agg` backend) generating publication-quality PNG charts.
-- 185 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, and visualizer.
+- 199 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, and visualizer.
 
 ---
 
