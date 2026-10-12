@@ -1279,4 +1279,94 @@ Executed `scripts/verify_trend.py` on real `BHARTIARTL` historical market data:
 
 ### Known Limitations & Next Steps
 - Current trend classification provides descriptive structural regime labeling based on confirmed swing points.
-- Next scheduled scope (Day 15): Technical feature matrix assembly and tabular dataset generation.
+- Next scheduled scope (Day 15): ML prediction target definition.
+
+---
+
+## Day 15 - ML Prediction Target Definition
+
+### Goal
+Define a mathematically precise, leakage-safe target for the first stock-market ML model:
+1. Predict next trading session's direction for a selected stock using close-to-close returns.
+2. Binary classification baseline:
+   - `UP`: next session's close-to-close return is strictly positive ($target\_return[t] > 0.0$).
+   - `DOWN`: next session's close-to-close return is zero or negative ($target\_return[t] \le 0.0$).
+   - Explicitly document that zero-return sessions ($close[t+1] == close[t]$) are grouped into `DOWN` for this initial binary experiment without silently discarding samples.
+3. Natural trading-session alignment: $close[t]$ is reference price and $close[t+1]$ is outcome price across trading days (weekends and holidays do not require a calendar daily row).
+4. Strict leakage prevention:
+   - Input features at time $t$ use only information at or before $t$.
+   - Outcome closing price and forward return are isolated as target labels and never included in feature sets.
+   - The final observation without a known next-session close strictly evaluates to `None` (missing target), not a fabricated label.
+5. Implementation of reusable target module and comprehensive unit tests with zero external ML dependencies.
+
+### Implementation
+1. **Target Definition Module (`app/prediction/target.py`):**
+   - Implemented `DirectionTarget`: Canonical string constants (`UP = "UP"`, `DOWN = "DOWN"`) and binary integers (`UP_BINARY = 1`, `DOWN_BINARY = 0`).
+   - Implemented `TargetObservation` dataclass: Encapsulates `symbol`, `timestamp` (session $t$), `current_close`, `next_timestamp` (session $t+1$), `next_close`, `target_return`, `target_direction`, `target_binary`, convenience properties (`is_up`, `is_down`, `has_target`), and `.to_dict()`.
+   - Implemented `calculate_forward_return(current_close, next_close)`: Safe calculation of $(Close_{t+1} / Close_t) - 1.0$ with non-positive price and non-finite guards.
+   - Implemented `classify_forward_direction(target_return)`: Evaluates strictly positive return to `("UP", 1)` and zero/negative return to `("DOWN", 0)`.
+   - Implemented `compute_target_series(closes)`: Low-level numerical sequence evaluator returning parallel lists `(returns, directions, binaries)` with final observation strictly evaluating to `None`.
+   - Implemented `generate_direction_targets(records)`: High-level sequence generator accepting `MarketOHLCV` records, ensuring ticker isolation, ascending chronological ordering, non-calendar spacing, and missing final observation targets.
+2. **Package Exports (`app/prediction/__init__.py`):**
+   - Cleanly exported `DirectionTarget`, `TargetObservation`, `calculate_forward_return`, `classify_forward_direction`, `compute_target_series`, `generate_direction_targets`.
+3. **Application Entry Point Update (`main.py`):**
+   - Added `print("Day 15 ML prediction target ready")`.
+4. **Real-Data Verification Script (`scripts/verify_target.py`):**
+   - Validates real data acquisition on `BHARTIARTL.NS` (124 sessions), 1:1 alignment, forward return accuracy, weekend/holiday transitions, missing final target invariant, and empirical class balance.
+
+### Mathematical Formulation & Leakage Safeguards
+- **Formula:**
+  $$target\_return[t] = \frac{Close_{t+1}}{Close_t} - 1.0$$
+  $$target\_direction[t] = \text{"UP" if } target\_return[t] > 0.0 \text{ else "DOWN"}$$
+  $$target\_binary[t] = 1 \text{ if } target\_return[t] > 0.0 \text{ else } 0$$
+- **Zero-Return Baseline Policy:** Sessions with $target\_return == 0.0$ are grouped into `"DOWN"` ($binary=0$). They are explicitly retained to prevent survivorship or selection bias.
+- **Trading Session Spacing:** Indexing strictly follows the chronological sequence of available trading sessions (e.g. Friday $t$ pairs with Monday $t+1$).
+- **Missing Final Target Invariant:** For the latest session $t = N - 1$, no subsequent close is realized; $target\_return$, $target\_direction$, and $target\_binary$ are strictly `None` (`has_target=False`).
+- **Feature-Outcome Separation:** Target logic is strictly separated from feature calculation (`app/market/`) and model training (`app/training/`).
+
+### Real Data Verification
+Executed `scripts/verify_target.py` on real `BHARTIARTL` historical market data:
+- **Symbol:** `BHARTIARTL`
+- **Data Range:** 2026-04-15 to 2026-10-12 (124 usable historical sessions)
+- **Results:**
+  - Total Historical Sessions: 124
+  - Labeled Observations: 123
+  - Final Session (2026-10-12): Next Date=`UNKNOWN`, Next Close=`N/A`, Forward Return=`N/A`, Target=`MISSING`, Binary=`None` (Zero leakage verified).
+  - Class Distribution: UP = 60 (48.8%), DOWN = 63 (51.2%) (Healthy, realistic balance).
+  - Friday-to-Monday transition verified: 2026-10-09 (₹1805.10) links to 2026-10-12 (₹1778.70, -1.46% => DOWN).
+- **Exit Code:** 0.
+
+### Tests
+- Created `tests/test_target.py` with 13 comprehensive unit tests:
+  1. Positive next-session return produces UP (binary 1)
+  2. Negative next-session return produces DOWN (binary 0)
+  3. Zero return follows documented binary rule (DOWN, binary 0)
+  4. Missing next-session close on final observation strictly produces None
+  5. Invalid, non-positive, zero, NaN, and infinite prices handled safely
+  6. Unsorted input ordered chronologically per symbol
+  7. Weekends and market holidays do not require calendar daily rows
+  8. Target is aligned to correct prediction date
+  9. Future outcome columns cannot leak into feature set
+  10. Multi-symbol isolation guarantees targets do not cross ticker boundaries
+  11. Deterministic results across repeated runs
+  12. Low-level numerical `compute_target_series` functionality
+  13. `TargetObservation.to_dict()` serialization
+- **Test Suite Results:**
+  - Previous baseline: 172 passed
+  - New total: **185 passed in 4.98s** (13 new target tests, 0 regressions). Zero external network dependencies.
+
+### Review
+- **CodeRabbit:** CodeRabbit CLI is not installed locally; reported accurately. Clean senior developer review conducted following Ponytail mode: type safety, mathematical invariants, zero code duplication, zero unnecessary dependencies, and standard library datetime/math.
+- **Roo Code:** Remained disabled.
+- **Ponytail / Senior Dev Mode:** Concise pure Python calculations adhering to mathematical definitions, zero bloat, shortest working diff with complete test verification.
+
+### Documentation
+- Updated `README.md` to Day 15 status with 185 passing tests.
+- Updated `docs/architecture.md` with Section 4.10 detailing ML Prediction Target Definition and schedule boundaries.
+- Updated `docs/decisions.md` with ADR 42.
+- Updated `docs/roadmap.md` with Day 15 completion details.
+- Updated `docs/daily-progress.md` with Day 15 development entry.
+
+### Known Limitations & Next Steps
+- Target definition provides the forward binary label for single-step directional forecasting.
+- Next scheduled scope (Day 16): Technical feature matrix assembly and tabular dataset generation connecting features to targets.

@@ -47,7 +47,9 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 - Continuous returns, volume z-scores, and rolling drawdown measures.
 
 ### Phase 4: First ML Model
-- Establish baseline numerical forecasting model using XGBoost.
+- Define next-session binary directional prediction target ($Close_{t+1} / Close_t - 1$, UP if $>0$ else DOWN, zero return grouped into DOWN, missing final session target) (Day 15 complete).
+- Feature matrix assembly and tabular dataset export (Day 16 planned).
+- Establish baseline numerical forecasting model using XGBoost (Day 17 planned).
 - Benchmark against LightGBM.
 - Implement walk-forward validation splits (strictly avoiding random cross-validation to prevent temporal leakage).
 

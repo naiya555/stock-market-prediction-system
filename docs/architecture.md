@@ -345,7 +345,9 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   - **Day 12 (Complete):** Volatility and momentum technical features: Average True Range (ATR-14 with Wilder's recurrence and first-session policy) and Rate of Change (ROC-10 with safe division and flat-price zero handling).
   - **Day 13 (Complete):** Candlestick feature engine (signed/abs body, range, upper/lower wicks, normalizing ratios, close location, return %, direction, zero-range safe division, physical geometry validation, pipeline integration).
   - **Day 14 (Complete):** Trend engine and market structure analysis layer (confirmed swing highs/lows with $t + k$ confirmation timing, market structure labeling HH/HL/LH/LL, UPTREND/DOWNTREND/SIDEWAYS classification, rolling point-in-time alignment, pipeline integration).
-  - **Day 15 (Planned):** Technical feature matrix assembly / tabular dataset export.
+  - **Day 15 (Complete):** ML prediction target definition (next-session direction, close-to-close return formulation, zero-return baseline policy, non-calendar trading session alignment, missing final target invariant, zero temporal leakage).
+  - **Day 16 (Planned):** Technical feature matrix assembly / tabular dataset export.
+  - **Day 17 (Planned):** First baseline ML model training and walk-forward evaluation.
 
 ### 4.9. Trend Engine & Market Structure Analysis Layer (`app/market/trend.py`)
 - **Trend Engine Structural Flow:**
@@ -386,3 +388,36 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
 - **Pipeline Integration:** Orchestrated within `MarketDataPipelineResult.trend` via `analyze_market_trend` and attached to summary dictionaries (`"trend_classification"`, `"trend"`).
 - **Point-in-Time Rolling Series Alignment:** `compute_rolling_trends` generates a 1:1 aligned sequence of historical classifications across all bars with zero future leakage.
 - **Non-Predictive Disclaimer:** Trend classification reflects historical structural price action geometry; it is strictly descriptive and does not constitute guaranteed directional continuation, price forecasting, or investment advice.
+
+### 4.10. Machine Learning Prediction Target Definition (`app/prediction/target.py`)
+- **Prediction Target Mathematical Flow:**
+  ```text
+  Clean Chronological Bars (MarketOHLCV) sorted by (symbol, timestamp)
+             ↓
+  Extract Reference Close (Close_t at session t)
+             ↓
+  Identify Next Available Trading Session Close (Close_{t+1} at session t+1)
+             ↓
+  Compute Forward Percentage Return: target_return[t] = (Close_{t+1} / Close_t) - 1.0
+             ↓
+  Apply Binary Classification Rule:
+    - UP (binary 1) if target_return[t] > 0.0
+    - DOWN (binary 0) if target_return[t] <= 0.0 (zero-return sessions grouped into DOWN)
+             ↓
+  Final Session Policy: Latest session (t = N - 1) has no realized future; target is strictly None
+             ↓
+  TargetObservation Dataclass (.to_dict() tabular export, feature-outcome isolation)
+  ```
+- **Mathematical Formulations:**
+  - **Forward Target Return:** $target\_return[t] = \frac{Close_{t+1}}{Close_t} - 1.0$.
+  - **Directional Target:** $\text{"UP"}$ if $target\_return[t] > 0.0$, else $\text{"DOWN"}$.
+  - **Binary Target:** $1$ if $target\_return[t] > 0.0$, else $0$.
+- **Zero-Return Baseline Policy:**
+  - Sessions where $Close_{t+1} == Close_t$ produce an exact $0.0\%$ return. For this initial binary baseline, they are grouped deterministically into `"DOWN"` ($binary=0$). They are explicitly retained and not discarded.
+- **Trading Session Spacing (Calendar Independence):**
+  - Next session $t+1$ represents the next available trading day in the sequence. Weekends, market holidays, and special trading sessions do not require calendar day interpolation.
+- **Temporal Leakage Safeguards & Missing Outcome Invariant:**
+  - Input features at time $t$ utilize exclusively data available at or before session $t$.
+  - Future closing prices ($Close_{t+1}$) and forward returns are strictly outcome labels, never included as input features.
+  - For the final session in the dataset ($t = N - 1$), the target evaluates strictly to `None` with `has_target=False` (never forward-filled or fabricated).
+- **Component Separation:** Target definitions are isolated in `app/prediction/target.py`, separate from technical feature calculators (`app/market/`) and model training (`app/training/`).

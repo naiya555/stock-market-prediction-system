@@ -520,3 +520,34 @@ This document formalizes the architectural decisions made on Day 1. All future i
      - Integrated `trend: Optional[TrendAnalysisResult]` into `MarketDataPipelineResult` and `process_market_data` with complete dictionary serialization (`.to_dict()`).
      - Explicitly documented that trend classifications represent descriptive structural geometry and do not constitute forward price predictions or trading recommendations.
 - **Consequences:** Guarantees deterministic, leak-free, typed market structure analysis and trend classification with zero lookahead bias, fully tested across synthetic fixtures, edge cases, and real market data.
+
+---
+
+## ADR 42: Machine Learning Prediction Target Formulation, Binary Direction Baseline, and Zero-Return Policy
+- **Status:** Accepted
+- **Context:** Supervised machine learning models in Phase 4 require an explicit, leakage-safe target variable ($y_t$) to train binary directional classifiers. Designing a financial market target introduces critical design challenges:
+  1. Forward-looking leakage: Accidentally including the future outcome price ($Close_{t+1}$) or future return ($R_{t+1}$) in the feature vector of session $t$.
+  2. Calendar-day vs. trading-day mismatch: Naively assuming that session $t+1$ is calendar day $t+1$, which fails across weekends, market holidays, and unscheduled exchange closures.
+  3. Zero-return handling: Sessions where $Close_{t+1} == Close_t$ produce an exact zero return ($0.0\%$). Naively discarding them introduces survivorship and selection bias, while creating an ambiguous third class complicates binary classification.
+  4. Final-observation leakage: The most recent historical bar ($t = N - 1$) has no realized next-session close. Fabricating or forward-filling a target creates synthetic false training data.
+- **Decision:**
+  1. **Mathematical Formulation:**
+     - For a chronological sequence of trading sessions $t = 0, 1, \dots, N - 1$:
+       $$target\_return[t] = \frac{Close_{t+1}}{Close_t} - 1.0$$
+       $$target\_direction[t] = \begin{cases} \text{"UP"}, & \text{if } target\_return[t] > 0.0 \\ \text{"DOWN"}, & \text{if } target\_return[t] \le 0.0 \end{cases}$$
+       $$target\_binary[t] = \begin{cases} 1, & \text{if } target\_return[t] > 0.0 \\ 0, & \text{if } target\_return[t] \le 0.0 \end{cases}$$
+  2. **Initial Binary Baseline & Zero-Return Policy:**
+     - For this initial binary classification baseline, zero-return sessions ($target\_return == 0.0$) are deterministically grouped into `"DOWN"` ($binary=0$).
+     - Zero-return samples are explicitly retained in the dataset and never silently discarded.
+     - Multi-class extensions (e.g. `UP`, `DOWN`, `FLAT`) or volatility-based threshold margins may be explored in subsequent iterations.
+  3. **Trading-Session Alignment (Non-Calendar Spacing):**
+     - $Close_t$ is the reference price of trading session $t$.
+     - $Close_{t+1}$ is the outcome price of the NEXT AVAILABLE trading session in the chronological series.
+     - Weekends (e.g. Friday to Monday) and market holidays (e.g. Diwali, Holi) are resolved naturally by chronological session indexing without calendar day synthesis.
+  4. **Strict Leakage Prevention & Final-Observation Invariant:**
+     - Features at session $t$ use only information available at or before session $t$.
+     - The target $y_t$ is stored separately from feature vectors in `TargetObservation`.
+     - The final observation ($t = N - 1$) has no realized future session; its target values evaluate strictly to `None` (`target_return=None`, `target_direction=None`, `target_binary=None`, `has_target=False`).
+  5. **Component Separation:**
+     - Target generation logic is isolated in `app/prediction/target.py` and kept strictly separate from feature calculation (`app/market/`) and model training (`app/training/`).
+- **Consequences:** Provides a leak-free, deterministic, mathematically verified prediction target adhering to project return conventions, with robust handling of market calendar gaps and zero returns.

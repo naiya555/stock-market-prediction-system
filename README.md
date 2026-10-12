@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 14: Trend Engine Implementation<br/>
+> **Status:** Ongoing Project — Day 15: Define the ML Prediction Target<br/>
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -46,15 +46,15 @@ When fully developed, the end-user workflow will operate as follows:
 - **`app/market/`**: Market data acquisition, cleaning, technical feature engineering (returns, volatility, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features), trend engine (swing points, market structure, trend classification), market breadth, pipeline orchestration, and visualization.
 - **`app/news/`**: Financial news ingestion, deduplication, and entity linking.
 - **`app/nlp/`**: FinBERT sentiment scoring and textual analysis.
-- **`app/prediction/`**: Numerical ML predictor, LLM predictor, and ensemble synthesis.
+- **`app/prediction/`**: Target formulation (`target.py`), numerical ML predictor, LLM predictor, and ensemble synthesis.
 - **`app/training/`**: Walk-forward validation, dataset splits without temporal leakage, and controlled retraining.
 - **`app/history/`**: Prediction audit logs, performance evaluation, and accuracy tracking.
 
 ---
 
-## 4. Current Status: Day 14 (Trend Engine & Market Structure Analysis)
+## 4. Current Status: Day 15 (Define the ML Prediction Target)
 
-Day 14 implements a reusable, production-conscious Trend Engine that classifies historical stock-price structure into `UPTREND`, `DOWNTREND`, or `SIDEWAYS` using confirmed swing highs and swing lows. It features explicit confirmation timing ($t + k$) to strictly prevent look-ahead bias, sequential market structure transition labeling (`HH`, `HL`, `LH`, `LL`), 1:1 aligned rolling trend series generation, and seamless integration into the market data pipeline.
+Day 15 defines a mathematically precise, leakage-safe target for the first stock-market ML model. It formulates next-session directional prediction using close-to-close returns, implements an initial binary baseline where zero returns are deterministically grouped into `DOWN`, indexes natural trading-session spacing without calendar day gaps, and enforces that the final session has an explicitly missing target.
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.
@@ -127,12 +127,19 @@ Day 14 implements a reusable, production-conscious Trend Engine that classifies 
   - Point-in-time rolling trend series alignment (`compute_rolling_trends`): generates 1:1 aligned rolling trend classifications across all bars with zero future leakage.
   - Typed immutable results container (`TrendAnalysisResult`) and swing representation (`SwingPoint`) with complete `.to_dict()` serialization and boolean flags (`.is_uptrend`, `.is_downtrend`, `.is_sideways`, `.is_confirmed`).
   - Non-predictive baseline disclaimer: trend classifications describe historical price action structure; they do not predict future returns, directional continuation, or provide trading signals.
+- ML Prediction Target Layer (`app/prediction/target.py`):
+  - Forward close-to-close return formula: $target\_return[t] = (Close_{t+1} / Close_t) - 1.0$.
+  - Initial binary directional classification: `UP` (binary 1) if $target\_return[t] > 0.0$ else `DOWN` (binary 0).
+  - Deterministic zero-return baseline policy: sessions where $Close_{t+1} == Close_t$ are grouped into `DOWN` without sample dropping.
+  - Non-calendar trading session alignment: consecutive records index the next available trading day (handles weekends and exchange holidays naturally).
+  - Missing final target invariant: the latest session $t = N - 1$ has no realized future and strictly receives `None` (`has_target=False`), preventing temporal leakage.
+  - Typed immutable container `TargetObservation` with complete `.to_dict()` serialization.
 - Market Data Pipeline Orchestrator (`app/market/pipeline.py`):
   - Unified pipeline connecting provider retrieval, data cleaning, return/volatility feature computation, technical indicators, candlestick features, and trend analysis (`run_market_data_pipeline` and `process_market_data`).
   - Immutable pipeline container (`MarketDataPipelineResult`) preserving raw records, cleaned records, cleaning summary, return features, technical indicators, candlestick features, and trend analysis (`result.trend`, `trend_classification`, and `.to_dict()`).
 - Historical Market Visualizer (`app/market/visualizer.py`):
   - Headless Matplotlib rendering (`Agg` backend) generating publication-quality PNG charts.
-- 172 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, and visualizer.
+- 185 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, and visualizer.
 
 ---
 
