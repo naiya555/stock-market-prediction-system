@@ -1673,3 +1673,52 @@ Executed `scripts/verify_baselines.py` on real market data (Holdout: `2026-09-15
 ### Known Limitations & Next Steps
 - Baseline comparison proves that un-tuned XGBoost on a short 180-day slice behaves similarly to a majority-UP heuristic.
 - Next scheduled scope (Day 19): Multi-year historical lookback expansion and LightGBM directional benchmark against the baseline framework.
+
+---
+
+## Pre-Day 19 - Validation Gate (Reliability Audit & Historical Capability)
+
+### Goal
+Execute two focused validation gates prior to commencing Day 19 work (validation-only gate, not a roadmap day):
+1. **Audit A — Random Baseline Reliability:** Measure sampling variability of pseudo-random baselines across 50 predeclared seeds on the unchanged 18-session holdout, referencing Majority-Class and Day 17 XGBoost baselines.
+2. **Audit B — Historical Provider Capability:** Inspect `YFinanceProvider` and test a read-only 5-year historical data request for `BHARTIARTL.NS`, verifying session counts, duplicates, missing values, physical OHLC invariants, corporate actions, and price adjustment semantics.
+3. Formulate an evidence-based recommendation on whether Day 19 can safely begin.
+
+### Audit A: Random Baseline Reliability (50 Predeclared Seeds)
+- **Holdout Configuration:** Identical 18-session chronological holdout (`2026-09-15` to `2026-10-09`, 9 UP and 9 DOWN actual outcomes). Training set: 70 sessions (`2026-06-04` to `2026-09-10`, 36 UP and 34 DOWN, prior $P(UP) = 0.5143$). Embargo: 1 session (`2026-09-11`).
+- **Seed Protocol:** Evaluated 50 predeclared fixed seeds (`seeds = list(range(1, 51))`) for Uniform ($P(UP) = 0.5$) and Stratified ($P(UP) = 0.5143$) random baselines. Stratified probability derived strictly from training labels with zero holdout leakage.
+- **Reference Strategies (Deterministic):**
+  - **Baseline A (Majority Class):** Accuracy = **50.00%** | UP F1 = **0.6667** | Confusion Matrix = `[[0, 9], [0, 9]]` | Predictions: 18 UP, 0 DOWN
+  - **Model C (Day 17 XGBoost):** Accuracy = **44.44%** | UP F1 = **0.6154** | Confusion Matrix = `[[0, 9], [1, 8]]` | Predictions: 17 UP, 1 DOWN
+- **Multi-Seed Random Baseline Distribution ($N=50$ Seeds):**
+  - **Uniform Random ($P(UP) = 0.5000$):**
+    - Accuracy: Mean = **52.78%** | Std = **14.16%** | Min = **27.78%** | Max = **94.44%**
+    - UP F1: Mean = **0.5159** | Std = **0.1642** | Min = **0.1333** | Max = **0.9474**
+  - **Stratified Random ($P(UP) = 0.5143$):**
+    - Accuracy: Mean = **47.33%** | Std = **14.43%** | Min = **5.56%** | Max = **72.22%**
+    - UP F1: Mean = **0.4734** | Std = **0.1652** | Min = **0.0000** | Max = **0.7619**
+- **Methodological Finding:**
+  - Repeated seeds measure the sampling variability of the random baseline on this small $N=18$ holdout; they **do not** increase the effective number of independent market observations.
+  - The wide spread of accuracy across seeds (27.8% to 94.4% for uniform; 5.6% to 72.2% for stratified) proves that on an 18-session holdout, accuracy is dominated by small-sample variance ($\sigma \approx 14.2\%$). XGBoost's 44.44% score falls well within 1 standard deviation of random guessing, confirming that no predictive edge can be claimed on this sample.
+
+### Audit B: Historical Provider Capability & Data Integrity
+- **Provider Inspected:** `YFinanceProvider` (`app/market/providers/yfinance_provider.py`), querying `BHARTIARTL.NS`.
+- **Maximum Lifetime Historical Availability:** 6,027 trading sessions spanning `2002-07-01` to `2026-10-13` (~24.1 years of continuous daily data available via Yahoo Finance).
+- **Read-Only 5-Year Historical Request:**
+  - Requested Period: `2021-10-14` to `2026-10-13` (~5 calendar years).
+  - Returned Period: `2021-10-14` to `2026-10-13` (1,234 trading sessions).
+  - Unique Sessions: 1,234 | Duplicate Sessions: **0** | Missing / NaN Bars: **0**.
+  - Physical OHLC Boundary Invariants: **0 breaches** ($Low \le Open \le High$, $Low \le Close \le High$, $Volume \ge 0$, Prices $> 0$).
+  - Calendar Validation: Weekends and NSE exchange holidays correctly identified as non-trading sessions (not missing bars).
+- **Corporate Actions & Price Adjustment Semantics:**
+  - Stock Splits (5-year): **0** (no split adjustments needed for BHARTIARTL.NS in this window).
+  - Dividends (5-year): **5 payout events** totaling ₹55.00/share (2022: ₹3.0, 2023: ₹4.0, 2024: ₹8.0, 2025: ₹16.0, 2026: ₹24.0).
+  - Provider Semantics: `auto_adjust=False` preserves raw traded prices (`Close`), ensuring authentic physical candlestick bounds and true intraday volatility.
+  - Mean absolute difference between raw `Close` and dividend-adjusted `Adj Close` is ₹26.34 (maximum ₹41.93).
+  - Limitation Documented: Ex-dividend dates create small artificial downward price gaps on raw price series unless dividend adjustments are incorporated.
+
+### Validation Gate Recommendation
+1. **Audit A Conclusion:** The 18-session holdout is statistically inadequate for reliable model evaluation ($\pm 5.55\%$ per sample; random guessing ranges from 5.6% to 94.4%). Multi-year data is mandatory before drawing architectural conclusions.
+2. **Audit B Conclusion:** 5 years (1,234 sessions) of clean, high-quality, zero-duplicate daily market data is immediately accessible via `YFinanceProvider`.
+3. **Recommendation:** **DAY 19 CAN SAFELY PROCEED** to expand historical data lookback and implement the LightGBM directional classifier baseline.
+
