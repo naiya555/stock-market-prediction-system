@@ -4,6 +4,13 @@ Provides technical feature matrix assembly, temporal dataset splits,
 walk-forward validation, and machine-learning model training infrastructure.
 """
 
+from app.training.baselines import (
+    BaselineComparisonReport,
+    BaselineComparisonRow,
+    MajorityClassClassifier,
+    RandomClassifier,
+    evaluate_baseline_comparison,
+)
 from app.training.feature_matrix import (
     FEATURE_COLUMNS,
     FORBIDDEN_FEATURE_PATTERNS,
@@ -42,4 +49,9 @@ __all__ = [
     "run_training_pipeline",
     "split_chronological_holdout",
     "train_baseline_classifier",
+    "MajorityClassClassifier",
+    "RandomClassifier",
+    "BaselineComparisonRow",
+    "BaselineComparisonReport",
+    "evaluate_baseline_comparison",
 ]

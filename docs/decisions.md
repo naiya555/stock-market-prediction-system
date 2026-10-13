@@ -603,3 +603,17 @@ This document formalizes the architectural decisions made on Day 1. All future i
   5. **Pure Python Metric Engine:** Implement `compute_classification_metrics` calculating Accuracy, Precision, Recall, F1, and Confusion Matrix using standard library and numpy, maintaining positive class convention as 1 (`UP`).
   6. **Research Baseline Disclaimer:** Document explicitly that this model is a non-calibrated research baseline with zero claims of commercial trading edge or guaranteed directional profitability.
 - **Consequences:** Eliminates temporal leakage across split boundaries, maintains lean dependencies, ensures deterministic repeatability, and establishes an auditable baseline for Phase 4 benchmarking.
+
+---
+
+## ADR 45: Baseline Comparison Benchmark Protocol Prior to Model Optimization
+- **Status:** Accepted
+- **Context:** Directional stock market models are prone to misleading validation claims when assessed without simple non-parametric baselines. In small or regime-shifted holdout windows, a classifier predicting predominantly one class (e.g., UP) can easily show superficial positive recall or F1 while failing to beat trivial majority-class heuristics or stratified coin flips. Escalating model complexity or tuning hyperparameters before proving that a model beats simple baselines is premature optimization.
+- **Decision:**
+  1. **Mandatory Baseline Benchmarks:** Every directional model must be evaluated against three standard baselines under identical chronological partitions, identical sample indices, and identical metric conventions:
+     - *Baseline A (Majority-Class Classifier):* Predicts the most frequent class in the training partition, with deterministic tie-breaking.
+     - *Baseline B1 (Uniform Random Classifier):* Fixed-seed (seed=42) pseudo-random coin flip with $P(UP) = 0.5$.
+     - *Baseline B2 (Stratified Random Classifier):* Fixed-seed (seed=42) pseudo-random generation matching training class prior $P(UP) = P(y_{train} = 1)$.
+  2. **Evaluation Parity:** All baselines must consume identical holdout partitions, respect identical 1-session embargo gaps, and use canonical `compute_classification_metrics`.
+  3. **Optimization Gate:** If a complex model fails to beat majority-class or class-prior random baselines, hyperparameter tuning and model deployment are suspended in favor of expanding sample history and analyzing structural feature representation.
+- **Consequences:** Enforces rigorous scientific humility, exposes upward/downward prediction biases transparently, and prevents false claims of predictive edge.

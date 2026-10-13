@@ -1581,3 +1581,95 @@ Executed `scripts/verify_xgboost.py` on real `BHARTIARTL` historical market data
 - This is a research baseline with fixed default hyperparameters; it exhibits an upward bias on the small holdout window (predicting UP for 17 of 18 sessions).
 - No claim is made of commercial viability, calibrated probabilities, or a profitable trading edge.
 - Next scheduled scope (Day 18): Baseline comparisons (random and majority class baselines), evaluation metrics expansion, and LightGBM comparison.
+
+---
+
+## Day 18 - Baseline Comparison & XGBoost Evaluation
+
+### Goal
+Evaluate the existing Day 17 XGBoost binary direction classifier against standard non-parametric baselines on the same dataset, target definition, chronological holdout, and evaluation metrics:
+1. Reproduce Day 17 XGBoost holdout results from the active codebase.
+2. Implement Baseline A: Majority-Class Classifier (predicts training label majority with deterministic tie-breaking).
+3. Implement Baseline B: Fixed-Seed Random Classifier (supports uniform $p=0.5$ and stratified $p=train\_prior$ policies, fixed seed=42).
+4. Evaluate Model C: Existing Day 17 XGBoost Classifier without modifying hyperparameters or feature schema.
+5. Apply fair, leakage-safe evaluation protocol with 1-session embargo gap on identical holdout samples.
+6. Generate a comprehensive comparative evaluation table and answer core empirical audit questions.
+7. Add deterministic automated unit tests and retain strict research honesty.
+
+### Implementation
+1. **Baseline Classifiers & Evaluation Layer (`app/training/baselines.py`):**
+   - Implemented `MajorityClassClassifier`: Evaluates training partition class counts (`class_counts_`), determines majority class, and handles ties deterministically via `tie_break_class` (default 1 / UP). Evaluates test samples with zero holdout leakage.
+   - Implemented `RandomClassifier`: Deterministic pseudo-random direction generator using fixed seed (default 42). Supports `uniform` ($p=0.5$), `stratified` ($p = \text{train prior}$), and `custom` policies.
+   - Implemented `BaselineComparisonRow` & `BaselineComparisonReport`: Structured containers capturing per-strategy Accuracy, Precision, Recall, F1, Confusion Matrix, UP/DOWN prediction counts, and correct counts, with Markdown table generation (`.summary_table()`).
+   - Implemented `evaluate_baseline_comparison()`: Unified comparative orchestrator executing fair, parallel evaluation of all four strategies across identical test observations.
+2. **Package Exports (`app/training/__init__.py`):**
+   - Cleanly exported `MajorityClassClassifier`, `RandomClassifier`, `BaselineComparisonRow`, `BaselineComparisonReport`, and `evaluate_baseline_comparison`.
+3. **Application Entry Point Update (`main.py`):**
+   - Added `print("Day 18 baseline comparison ready")`.
+4. **Real-Data Verification Script (`scripts/verify_baselines.py`):**
+   - End-to-end verification script for `BHARTIARTL.NS` running the complete pipeline, feature matrix assembly, chronological embargo split, and comparative baseline evaluation.
+
+### Comparative Evaluation Results (BHARTIARTL Holdout, N=18)
+Executed `scripts/verify_baselines.py` on real market data (Holdout: `2026-09-15` to `2026-10-09`, 9 UP and 9 DOWN actual outcomes):
+
+| Strategy | Accuracy | UP Precision | UP Recall | UP F1 | Confusion Matrix (TN,FP,FN,TP) | Pred UP/DOWN | Correct UP/DOWN |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Baseline A (Majority Class)** | 50.00% | 50.00% | 100.00% | 0.6667 | `[[0, 9], [0, 9]]` | 18 / 0 | 9 / 0 |
+| **Baseline B1 (Uniform Random, p=0.5)** | 44.44% | 44.44% | 44.44% | 0.4444 | `[[4, 5], [5, 4]]` | 9 / 9 | 4 / 4 |
+| **Baseline B2 (Stratified Random, p=train_prior)** | 55.56% | 55.56% | 55.56% | 0.5556 | `[[5, 4], [4, 5]]` | 9 / 9 | 5 / 5 |
+| **Model C (Day 17 XGBoost)** | 44.44% | 47.06% | 88.89% | 0.6154 | `[[0, 9], [1, 8]]` | 17 / 1 | 8 / 0 |
+
+### Empirical Findings & Audit Questions
+1. **Which strategy performed best on the holdout?**
+   - By accuracy: Baseline B2 (Stratified Random) achieved 55.56%, followed by Baseline A (Majority Class) at 50.00%.
+   - By F1 score: Baseline A (Majority Class) achieved 0.6667.
+2. **Did XGBoost outperform the majority-class baseline?**
+   - **NO.** Majority-class accuracy was 50.00% (F1 = 0.6667), whereas XGBoost achieved 44.44% (F1 = 0.6154).
+3. **Did XGBoost outperform the fixed-seed random baseline?**
+   - **NO.** Uniform Random tied XGBoost on accuracy (44.44% vs 44.44%) while making balanced predictions, and Stratified Random beat XGBoost (55.56% vs 44.44%).
+4. **Is the XGBoost UP prediction bias still present?**
+   - **YES.** XGBoost predicted UP for 17 of 18 holdout sessions (94.4% of samples), capturing 0 of the 9 downward sessions (TN = 0, FP = 9).
+5. **Is the holdout window large enough to support a definitive conclusion?**
+   - **NO.** 18 sessions (~3.5 weeks) has low statistical power; a 1-sample difference shifts accuracy by 5.55 percentage points.
+6. **What should the next model development step be based on the evidence?**
+   - Expand historical lookback (multi-year dataset) to provide statistical power.
+   - Benchmark LightGBM on the exact same baseline comparison framework before tuning.
+   - Investigate class weighting and decision threshold calibration for tree models.
+
+### Tests
+- Created `tests/test_baselines.py` with 12 comprehensive unit tests:
+  1. Majority-class selection uses training labels only.
+  2. Deterministic tie-handling in MajorityClassClassifier.
+  3. MajorityClassClassifier shape, values, and probabilities.
+  4. MajorityClassClassifier error handling on invalid or empty inputs.
+  5. Reproducibility of fixed-seed random predictions.
+  6. Policy enforcement for RandomClassifier ('uniform', 'stratified', 'custom').
+  7. RandomClassifier input validation and error handling.
+  8. Identical holdout indices and fair evaluation across strategies.
+  9. Leakage prevention: holdout outcomes strictly invisible to baselines.
+  10. Consistent metric calculations and confusion-matrix correctness.
+  11. BaselineComparisonReport generation, summary table, and serialization.
+  12. Regression protection for existing Day 17 XGBoost classifier within comparison.
+- **Test Suite Results:**
+  - Previous baseline: 213 passed
+  - New total: **225 passed in 2.62s** (12 new baseline tests, 0 regressions). Zero external network dependencies.
+
+### Review
+- **CodeRabbit:** CodeRabbit CLI tool is not installed in the local environment; reported accurately. Clean senior developer review conducted following Ponytail mode: type safety, mathematical invariants, zero code duplication, zero unnecessary dependencies (pure Python / NumPy baseline implementations), and safe edge-case handling.
+- **Roo Code:** Remained disabled.
+- **Ponytail / Senior Dev Mode:** Minimalist, robust, leak-free non-parametric baselines with full test verification.
+
+### Documentation
+- Updated `README.md` to Day 18 status with 225 passing tests.
+- Updated `docs/architecture.md` with Section 4.13 detailing Baseline Comparison & Evaluation Framework.
+- Updated `docs/decisions.md` with ADR 45.
+- Updated `docs/roadmap.md` with Day 18 completion details.
+- Updated `docs/daily-progress.md` with Day 18 development entry.
+
+### Git Commit
+- `feat: implement baseline comparison and evaluate XGBoost`
+- Commit Hash: [Pending commit]
+
+### Known Limitations & Next Steps
+- Baseline comparison proves that un-tuned XGBoost on a short 180-day slice behaves similarly to a majority-UP heuristic.
+- Next scheduled scope (Day 19): Multi-year historical lookback expansion and LightGBM directional benchmark against the baseline framework.

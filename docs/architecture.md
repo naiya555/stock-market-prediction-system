@@ -494,3 +494,29 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
 - **Research Baseline Policy:**
   - Model outputs represent non-calibrated directional probabilities for baseline benchmarking (Phase 4).
   - Explicitly disclaims commercial trading viability or predictive guarantees.
+
+### 4.13. Baseline Comparison & Evaluation Framework (`app/training/baselines.py`)
+- **Comparative Evaluation Flow:**
+  ```text
+  FeatureMatrixDataset (Day 16)
+             ↓
+  Chronological Holdout Partition with 1-Session Embargo (Day 17)
+             ↓
+  Parallel Strategy Evaluation on Identical Holdout Observations (N=18):
+    ├── Baseline A: MajorityClassClassifier (predicts training majority, e.g. UP)
+    ├── Baseline B1: RandomClassifier (Uniform coin flip, P(UP)=0.5, seed=42)
+    ├── Baseline B2: RandomClassifier (Stratified empirical train prior, P(UP)=0.5143, seed=42)
+    └── Model C: XGBoostDirectionClassifier (Day 17 conservative baseline, seed=42)
+             ↓
+  Unified Metrics Extraction (compute_classification_metrics):
+    - Accuracy, Precision, Recall, F1, Confusion Matrix, Prediction Counts
+             ↓
+  Comparative Audit Report (BaselineComparisonReport):
+    - Determines whether ML model beats non-parametric baselines
+    - Detects directional prediction bias (e.g. constant UP predictions)
+    - Formal progression gate prior to hyperparameter tuning
+  ```
+- **Evaluation Parity Principles:**
+  - **Shared Data & Partitioning:** All strategies evaluate on identical test indices without partition drift.
+  - **Leakage Immunity:** Majority and stratified baselines consume exclusively training labels (`y_train`). Holdout labels are completely invisible.
+  - **Honest Defect Identification:** Exposes when complex models underperform simple coin flips or majority voting before escalating complexity.

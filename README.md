@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 17: Baseline XGBoost Direction Classifier<br/>
+> **Status:** Ongoing Project — Day 18: Baseline Comparison & XGBoost Evaluation<br/>
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -47,14 +47,14 @@ When fully developed, the end-user workflow will operate as follows:
 - **`app/news/`**: Financial news ingestion, deduplication, and entity linking.
 - **`app/nlp/`**: FinBERT sentiment scoring and textual analysis.
 - **`app/prediction/`**: Target formulation (`target.py`), numerical ML predictor, LLM predictor, and ensemble synthesis.
-- **`app/training/`**: Walk-forward validation, dataset splits without temporal leakage, and controlled retraining.
+- **`app/training/`**: Walk-forward validation, dataset splits without temporal leakage, baseline benchmark comparison suite, and controlled retraining.
 - **`app/history/`**: Prediction audit logs, performance evaluation, and accuracy tracking.
 
 ---
 
-## 4. Current Status: Day 17 (Baseline XGBoost Direction Classifier)
+## 4. Current Status: Day 18 (Baseline Comparison & XGBoost Evaluation)
 
-Day 17 implements the project's first reproducible machine learning model: a baseline XGBoost binary direction classifier (`app/training/xgboost_classifier.py`) predicting the next available trading session's direction (`UP`=1, `DOWN`=0). It uses native XGBoost APIs (`xgb.train`, `xgb.DMatrix`) to avoid unneeded `scikit-learn` dependencies, enforces chronological holdout splitting with a 1-session label outcome embargo gap, preserves canonical 37-feature column ordering, and evaluates out-of-sample metrics with zero temporal leakage.
+Day 18 implements a rigorous, leakage-safe baseline comparison framework (`app/training/baselines.py`) benchmarking the Day 17 XGBoost direction classifier against non-parametric strategies (Majority-Class Classifier, Fixed-Seed Uniform Random, and Fixed-Seed Stratified Random) on identical chronological holdout samples with a 1-session embargo. It establishes an honest empirical gate prior to model tuning or introducing LightGBM, proving that the baseline XGBoost classifier (44.44% accuracy) suffers from an upward prediction bias and does not yet beat majority-class (50.00%) or stratified random (55.56%) baselines.
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.
@@ -153,9 +153,14 @@ Day 17 implements the project's first reproducible machine learning model: a bas
   - Pure Python / NumPy evaluation metrics engine (`compute_classification_metrics`) calculating Accuracy, Precision, Recall, F1, and Confusion Matrix with positive class convention 1 (`UP`).
   - Native model serialization (.save_model() to JSON) and deterministic prediction reproducibility.
   - Research baseline disclaimer: uncalibrated probabilities, no financial edge claim.
+- Baseline Comparison & Evaluation Framework (`app/training/baselines.py`):
+  - MajorityClassClassifier: predicts training label majority (with deterministic tie-breaking to class 1).
+  - RandomClassifier: deterministic pseudo-random predictions with fixed seed (uniform p=0.5 and stratified p=train_prior policies).
+  - Comparative evaluation pipeline (`evaluate_baseline_comparison`): benchmarks XGBoost against non-parametric baselines on identical holdout samples with 1-session embargo.
+  - Transparent empirical reporting: identified that baseline XGBoost (44.44% accuracy) has an UP-prediction bias and does not yet beat majority class (50.00%) or stratified random (55.56%).
 - Historical Market Visualizer (`app/market/visualizer.py`):
   - Headless Matplotlib rendering (`Agg` backend) generating publication-quality PNG charts.
-- 213 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, XGBoost direction classifier, and visualizer.
+- 225 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, XGBoost direction classifier, baseline comparison suite, and visualizer.
 
 ---
 
