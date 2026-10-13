@@ -1837,7 +1837,13 @@ Executed `scripts/verify_day19.py` on real market data:
 - Updated `docs/daily-progress.md` with Day 19 audit log.
 
 ### Git Commit & Push
-- `feat: expand multi-year historical data and benchmark LightGBM`
+- **Feature Commit:** `76b283b` — `feat: implement LightGBM binary classifier baseline and corresponding tests`
+- **Remote Status:** PUSHED and verified on `origin/main` (`https://github.com/naiya555/stock-market-prediction-system`)
+
+### Known Limitations & Next Steps
+- Both XGBoost (54.17%) and LightGBM (53.75%) achieve ~54% directional accuracy on the out-of-sample holdout, beating the majority class (50.00%) and random baseline distributions (~50.0% +/- 3.2%). However, single-split holdout metrics are preliminary evidence of signal and must be tested under rolling walk-forward cross-validation.
+- Transaction costs, market slippage, and securities transaction taxes (STT) are not yet integrated into the strategy evaluation.
+- Next scheduled scope (Day 20): Walk-forward temporal cross-validation across multiple market cycles and rolling regimes without lookahead leakage.
 
 
 
