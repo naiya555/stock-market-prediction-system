@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 16: Technical Feature Matrix Assembly<br/>
+> **Status:** Ongoing Project — Day 17: Baseline XGBoost Direction Classifier<br/>
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -52,9 +52,9 @@ When fully developed, the end-user workflow will operate as follows:
 
 ---
 
-## 4. Current Status: Day 16 (Technical Feature Matrix Assembly)
+## 4. Current Status: Day 17 (Baseline XGBoost Direction Classifier)
 
-Day 16 implements a reusable, deterministic technical feature matrix assembly pipeline (`app/training/feature_matrix.py`) combining 37 canonical features with Day 15 next-session prediction targets. It enforces strict model-input/target isolation, point-in-time timestamp joins, natural preservation of indicator warmup missing values, and explicit rejection of target leakage fields from the feature set.
+Day 17 implements the project's first reproducible machine learning model: a baseline XGBoost binary direction classifier (`app/training/xgboost_classifier.py`) predicting the next available trading session's direction (`UP`=1, `DOWN`=0). It uses native XGBoost APIs (`xgb.train`, `xgb.DMatrix`) to avoid unneeded `scikit-learn` dependencies, enforces chronological holdout splitting with a 1-session label outcome embargo gap, preserves canonical 37-feature column ordering, and evaluates out-of-sample metrics with zero temporal leakage.
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.
@@ -145,9 +145,17 @@ Day 16 implements a reusable, deterministic technical feature matrix assembly pi
 - Market Data Pipeline Orchestrator (`app/market/pipeline.py`):
   - Unified pipeline connecting provider retrieval, data cleaning, return/volatility feature computation, technical indicators, candlestick features, and trend analysis (`run_market_data_pipeline` and `process_market_data`).
   - Immutable pipeline container (`MarketDataPipelineResult`) preserving raw records, cleaned records, cleaning summary, return features, technical indicators, candlestick features, and trend analysis (`result.trend`, `trend_classification`, and `.to_dict()`).
+- Baseline XGBoost Direction Classifier Layer (`app/training/xgboost_classifier.py`):
+  - Binary direction classifier predicting next-session movement (`UP`=1, `DOWN`=0) using native `xgb.train` and `xgb.DMatrix` (zero `scikit-learn` dependency).
+  - Conservative, explicit baseline hyperparameters: `objective='binary:logistic'`, `eval_metric='logloss'`, `max_depth=3`, `learning_rate=0.05`, `n_estimators=50`, `subsample=0.8`, `colsample_bytree=0.8`, `random_state=42`, `n_jobs=1`.
+  - Chronological holdout partitioning (`split_chronological_holdout`) enforcing an explicit 1-session embargo gap so that training label outcome timestamps (`next_timestamp`) never touch or overlap with holdout session timestamps.
+  - Complete labeled row extraction policy: rejects missing values during baseline training, transparently accounting for excluded indicator warmup rows (33 sessions) and the final unlabeled observation.
+  - Pure Python / NumPy evaluation metrics engine (`compute_classification_metrics`) calculating Accuracy, Precision, Recall, F1, and Confusion Matrix with positive class convention 1 (`UP`).
+  - Native model serialization (.save_model() to JSON) and deterministic prediction reproducibility.
+  - Research baseline disclaimer: uncalibrated probabilities, no financial edge claim.
 - Historical Market Visualizer (`app/market/visualizer.py`):
   - Headless Matplotlib rendering (`Agg` backend) generating publication-quality PNG charts.
-- 199 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, and visualizer.
+- 213 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, XGBoost direction classifier, and visualizer.
 
 ---
 

@@ -49,8 +49,8 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 ### Phase 4: First ML Model
 - Define next-session binary directional prediction target ($Close_{t+1} / Close_t - 1$, UP if $>0$ else DOWN, zero return grouped into DOWN, missing final session target) (Day 15 complete).
 - Feature matrix assembly and tabular dataset generation (canonical 37 numeric features, strict X/y isolation guard, explicit timestamp joins, natural warmup missing-value preservation, labeled subset extraction) (Day 16 complete).
-- Establish baseline numerical forecasting model using XGBoost (Day 17 planned).
-- Benchmark against LightGBM.
+- Establish baseline numerical forecasting model using XGBoost (binary direction classification, chronological holdout split with label outcome embargo, native XGBoost Core API, deterministic evaluation) (Day 17 complete).
+- Benchmark against LightGBM (Day 18 planned).
 - Implement walk-forward validation splits (strictly avoiding random cross-validation to prevent temporal leakage).
 
 ### Phase 5: Prediction Engine

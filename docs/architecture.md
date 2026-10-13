@@ -458,3 +458,39 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   - Zero-filling is strictly forbidden; imputation and scaling must be fitted on training folds only (Day 17) to prevent global leakage.
 - **Labeled Dataset Extraction Accounting:**
   - `FeatureMatrixDataset.get_labeled_dataset()` transparently reports initial rows, unlabeled final row exclusions, optional warmup exclusions, and retained training rows.
+
+### 4.12. Baseline XGBoost Direction Classifier Layer (`app/training/xgboost_classifier.py`)
+- **Training Workflow Flow:**
+  ```text
+  FeatureMatrixDataset (Day 16)
+             ↓
+  Extract Complete Labeled Rows (drop_incomplete_warmup=True)
+             ↓
+  Chronological Holdout Partitioning (split_chronological_holdout):
+    - Train Partition (e.g. 70 sessions)
+    - 1-Session Embargo Gap (purged to prevent label outcome leakage)
+    - Holdout Partition (e.g. 18 sessions)
+             ↓
+  Verify Temporal Invariant: train_outcome_cutoff <= holdout_start_date
+             ↓
+  Fit Native XGBoost Binary Classifier (XGBoostDirectionClassifier):
+    - Objective: binary:logistic
+    - Metric: logloss
+    - Fixed seed: 42
+    - Conservative baseline: max_depth=3, lr=0.05, n_estimators=50
+             ↓
+  Holdout Evaluation & Metrics (compute_classification_metrics):
+    - Accuracy, Precision, Recall, F1, Confusion Matrix
+    - Pure Python / NumPy metrics engine (zero sklearn dependency)
+             ↓
+  Deterministic Inference & Serialization (.save_model() to JSON)
+  ```
+- **Temporal Integrity & Outcome Embargo:**
+  - Because target label $y_t$ realizes at session $t+1$, the final training observation $t_{train}$ would observe the close price of session $t_{train}+1$.
+  - An explicit 1-session embargo gap purges session $t_{train}$, guaranteeing that every training label's outcome timestamp strictly precedes the first session in the holdout partition.
+- **Lean Dependency Architecture:**
+  - Employs native `xgb.train()` and `xgb.DMatrix()` to eliminate the heavy `scikit-learn` dependency.
+  - Metrics are evaluated with built-in arithmetic and standard library typing.
+- **Research Baseline Policy:**
+  - Model outputs represent non-calibrated directional probabilities for baseline benchmarking (Phase 4).
+  - Explicitly disclaims commercial trading viability or predictive guarantees.

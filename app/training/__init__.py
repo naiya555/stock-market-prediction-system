@@ -13,6 +13,17 @@ from app.training.feature_matrix import (
     assemble_feature_matrix,
     validate_feature_matrix_isolation,
 )
+from app.training.xgboost_classifier import (
+    ChronologicalSplitResult,
+    ClassificationMetrics,
+    DirectionTrainingResult,
+    XGBoostConfig,
+    XGBoostDirectionClassifier,
+    compute_classification_metrics,
+    run_training_pipeline,
+    split_chronological_holdout,
+    train_baseline_classifier,
+)
 
 __all__ = [
     "FEATURE_COLUMNS",
@@ -22,4 +33,13 @@ __all__ = [
     "FeatureMatrixDataset",
     "assemble_feature_matrix",
     "validate_feature_matrix_isolation",
+    "ChronologicalSplitResult",
+    "ClassificationMetrics",
+    "DirectionTrainingResult",
+    "XGBoostConfig",
+    "XGBoostDirectionClassifier",
+    "compute_classification_metrics",
+    "run_training_pipeline",
+    "split_chronological_holdout",
+    "train_baseline_classifier",
 ]

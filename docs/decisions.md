@@ -584,3 +584,22 @@ This document formalizes the architectural decisions made on Day 1. All future i
   5. **Transparent Labeled Subset Extraction:**
      - `FeatureMatrixDataset.get_labeled_dataset()` provides transparent accounting: initial total rows, unlabeled final row exclusions ($y=NaN$), optional warmup row exclusions, and final retained row counts.
 - **Consequences:** Guarantees leak-free, mathematically verified tabular dataset assembly with strictly isolated feature matrix $X$, verified alignment to Day 15 targets, and complete preservation of natural warmup missing values.
+
+---
+
+## ADR 44: Baseline XGBoost Direction Classifier, Chronological Holdout Partitioning, and Temporal Label Embargo
+- **Status:** Accepted
+- **Context:** Training the project's first machine learning model (Phase 4, Day 17) introduces critical risks of data leakage and unrealistic performance claims:
+  1. Non-chronological leakage: Random k-fold or random train/test splits allow future data to predict past samples, creating artificially inflated metrics.
+  2. Boundary label leakage: When partitioning chronologically, the final training observation at session $t_{train}$ has an outcome label evaluated at $t_{train} + 1$. If $t_{train} + 1$ is the first observation of the holdout period, the training target depends on future holdout closing prices.
+  3. External dependency overhead: Using `xgboost.sklearn` forces an unneeded heavy dependency on `scikit-learn` when native XGBoost APIs (`xgb.train`, `xgb.DMatrix`) already provide complete gradient-boosting capabilities with zero sklearn dependency.
+  4. Hyperparameter overfitting: Tuning hyperparameters or thresholds on the holdout partition invalidates the out-of-sample holdout guarantee.
+  5. Unjustified performance claims: Claiming a predictive edge or calibrated trading probabilities based on an initial research baseline.
+- **Decision:**
+  1. **Native XGBoost Core API:** Use native `xgb.train()` and `xgb.DMatrix()` with explicit `binary:logistic` objective, `logloss` metric, and fixed random seed (42). This avoids adding `scikit-learn` to project dependencies while maintaining full control over feature schema and determinism.
+  2. **Conservative Baseline Hyperparameters:** Use fixed, explicit hyperparameters (`max_depth=3`, `learning_rate=0.05`, `n_estimators=50`, `subsample=0.8`, `colsample_bytree=0.8`, `n_jobs=1`) without evaluation set tuning.
+  3. **Strict Chronological Holdout with Temporal Embargo:** Implement `split_chronological_holdout` preserving strict ascending chronological order. Enforce an explicit 1-session embargo gap between train and holdout partitions such that the training outcome cutoff date is strictly prior to the holdout start date ($train\_outcome\_cutoff \le holdout\_start\_date$).
+  4. **Strict Complete Labeled Row Extraction:** Supervised training is performed strictly on complete labeled rows (`drop_incomplete_warmup=True`), explicitly accounting for excluded warmup rows (33 sessions) and the final unlabeled observation (1 session).
+  5. **Pure Python Metric Engine:** Implement `compute_classification_metrics` calculating Accuracy, Precision, Recall, F1, and Confusion Matrix using standard library and numpy, maintaining positive class convention as 1 (`UP`).
+  6. **Research Baseline Disclaimer:** Document explicitly that this model is a non-calibrated research baseline with zero claims of commercial trading edge or guaranteed directional profitability.
+- **Consequences:** Eliminates temporal leakage across split boundaries, maintains lean dependencies, ensures deterministic repeatability, and establishes an auditable baseline for Phase 4 benchmarking.

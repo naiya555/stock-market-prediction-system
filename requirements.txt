@@ -10,3 +10,6 @@ matplotlib>=3.8.0
 
 # Day 8 Technical Indicators
 pandas>=2.0.0
+
+# Day 17 XGBoost Direction Classifier Baseline
+xgboost>=2.0.0
