@@ -1575,7 +1575,7 @@ Executed `scripts/verify_xgboost.py` on real `BHARTIARTL` historical market data
 
 ### Git Commit
 - `feat: train first XGBoost direction classifier`
-- Commit Hash: [Pending commit]
+- Commit Hash: `076bf01`
 
 ### Known Limitations & Next Steps
 - This is a research baseline with fixed default hyperparameters; it exhibits an upward bias on the small holdout window (predicting UP for 17 of 18 sessions).
