@@ -1717,8 +1717,13 @@ Execute two focused validation gates prior to commencing Day 19 work (validation
   - Mean absolute difference between raw `Close` and dividend-adjusted `Adj Close` is ₹26.34 (maximum ₹41.93).
   - Limitation Documented: Ex-dividend dates create small artificial downward price gaps on raw price series unless dividend adjustments are incorporated.
 
+### Git Commit
+- `chore: execute pre-Day 19 validation gate on baselines and historical provider`
+- Commit Hash: `18cf838`
+
 ### Validation Gate Recommendation
 1. **Audit A Conclusion:** The 18-session holdout is statistically inadequate for reliable model evaluation ($\pm 5.55\%$ per sample; random guessing ranges from 5.6% to 94.4%). Multi-year data is mandatory before drawing architectural conclusions.
 2. **Audit B Conclusion:** 5 years (1,234 sessions) of clean, high-quality, zero-duplicate daily market data is immediately accessible via `YFinanceProvider`.
 3. **Recommendation:** **DAY 19 CAN SAFELY PROCEED** to expand historical data lookback and implement the LightGBM directional classifier baseline.
+
 
