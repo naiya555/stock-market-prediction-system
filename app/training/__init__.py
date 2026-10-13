@@ -20,6 +20,10 @@ from app.training.feature_matrix import (
     assemble_feature_matrix,
     validate_feature_matrix_isolation,
 )
+from app.training.lightgbm_classifier import (
+    LightGBMConfig,
+    LightGBMDirectionClassifier,
+)
 from app.training.xgboost_classifier import (
     ChronologicalSplitResult,
     ClassificationMetrics,
@@ -54,4 +58,6 @@ __all__ = [
     "BaselineComparisonRow",
     "BaselineComparisonReport",
     "evaluate_baseline_comparison",
+    "LightGBMConfig",
+    "LightGBMDirectionClassifier",
 ]

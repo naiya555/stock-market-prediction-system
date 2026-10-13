@@ -520,3 +520,36 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   - **Shared Data & Partitioning:** All strategies evaluate on identical test indices without partition drift.
   - **Leakage Immunity:** Majority and stratified baselines consume exclusively training labels (`y_train`). Holdout labels are completely invisible.
   - **Honest Defect Identification:** Exposes when complex models underperform simple coin flips or majority voting before escalating complexity.
+
+### 4.14. Multi-Year Historical Evaluation & LightGBM Direction Classifier (`app/training/lightgbm_classifier.py`)
+- **Multi-Year Evaluation Architecture:**
+  ```text
+  5-Year Historical Market Data (1,234 sessions, BHARTIARTL.NS)
+             ↓
+  Data Cleaning & Corporate Actions Audit (auto_adjust=False, ADR 46)
+             ↓
+  Feature Matrix Assembly (37 features, 1,198 complete labeled rows)
+             ↓
+  Chronological Holdout Partitioning with 1-Session Embargo:
+    - Train Partition: 957 sessions (2021-12-03 to 2025-10-16, 80%)
+    - Embargo Gap: 1 session (2025-10-17, purged to prevent label leakage)
+    - Holdout Partition: 240 sessions (2025-10-20 to 2026-10-09, 20%)
+             ↓
+  Benchmarking Across Identical Test Samples (N=240):
+    ├── Baseline A: Majority-Class Classifier (50.00% Acc)
+    ├── Baseline B1: Uniform Random (50.14% +/- 3.19% across 50 seeds)
+    ├── Baseline B2: Stratified Random (49.72% +/- 3.24% across 50 seeds)
+    ├── Model C: XGBoost Direction Classifier (54.17% Acc, 0.5528 UP F1)
+    └── Model D: LightGBM Direction Classifier (53.75% Acc, 0.5394 UP F1)
+             ↓
+  Baseline Comparison Report & Statistical Power Validation
+  ```
+- **LightGBM Direction Classifier Baseline:**
+  - Implemented in `app/training/lightgbm_classifier.py` using native `lgb.train()` and `lgb.Dataset()`.
+  - Configured with symmetrical baseline hyperparameters matching XGBoost: `max_depth=3`, `num_leaves=7`, `learning_rate=0.05`, `n_estimators=50`, `subsample=0.8`, `colsample_bytree=0.8`, `random_state=42`, `num_threads=1`, `deterministic=True`.
+  - Feature isolation verified via `validate_feature_matrix_isolation(X)` to guarantee zero target or outcome leakage.
+- **Statistical Significance & Sample Size Expansion:**
+  - Expanding from Day 18's 18 sessions to Day 19's 240 holdout sessions reduced random baseline standard deviation from ±14.16% to ±3.19%, providing genuine statistical confidence.
+  - Both XGBoost (54.17%) and LightGBM (53.75%) produce balanced predictions (~50/50 UP/DOWN) and outperform the majority-class heuristic (50.00%) by ~4 percentage points.
+  - Documented disclaimer: ~54% out-of-sample directional accuracy provides preliminary evidence of signal, but does not guarantee live trading profitability after execution slippage and transaction costs.
+

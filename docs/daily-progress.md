@@ -1726,4 +1726,118 @@ Execute two focused validation gates prior to commencing Day 19 work (validation
 2. **Audit B Conclusion:** 5 years (1,234 sessions) of clean, high-quality, zero-duplicate daily market data is immediately accessible via `YFinanceProvider`.
 3. **Recommendation:** **DAY 19 CAN SAFELY PROCEED** to expand historical data lookback and implement the LightGBM directional classifier baseline.
 
+---
+
+## Day 19 - Multi-Year Historical Data & LightGBM Benchmark
+
+### Goal
+1. Expand the existing `BHARTIARTL.NS` historical dataset to approximately 5 years (1,234 trading sessions) using the verified `YFinanceProvider`.
+2. Audit corporate action events (cash dividends and stock splits) and price adjustment semantics before using raw returns as the supervised target.
+3. Rebuild the evaluation dataset with a high-powered chronological training/embargo/holdout protocol (80/20 split, 1-session embargo).
+4. Re-evaluate existing non-parametric baselines (Majority Class, Uniform Random, Stratified Random) and Day 17 XGBoost classifier across identical 240-session holdout observations.
+5. Evaluate sampling variability of random baselines across 50 predeclared seeds.
+6. Implement the LightGBM Direction Classifier baseline (`app/training/lightgbm_classifier.py`) adhering to native APIs, seed determinism, and zero test leakage.
+7. Benchmark LightGBM fairly against XGBoost and baselines on the multi-year holdout.
+
+### Phase 1: Corporate Actions & Dividend Adjustment Audit (ADR 46)
+- **Provider Semantics Evaluated:** `auto_adjust=False` vs `auto_adjust=True` in `YFinanceProvider` for `BHARTIARTL.NS`.
+  - `auto_adjust=False`: Preserves raw traded prices in `Close` and records dividend-adjusted values in `Adj Close`. Candlestick physical geometry ($Low \le Open, Close \le High$) and intraday volatility are 100% authentic.
+  - `auto_adjust=True`: Scales all OHLC prices backward by dividend adjustment factors. Every time a new dividend occurs, all past prices are retroactively revised, which violates point-in-time stability in live settings.
+- **5-Year Corporate Action Audit on BHARTIARTL.NS:**
+  - Stock Splits: **0 events** (no split adjustments required).
+  - Cash Dividends: **5 events** totaling ₹55.00/share:
+    1. `2022-08-01`: ₹3.00 payout | Raw: +2.43% (UP) vs Adj: +2.89% (UP) — Direction Match: **YES**
+    2. `2023-08-11`: ₹4.00 payout | Raw: -0.49% (DOWN) vs Adj: -0.03% (DOWN) — Direction Match: **YES**
+    3. `2024-08-07`: ₹8.00 payout | Raw: -0.12% (DOWN) vs Adj: +0.43% (UP) — Direction Match: **NO (Flip)**
+    4. `2025-07-18`: ₹16.00 payout | Raw: -1.50% (DOWN) vs Adj: -0.67% (DOWN) — Direction Match: **YES**
+    5. `2026-07-24`: ₹24.00 payout | Raw: -1.70% (DOWN) vs Adj: -0.46% (DOWN) — Direction Match: **YES**
+- **Methodological Finding & Decision (ADR 46):**
+  - Direction flipped on exactly 1 session out of 1,234 trading sessions (0.081% of the dataset).
+  - Maintained canonical raw unadjusted price convention (`auto_adjust=False`) to preserve authentic traded levels and physical candle bounds without retroactive price revision.
+
+### Phase 2 & 3: Multi-Year Historical Pipeline & Dataset Rebuild
+- **Historical Query:** `BHARTIARTL` queried via `YFinanceProvider` from `2021-10-14` to `2026-10-13` (5 calendar years).
+- **Data Quality Results:**
+  - Raw Bars Collected: 1,234
+  - Cleaned Bars: 1,234 (0 missing, 0 invalid, 0 identical duplicates, 0 conflicting duplicates, 0 rejections).
+  - Chronological Order: Strictly ascending `(symbol, timestamp)`.
+- **Feature Matrix & Target Assembly:**
+  - Initial Sessions: 1,234
+  - Excluded Unlabeled Final Row: 1 ($y = NaN$, future unknown)
+  - Excluded Incomplete Warmup Rows: 35 (natural indicator warmups: MACD-26, Bollinger-20, ATR-14, RSI-14)
+  - Retained Complete Labeled Rows: **1,198**
+- **Chronological Embargo Split (80/20):**
+  - **Training Partition:** 957 sessions (`2021-12-03` to `2025-10-16`, 500 UP / 457 DOWN, $P(UP) = 52.25\%$)
+  - **Embargo Gap (Purged):** 1 session (`2025-10-17`, outcome cutoff $\le$ holdout start date)
+  - **Holdout Partition:** **240 sessions** (`2025-10-20` to `2026-10-09`, 120 UP / 120 DOWN, exactly $50.00\%$ balanced)
+
+### Phase 4 & 5: Baseline and Model Evaluation (Holdout N=240 Sessions)
+Executed `scripts/verify_day19.py` on real market data:
+
+| Strategy | Accuracy | UP Precision | UP Recall | UP F1 | Confusion Matrix (TN,FP,FN,TP) | Pred UP/DOWN | Correct UP/DOWN |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Baseline A (Majority Class)** | 50.00% | 50.00% | 100.00% | 0.6667 | `[[0, 120], [0, 120]]` | 240 / 0 | 120 / 0 |
+| **Baseline B1 (Uniform Random, seed=42)** | 45.42% | 45.38% | 45.00% | 0.4519 | `[[55, 65], [66, 54]]` | 119 / 121 | 54 / 55 |
+| **Baseline B2 (Stratified Random, seed=42)**| 53.75% | 53.49% | 57.50% | 0.5542 | `[[60, 60], [51, 69]]` | 129 / 111 | 69 / 60 |
+| **Model C (Day 17 XGBoost)** | **54.17%** | 53.97% | 56.67% | 0.5528 | `[[62, 58], [52, 68]]` | 126 / 114 | 68 / 62 |
+| **Model D (Day 19 LightGBM)** | **53.75%** | 53.72% | 54.17% | 0.5394 | `[[64, 56], [55, 65]]` | 121 / 119 | 65 / 64 |
+
+### Deep Audit: Random Baseline Sampling Variance (50 Predeclared Seeds)
+- **Uniform Random ($P(UP) = 0.5000$):**
+  - Accuracy: Mean = **50.14%** | Std = **3.19%** (vs 14.16% on N=18)
+  - UP F1: Mean = **0.4997** | Std = **0.0358**
+- **Stratified Random ($P(UP) = 0.5225$):**
+  - Accuracy: Mean = **49.72%** | Std = **3.24%** (vs 14.43% on N=18)
+  - UP F1: Mean = **0.5095** | Std = **0.0367**
+- **Methodological Significance:**
+  - Expanding the holdout sample from $N=18$ to $N=240$ reduced standard error of the mean by over **77%** ($\sigma$ dropped from 14.2% to 3.2%).
+  - On this sample, both tree models exceed mean random performance by ~4 percentage points, exceeding 1 standard deviation of the random baseline distribution.
+
+### Empirical Findings & Audit Conclusions
+1. **Did expanding to 5 years eliminate the extreme UP prediction bias?**
+   - **YES.** In Day 18 (N=18), XGBoost predicted UP for 94.4% of sessions (17 UP / 1 DOWN). On the 5-year dataset (N=240), XGBoost predicted 126 UP and 114 DOWN (52.5% / 47.5%), and LightGBM predicted 121 UP and 119 DOWN (50.4% / 49.6%), aligning naturally with the true 50/50 test distribution.
+2. **Did XGBoost beat the majority-class baseline on the multi-year holdout?**
+   - **YES.** XGBoost achieved 54.17% accuracy vs Majority Class at 50.00% (+4.17 percentage points).
+3. **How does LightGBM compare to XGBoost under identical conditions?**
+   - Both gradient-boosted decision tree architectures perform within 0.42 percentage points of each other (XGBoost: 54.17%, LightGBM: 53.75%).
+   - XGBoost achieved slightly higher recall on UP sessions (56.67% vs 54.17%); LightGBM achieved slightly higher specificity on DOWN sessions (53.33% vs 51.67%).
+4. **Does ~54% directional accuracy prove a viable trading edge?**
+   - **NO.** A single chronological holdout window is preliminary evidence of predictive signal, not proof of a deployable trading edge. Real-world execution involves bid-ask spread, transaction fees, securities transaction tax (STT), and regime shifts.
+
+### Tests
+- Created `tests/test_lightgbm_classifier.py` with 14 comprehensive unit tests:
+  1. LightGBMConfig defaults and parameter dictionary serialization.
+  2. Model fitting and prediction on synthetic dataset.
+  3. Feature column schema preservation and column realignment.
+  4. Missing value rejection policy (`allow_missing=False`).
+  5. Empty dataset rejection handling.
+  6. Single-class dataset rejection handling.
+  7. Target and future-column leakage rejection (isolation guard).
+  8. Deterministic, reproducible predictions with fixed seed.
+  9. Probability prediction structure (`predict_proba` valid distribution summing to 1.0).
+  10. Model persistence (save and reload booster from file).
+  11. Feature importance extraction (`feature_importances_`).
+  12. Graceful ImportError handling when `lightgbm` is unavailable.
+  13. Small dataset rejection handling (<10 samples).
+  14. Sample count mismatch rejection.
+- Added LightGBM integration test `test_baseline_comparison_with_lightgbm` in `tests/test_baselines.py`.
+- **Full Test Suite Results:**
+  - Previous baseline: 225 passed
+  - New total: **240 passed in 4.18s** (15 new tests, 0 regressions). Zero external network dependencies.
+
+### Review
+- **Ponytail / Senior Dev Mode:** Reused existing baseline framework, canonical feature matrix schema, and chronological embargo splitter without code duplication. Native `lgb.train` API used without `scikit-learn` dependency.
+- **Roo Code:** Remained disabled.
+
+### Documentation
+- Updated `README.md` to Day 19 status with 240 passing tests.
+- Updated `docs/architecture.md` with Section 4.14 detailing Multi-Year Historical Evaluation & LightGBM Baseline.
+- Updated `docs/decisions.md` with ADR 46 (Dividend Adjustment & Corporate Actions Policy) and ADR 47 (LightGBM Direction Classifier Baseline).
+- Updated `docs/roadmap.md` with Day 19 completion.
+- Updated `docs/daily-progress.md` with Day 19 audit log.
+
+### Git Commit & Push
+- `feat: expand multi-year historical data and benchmark LightGBM`
+
+
 

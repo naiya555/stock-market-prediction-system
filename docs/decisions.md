@@ -617,3 +617,37 @@ This document formalizes the architectural decisions made on Day 1. All future i
   2. **Evaluation Parity:** All baselines must consume identical holdout partitions, respect identical 1-session embargo gaps, and use canonical `compute_classification_metrics`.
   3. **Optimization Gate:** If a complex model fails to beat majority-class or class-prior random baselines, hyperparameter tuning and model deployment are suspended in favor of expanding sample history and analyzing structural feature representation.
 - **Consequences:** Enforces rigorous scientific humility, exposes upward/downward prediction biases transparently, and prevents false claims of predictive edge.
+
+---
+
+## ADR 46: Multi-Year Price Adjustment Semantics, Corporate Action Invariants, and Dividend Policy
+- **Status:** Accepted
+- **Context:** Expanding historical data to multi-year windows (~5 years, 1,234 sessions) introduces corporate action events (cash dividends and stock splits). Using raw close prices ($Close$) vs dividend-adjusted prices ($Adj Close$) raises methodological trade-offs:
+  1. Mixing adjusted $Close$ with unadjusted $Open$, $High$, $Low$ creates artificial candlestick distortions (e.g. $Close > High$ or $Close < Low$).
+  2. Enabling `auto_adjust=True` scales historical OHLC values backward every time a future corporate action occurs. This retroactively alters historical numbers, violating point-in-time stability and masking actual traded price levels.
+  3. Cash dividends cause an ex-date price drop equal to the dividend payout per share, which can superficially make a raw price return negative even if the total economic return was positive.
+- **Decision:**
+  1. **Preservation of Raw Unadjusted Price Convention (`auto_adjust=False`):**
+     - Canonical `MarketOHLCV` records retain raw traded prices, ensuring physical candlestick geometry ($Low \le Open, Close \le High$), authentic intraday spreads, and point-in-time permanence.
+     - Historical prices must never be retroactively rewritten upon subsequent dividend distributions.
+  2. **Empirical Dividend Impact Audit on Target Equity (BHARTIARTL.NS):**
+     - Across the 5-year observation period (1,234 sessions), exactly 5 dividend events occurred (totaling ₹55.00/share).
+     - Directional label impact: On 4 of the 5 dividend dates (80%), the directional classification was identical between raw price returns and dividend-adjusted returns.
+     - Exactly 1 session (2024-08-07, ₹8.00 payout) experienced a direction flip (-0.12% raw vs +0.43% dividend-adjusted).
+     - Total directional discrepancy represents 1 out of 1,234 sessions (0.081% of the dataset), confirming that raw price direction is an empirically valid and stable target proxy.
+  3. **No Silent Target Alteration:**
+     - The supervised binary classification target remains defined strictly by next-session raw close-to-close returns ($Close_{t+1} / Close_t - 1.0 > 0$), consistent with ADR 42.
+- **Consequences:** Preserves data contract integrity, prevents retroactive look-ahead scaling of historical candles, and documents corporate-action effects with empirical transparency.
+
+---
+
+## ADR 47: LightGBM Direction Classifier Baseline & Multi-Year Benchmark Protocol
+- **Status:** Accepted
+- **Context:** Following the multi-year expansion, a second gradient-boosted decision tree architecture (LightGBM) is evaluated to test architectural generalization against XGBoost and non-parametric baselines.
+- **Decision:**
+  1. **Native LightGBM Core API:** Implement `LightGBMDirectionClassifier` using native `lgb.train()` and `lgb.Dataset()` with single-thread determinism (`num_threads=1`, `deterministic=True`, `seed=42`) and zero dependency on `scikit-learn`.
+  2. **Symmetrical Baseline Hyperparameters:** Use hyperparameters equivalent to the baseline XGBoost classifier (`max_depth=3`, `num_leaves=7`, `learning_rate=0.05`, `n_estimators=50`, `subsample=0.8`, `colsample_bytree=0.8`) with zero tuning on holdout data.
+  3. **Strict Evaluation Parity:** Evaluate LightGBM on the exact same multi-year chronological holdout (240 sessions), same 1-session embargo gap, and identical feature matrix schema as XGBoost and baselines.
+  4. **Preliminary Evidence Disclaimer:** Out-of-sample holdout metrics (~53.75% for LightGBM, ~54.17% for XGBoost) provide preliminary empirical evidence of modest signal over majority class (50.00%), but do not constitute proof of a commercial trading edge or profitable market strategy.
+- **Consequences:** Provides a fair, reproducible, deterministic second tree-model benchmark with zero test-set leakage.
+

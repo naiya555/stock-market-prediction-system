@@ -279,6 +279,8 @@ class BaselineComparisonReport:
     xgboost_beat_majority: bool
     xgboost_beat_random: bool
     up_bias_detected: bool
+    lightgbm_beat_majority: Optional[bool] = None
+    lightgbm_beat_random: Optional[bool] = None
 
     def summary_table(self) -> str:
         """Format comparison report as a GitHub-flavored Markdown table."""
@@ -317,6 +319,8 @@ class BaselineComparisonReport:
             "xgboost_beat_majority": self.xgboost_beat_majority,
             "xgboost_beat_random": self.xgboost_beat_random,
             "up_bias_detected": self.up_bias_detected,
+            "lightgbm_beat_majority": self.lightgbm_beat_majority,
+            "lightgbm_beat_random": self.lightgbm_beat_random,
             "rows": [r.to_dict() for r in self.rows],
         }
 
@@ -350,6 +354,8 @@ def evaluate_baseline_comparison(
     split: Union[ChronologicalSplitResult, FeatureMatrixDataset],
     xgboost_config: Optional[XGBoostConfig] = None,
     random_seed: int = 42,
+    include_lightgbm: bool = False,
+    lightgbm_config: Optional[Any] = None,
 ) -> BaselineComparisonReport:
     """Execute fair, leakage-safe baseline evaluation across models on identical holdout.
 
@@ -358,11 +364,14 @@ def evaluate_baseline_comparison(
     2. Baseline B1: Fixed-Seed Random Classifier (Uniform, p=0.5)
     3. Baseline B2: Fixed-Seed Random Classifier (Stratified, p=training_prior)
     4. Model C: Existing Day 17 XGBoost Classifier
+    5. Model D (Optional): Day 19 LightGBM Classifier (when include_lightgbm=True)
 
     Args:
         split: Either a ChronologicalSplitResult or FeatureMatrixDataset.
         xgboost_config: Optional config for XGBoost (defaults to Day 17 baseline).
         random_seed: Random seed for random baseline classifiers (default 42).
+        include_lightgbm: Whether to include LightGBM classifier in comparison (default False).
+        lightgbm_config: Optional config for LightGBM.
 
     Returns:
         BaselineComparisonReport with comparative metrics and empirical findings.
@@ -429,6 +438,31 @@ def evaluate_baseline_comparison(
 
     rows = [row_majority, row_rand_uniform, row_rand_strat, row_xgb]
 
+    # Optional 5. Model D: Day 19 LightGBM Classifier
+    lightgbm_beat_majority = None
+    lightgbm_beat_random = None
+    if include_lightgbm:
+        from app.training.lightgbm_classifier import (
+            LightGBMConfig,
+            LightGBMDirectionClassifier,
+        )
+
+        lgb_cfg = lightgbm_config or LightGBMConfig()
+        model_lgb = LightGBMDirectionClassifier(config=lgb_cfg)
+        model_lgb.fit(X_train, y_train)
+        preds_lgb = model_lgb.predict(X_test)
+        row_lgb = _build_comparison_row(
+            strategy_name="Model D (Day 19 LightGBM)",
+            y_true=y_test,
+            y_pred=preds_lgb,
+        )
+        rows.append(row_lgb)
+        lgb_acc = row_lgb.accuracy
+        maj_acc = row_majority.accuracy
+        rand_unif_acc = row_rand_uniform.accuracy
+        lightgbm_beat_majority = lgb_acc > maj_acc
+        lightgbm_beat_random = lgb_acc > rand_unif_acc
+
     # Analysis calculations
     best_acc_row = max(rows, key=lambda r: r.accuracy)
     best_f1_row = max(rows, key=lambda r: r.f1_up)
@@ -459,4 +493,6 @@ def evaluate_baseline_comparison(
         xgboost_beat_majority=xgboost_beat_majority,
         xgboost_beat_random=xgboost_beat_random,
         up_bias_detected=up_bias_detected,
+        lightgbm_beat_majority=lightgbm_beat_majority,
+        lightgbm_beat_random=lightgbm_beat_random,
     )

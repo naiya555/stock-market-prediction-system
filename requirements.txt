@@ -13,3 +13,7 @@ pandas>=2.0.0
 
 # Day 17 XGBoost Direction Classifier Baseline
 xgboost>=2.0.0
+
+# Day 19 LightGBM Direction Classifier Baseline
+lightgbm>=4.0.0
+

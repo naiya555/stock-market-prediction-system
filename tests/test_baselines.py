@@ -326,3 +326,26 @@ def test_regression_protection_existing_xgboost(
     assert xgb_row.accuracy == standalone_metrics.accuracy
     assert xgb_row.f1_up == standalone_metrics.f1
     assert xgb_row.confusion_matrix == standalone_metrics.confusion_matrix
+
+
+# 13. LightGBM inclusion in baseline comparison suite
+def test_baseline_comparison_with_lightgbm(
+    synthetic_train_test_split: ChronologicalSplitResult,
+) -> None:
+    """Verify include_lightgbm=True appends Model D (Day 19 LightGBM) to report."""
+    from app.training.lightgbm_classifier import LightGBMConfig
+
+    report = evaluate_baseline_comparison(
+        split=synthetic_train_test_split,
+        random_seed=42,
+        include_lightgbm=True,
+        lightgbm_config=LightGBMConfig(min_child_samples=5),
+    )
+
+    d = report.to_dict()
+    assert len(d["rows"]) == 5
+    strategy_names = [r["strategy_name"] for r in d["rows"]]
+    assert "Model D (Day 19 LightGBM)" in strategy_names
+    assert report.lightgbm_beat_majority is not None
+    assert report.lightgbm_beat_random is not None
+    assert "| **Model D (Day 19 LightGBM)** |" in report.summary_table()
