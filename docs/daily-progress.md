@@ -1668,7 +1668,7 @@ Executed `scripts/verify_baselines.py` on real market data (Holdout: `2026-09-15
 
 ### Git Commit
 - `feat: implement baseline comparison and evaluate XGBoost`
-- Commit Hash: [Pending commit]
+- Commit Hash: `ea515bf`
 
 ### Known Limitations & Next Steps
 - Baseline comparison proves that un-tuned XGBoost on a short 180-day slice behaves similarly to a majority-UP heuristic.
