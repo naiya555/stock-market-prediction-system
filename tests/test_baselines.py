@@ -349,3 +349,82 @@ def test_baseline_comparison_with_lightgbm(
     assert report.lightgbm_beat_majority is not None
     assert report.lightgbm_beat_random is not None
     assert "| **Model D (Day 19 LightGBM)** |" in report.summary_table()
+
+
+# 14. Regression: Sample count validation in predict and predict_proba
+def test_sample_count_validation_baselines() -> None:
+    """Verify boolean, non-positive, and invalid types are rejected for sample counts."""
+    clf_m = MajorityClassClassifier().fit([1, 1, 0])
+    clf_r = RandomClassifier("uniform").fit()
+
+    for clf in (clf_m, clf_r):
+        # Booleans must be rejected with TypeError (not treated as integer 0 or 1)
+        with pytest.raises(TypeError, match="boolean value"):
+            clf.predict(True)
+        with pytest.raises(TypeError, match="boolean value"):
+            clf.predict_proba(False)
+
+        # Non-positive sample counts must be rejected with ValueError
+        with pytest.raises(ValueError, match="Number of samples must be positive"):
+            clf.predict(0)
+        with pytest.raises(ValueError, match="Number of samples must be positive"):
+            clf.predict(-5)
+        with pytest.raises(ValueError, match="Number of samples must be positive"):
+            clf.predict_proba(0)
+        with pytest.raises(ValueError, match="Number of samples must be positive"):
+            clf.predict_proba(-2)
+
+        # Non-Sized unsupported types must be rejected with TypeError
+        with pytest.raises(TypeError, match="Expected integer sample count or Sized"):
+            clf.predict(3.14)  # type: ignore
+        with pytest.raises(TypeError, match="Expected integer sample count or Sized"):
+            clf.predict_proba(None)  # type: ignore
+
+        # Valid integer and sequence inputs succeed
+        assert len(clf.predict(4)) == 4
+        assert len(clf.predict([10, 20, 30])) == 3
+        assert clf.predict_proba(4).shape == (4, 2)
+        assert clf.predict_proba([10, 20, 30]).shape == (3, 2)
+
+
+# 15. Regression: Correct majority class 0 (DOWN) reporting (no falsy 0 or 1 bug)
+def test_majority_class_zero_reporting_in_evaluation(
+    synthetic_train_test_split: ChronologicalSplitResult,
+) -> None:
+    """Verify that when training labels have majority class 0 (DOWN), report reflects 0."""
+    # Modify y_train so class 0 is the majority: 30 DOWN (0), 10 UP (1)
+    split_down = ChronologicalSplitResult(
+        X_train=synthetic_train_test_split.X_train,
+        y_train=pd.Series([0] * 30 + [1] * 10),
+        X_test=synthetic_train_test_split.X_test,
+        y_test=synthetic_train_test_split.y_test,
+        train_indices=synthetic_train_test_split.train_indices,
+        test_indices=synthetic_train_test_split.test_indices,
+        embargo_indices=synthetic_train_test_split.embargo_indices,
+        train_start_date=synthetic_train_test_split.train_start_date,
+        train_end_date=synthetic_train_test_split.train_end_date,
+        holdout_start_date=synthetic_train_test_split.holdout_start_date,
+        holdout_end_date=synthetic_train_test_split.holdout_end_date,
+        train_outcome_cutoff=synthetic_train_test_split.train_outcome_cutoff,
+        total_rows=synthetic_train_test_split.total_rows,
+        train_rows=40,
+        test_rows=synthetic_train_test_split.test_rows,
+        embargo_rows=synthetic_train_test_split.embargo_rows,
+    )
+
+    report = evaluate_baseline_comparison(split=split_down, random_seed=42)
+    assert report.train_majority_class == 0
+    assert report.to_dict()["train_majority_class"] == 0
+    # Majority predictions on test must all be 0
+    maj_row = next(r for r in report.rows if "Majority Class" in r.strategy_name)
+    assert maj_row.pred_down_count == len(synthetic_train_test_split.y_test)
+    assert maj_row.pred_up_count == 0
+
+
+# 16. Regression: Non-binary label validation in RandomClassifier stratified fit
+def test_random_classifier_stratified_non_binary_labels() -> None:
+    """Verify non-binary labels are rejected when fitting stratified RandomClassifier."""
+    clf = RandomClassifier(policy="stratified")
+    with pytest.raises(ValueError, match="Labels must be strictly binary integers"):
+        clf.fit(y=[0, 1, 2, 0])
+

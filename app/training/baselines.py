@@ -44,6 +44,22 @@ from app.training.xgboost_classifier import (
 logger = get_logger(__name__)
 
 
+def _resolve_n_samples(X: Union[pd.DataFrame, np.ndarray, int, Sequence[Any]]) -> int:
+    """Validate and resolve positive sample count from input container or count integer."""
+    if isinstance(X, bool):
+        raise TypeError(f"Invalid input: boolean value {X} cannot be used as sample count.")
+    if isinstance(X, int):
+        n_samples = X
+    elif hasattr(X, "__len__"):
+        n_samples = len(X)
+    else:
+        raise TypeError(f"Expected integer sample count or Sized collection, got {type(X).__name__}.")
+
+    if n_samples <= 0:
+        raise ValueError(f"Number of samples must be positive, got {n_samples}.")
+    return n_samples
+
+
 class MajorityClassClassifier:
     """Predicts the most frequent class observed in the training labels.
 
@@ -120,10 +136,7 @@ class MajorityClassClassifier:
         if not self.is_fitted or self.majority_class_ is None:
             raise ValueError("Classifier is not fitted. Call fit() before predict().")
 
-        n_samples = X if isinstance(X, int) else len(X)
-        if n_samples <= 0:
-            raise ValueError(f"Number of samples must be positive, got {n_samples}")
-
+        n_samples = _resolve_n_samples(X)
         return np.full(n_samples, self.majority_class_, dtype=int)
 
     def predict_proba(self, X: Union[pd.DataFrame, np.ndarray, int, Sequence[Any]]) -> np.ndarray:
@@ -134,7 +147,7 @@ class MajorityClassClassifier:
         if not self.is_fitted or self.majority_class_ is None:
             raise ValueError("Classifier is not fitted. Call fit() before predict_proba().")
 
-        n_samples = X if isinstance(X, int) else len(X)
+        n_samples = _resolve_n_samples(X)
         p1 = 1.0 if self.majority_class_ == 1 else 0.0
         p0 = 1.0 - p1
         probs = np.tile([p0, p1], (n_samples, 1))
@@ -199,6 +212,10 @@ class RandomClassifier:
             y_arr = np.asarray(y, dtype=int).ravel()
             if len(y_arr) == 0:
                 raise ValueError("Cannot fit 'stratified' classifier on empty labels.")
+            n_zero = int(np.sum(y_arr == 0))
+            n_one = int(np.sum(y_arr == 1))
+            if n_zero + n_one != len(y_arr):
+                raise ValueError("Labels must be strictly binary integers in {0, 1}.")
             self.p_ = float(np.mean(y_arr == 1))
 
         self.is_fitted = True
@@ -222,10 +239,7 @@ class RandomClassifier:
         if not self.is_fitted or self.p_ is None:
             raise ValueError("Classifier is not fitted. Call fit() before predict().")
 
-        n_samples = X if isinstance(X, int) else len(X)
-        if n_samples <= 0:
-            raise ValueError(f"Number of samples must be positive, got {n_samples}")
-
+        n_samples = _resolve_n_samples(X)
         rng = np.random.RandomState(self.random_state)
         return rng.binomial(n=1, p=self.p_, size=n_samples).astype(int)
 
@@ -234,7 +248,7 @@ class RandomClassifier:
         if not self.is_fitted or self.p_ is None:
             raise ValueError("Classifier is not fitted. Call fit() before predict_proba().")
 
-        n_samples = X if isinstance(X, int) else len(X)
+        n_samples = _resolve_n_samples(X)
         p1 = self.p_
         p0 = 1.0 - p1
         return np.tile([p0, p1], (n_samples, 1))
@@ -478,6 +492,9 @@ def evaluate_baseline_comparison(
     train_up = int(np.sum(y_train == 1))
     train_down = int(np.sum(y_train == 0))
 
+    if not clf_majority.is_fitted or clf_majority.majority_class_ is None:
+        raise ValueError("MajorityClassClassifier must be fitted before constructing comparison report.")
+
     return BaselineComparisonReport(
         symbol=symbol,
         holdout_sessions=len(y_test),
@@ -486,7 +503,7 @@ def evaluate_baseline_comparison(
         train_sessions=len(y_train),
         train_up_count=train_up,
         train_down_count=train_down,
-        train_majority_class=clf_majority.majority_class_ or 1,
+        train_majority_class=clf_majority.majority_class_,
         rows=rows,
         best_strategy_by_accuracy=best_acc_row.strategy_name,
         best_strategy_by_f1=best_f1_row.strategy_name,

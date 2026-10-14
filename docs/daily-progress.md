@@ -1821,20 +1821,35 @@ Executed `scripts/verify_day19.py` on real market data:
   13. Small dataset rejection handling (<10 samples).
   14. Sample count mismatch rejection.
 - Added LightGBM integration test `test_baseline_comparison_with_lightgbm` in `tests/test_baselines.py`.
+- Added 3 regression tests in `tests/test_baselines.py` for CodeRabbit review findings:
+  1. `test_sample_count_validation_baselines`: verifies boolean rejection, non-positive integer rejection, and type check in `predict` and `predict_proba`.
+  2. `test_majority_class_zero_reporting_in_evaluation`: verifies correct reporting and prediction when training majority class is 0 (DOWN), preventing falsy `0 or 1` default.
+  3. `test_random_classifier_stratified_non_binary_labels`: verifies rejection of non-binary training labels in stratified `RandomClassifier.fit`.
 - **Full Test Suite Results:**
   - Previous baseline: 225 passed
-  - New total: **240 passed in 4.18s** (15 new tests, 0 regressions). Zero external network dependencies.
+  - Post-LightGBM: 240 passed
+  - Post-CodeRabbit remediation: **243 passed in 2.60s** (0 failures, 0 regressions). Zero external network dependencies.
 
-### Review
+### Review & Remediation (CodeRabbit Findings in `app/training/baselines.py`)
+- **Finding 1 (Sample Count Handling in `predict` / `predict_proba`):**
+  - *Analysis:* Passing booleans (e.g. `True` / `False`) or non-positive values was not strictly validated; in Python, `bool` is a subclass of `int`.
+  - *Fix:* Added `_resolve_n_samples(X)` helper that explicitly checks `isinstance(X, bool)` and rejects with `TypeError`, checks `n_samples <= 0` and rejects with `ValueError`, and validates `hasattr(X, "__len__")`.
+- **Finding 2 (Falsy `0 or 1` Default in `BaselineComparisonReport`):**
+  - *Analysis:* In `evaluate_baseline_comparison`, `train_majority_class=clf_majority.majority_class_ or 1` inadvertently remapped majority class `0` (DOWN) to `1` (UP).
+  - *Fix:* Added explicit fitted guard (`if not clf_majority.is_fitted or clf_majority.majority_class_ is None: raise ValueError(...)`) and passed `clf_majority.majority_class_` directly without the falsy fallback.
+- **Finding 3 (Non-Binary Label Validation in `RandomClassifier.fit`):**
+  - *Analysis:* Stratified policy accepted non-binary integers without verifying labels strictly belong to `{0, 1}`.
+  - *Fix:* Added strict check `if n_zero + n_one != len(y_arr): raise ValueError("Labels must be strictly binary integers in {0, 1}.")`.
+- **Invariance Verification:** Ran `scripts/verify_pre_day19_gate.py`, `scripts/verify_baselines.py`, and `scripts/verify_day19.py`. All Day 18 and Day 19 empirical metrics are 100% invariant.
 - **Ponytail / Senior Dev Mode:** Reused existing baseline framework, canonical feature matrix schema, and chronological embargo splitter without code duplication. Native `lgb.train` API used without `scikit-learn` dependency.
 - **Roo Code:** Remained disabled.
 
 ### Documentation
-- Updated `README.md` to Day 19 status with 240 passing tests.
+- Updated `README.md` to Day 19 status with 243 passing tests.
 - Updated `docs/architecture.md` with Section 4.14 detailing Multi-Year Historical Evaluation & LightGBM Baseline.
 - Updated `docs/decisions.md` with ADR 46 (Dividend Adjustment & Corporate Actions Policy) and ADR 47 (LightGBM Direction Classifier Baseline).
 - Updated `docs/roadmap.md` with Day 19 completion.
-- Updated `docs/daily-progress.md` with Day 19 audit log.
+- Updated `docs/daily-progress.md` with Day 19 audit log and CodeRabbit remediation notes.
 
 ### Git Commit & Push
 - **Feature Commit:** `76b283b` — `feat: implement LightGBM binary classifier baseline and corresponding tests`
