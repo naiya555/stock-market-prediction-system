@@ -595,4 +595,25 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   - LightGBM achieved **51.25% ± 5.16%** macro mean accuracy (pooled 51.25%), while XGBoost achieved **50.69% ± 3.74%** (pooled 50.69%).
   - Walk-forward cross-validation exposed market-regime sensitivity that was invisible in a single static holdout, proving the necessity of multi-fold temporal validation before claiming predictive edge.
 
+### 4.16. Model Error Analysis & Feature Usefulness Audit Layer (`app/training/error_analysis.py`)
+- **Error Decomposition & Symmetrical Class Evaluation:**
+  - Standard binary classification metrics often emphasize the positive (UP) class. In financial direction forecasting with an upward market drift, a trivial majority-class heuristic attains deceptively high accuracy and 100% UP recall by never predicting a downward move.
+  - `FoldErrorAnalysis` computes symmetrical class metrics for both directions: Accuracy, Precision UP/DOWN, Recall UP/DOWN, and F1 UP/DOWN, alongside confusion matrix breakdown (`[TN, FP / FN, TP]`) and predicted vs actual directional counts.
+  - Directional prediction bias is explicitly flagged: models predicting 100% UP or 100% DOWN are detected (`is_systematic_direction=True`).
+  - Distribution shift between expanding training partitions and out-of-sample validation folds is tracked ($Shift = Val\_UP\% - Train\_UP\%$) to diagnose regime-driven performance degradation.
+  - Performance delta relative to the Majority-Class baseline ($Accuracy_{model} - Accuracy_{majority}$) is calculated per fold.
+- **Feature Matrix Quality & Collinearity Audit:**
+  - Implemented in `audit_feature_usefulness()` with strict training isolation: diagnostics (missingness, constant column checks, variance, min/max, pairwise Pearson correlation) are computed solely on training partitions ($X_{train}$), preventing data leakage into validation folds.
+  - Enforces `validate_feature_matrix_isolation()` to ensure no target or future-outcome columns enter feature quality assessments.
+  - Detects collinear feature clusters with Pearson $|r| \ge 0.90$. On the canonical 37-feature matrix for `BHARTIARTL.NS`, 59 high-collinearity pairs were identified (e.g., raw OHLC price pairs, moving average pairs, and volatility proxies), cataloging them as candidates for future architectural simplification.
+- **Exploratory Tree Feature Importance Protocol:**
+  - Extracts native booster feature importance metrics: split weight for XGBoost (`booster.get_score(importance_type="weight")`) and split count for LightGBM (`booster.feature_importance(importance_type="split")`).
+  - Strict scientific distinction: tree split counts are documented as exploratory model properties describing tree partition frequency, NOT causal proof of predictive signal or economic alpha.
+  - Feature selection or pruning based on holdout cross-validation results is strictly prohibited to prevent meta-overfitting.
+- **Empirical Findings on BHARTIARTL.NS (Day 21 Verification):**
+  - **Downside Capture:** While Majority Class fails completely on downward sessions (0.0% DOWN Precision/Recall/F1), XGBoost and LightGBM capture downward moves with 45–64% DOWN F1 and up to 73–90% DOWN Recall across folds.
+  - **Regime Outperformance:** In Fold 4 (where validation UP ratio dropped to 49.3%), tree models strongly outperformed Majority Class (+6.9% for XGBoost, +9.0% for LightGBM). In strong bull folds (Fold 1, Val UP 56.2%), tree models lagged majority class because they actively hedged downside risk.
+  - **Feature Importance Agreement:** Both XGBoost and LightGBM independently identified short-term volatility (`rolling_volatility_5d`, `bb_bandwidth`), candlestick geometry (`candle_body_ratio`, `candle_body_abs`), and momentum (`rolling_return_5d`, `macd_signal`) as the most utilized split features.
+
+
 

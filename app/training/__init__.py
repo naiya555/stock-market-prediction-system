@@ -24,6 +24,17 @@ from app.training.lightgbm_classifier import (
     LightGBMConfig,
     LightGBMDirectionClassifier,
 )
+from app.training.error_analysis import (
+    FeatureQualityMetric,
+    FeatureUsefulnessAudit,
+    FoldErrorAnalysis,
+    HighCorrelationPair,
+    analyze_walk_forward_errors,
+    audit_feature_usefulness,
+    render_collinearity_table,
+    render_feature_importance_comparison_table,
+    render_fold_error_table,
+)
 from app.training.walk_forward import (
     WalkForwardFoldEvaluation,
     WalkForwardFoldSplit,
@@ -74,5 +85,14 @@ __all__ = [
     "WalkForwardReport",
     "generate_walk_forward_splits",
     "evaluate_walk_forward",
+    "FoldErrorAnalysis",
+    "FeatureQualityMetric",
+    "HighCorrelationPair",
+    "FeatureUsefulnessAudit",
+    "analyze_walk_forward_errors",
+    "audit_feature_usefulness",
+    "render_fold_error_table",
+    "render_feature_importance_comparison_table",
+    "render_collinearity_table",
 ]
 

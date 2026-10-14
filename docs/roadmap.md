@@ -52,6 +52,7 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 - Establish baseline numerical forecasting model using XGBoost (binary direction classification, chronological holdout split with label outcome embargo, native XGBoost Core API, deterministic evaluation) (Day 17 complete).
 - Baseline comparison & evaluation protocol (Majority-Class Classifier, Fixed-Seed Random Uniform/Stratified baselines, comparative evaluation report, bias identification) (Day 18 complete).
 - Implement walk-forward validation splits (strictly avoiding random cross-validation to prevent temporal leakage; expanding-window folds with outcome embargo gap, macro/pooled aggregation, single-class guardrails, and comparative benchmarking of Majority, Uniform/Stratified Random, XGBoost, and LightGBM) (Day 20 complete).
+- Model error analysis & feature usefulness audit (symmetrical class metrics for UP and DOWN, confusion matrix breakdown, directional prediction bias detection, distribution shift analysis, 37-feature matrix quality audit, collinearity group clustering with 59 pairs >= 0.90, exploratory XGBoost and LightGBM tree feature importance, and zero-leakage training isolation) (Day 21 complete).
 
 
 ### Phase 5: Prediction Engine

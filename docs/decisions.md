@@ -686,4 +686,35 @@ This document formalizes the architectural decisions made on Day 1. All future i
      - Document that walk-forward cross-validation performance (~50.7% XGBoost, ~51.3% LightGBM, ~52.4% Majority Class across 5 folds on BHARTIARTL) reflects realistic regime shifts and confirms that a single holdout score cannot be extrapolated as a permanent commercial trading edge.
 - **Consequences:** Eliminates regime-specific overfitting, prevents temporal data leakage across fold boundaries, and establishes an auditable, multi-cycle cross-validation standard for all future ML models.
 
+---
+
+## ADR 49: Model Error Analysis, Dual-Class Symmetrical Evaluation, and Exploratory Feature Audit Protocol
+- **Status:** Accepted
+- **Context:**
+  - Day 20 established walk-forward cross-validation, but metrics were asymmetric, focusing primarily on the positive (UP) class. In financial time series with an upward drift, a naive majority model achieves high accuracy and 100% UP recall simply by never predicting a downward session. Evaluating model utility requires measuring symmetrical class performance for BOTH UP and DOWN.
+  - Furthermore, understanding fold-to-fold performance swings requires analyzing training-to-validation class distribution shifts, directional prediction biases, and confusion matrix cell distributions.
+  - Finally, the canonical 37-feature matrix requires auditing for data health, multicollinearity, and tree split frequency without leaking validation data or prematurely pruning features based on cross-validation outcomes.
+- **Decision:**
+  1. **Dual-Class Symmetrical Performance Metrics:**
+     - Expand `ClassificationMetrics` and `FoldErrorAnalysis` to compute symmetrical DOWN metrics: `precision_down`, `recall_down`, and `f1_down` alongside positive UP class metrics.
+     - Enforce zero-division safety: when true negatives or predicted negatives are zero, DOWN metrics evaluate to 0.0 with complete determinism.
+  2. **Directional Bias and Regime Shift Diagnostics:**
+     - For every fold and strategy, compute training vs validation UP ratios and calculate the distribution shift ($Shift = Val\_UP\% - Train\_UP\%$).
+     - Track predicted UP and DOWN counts. Detect directional prediction bias when a strategy predicts exclusively one direction ($pred\_down == 0 \implies ALL\_UP$).
+     - Calculate the exact performance margin relative to the Majority-Class baseline ($Accuracy_{model} - Accuracy_{majority}$).
+  3. **Strict Feature Matrix Isolation & Leakage Prevention:**
+     - All feature health statistics (missingness, constant columns, mean, std) and collinearity matrices are computed strictly on the training partition ($X_{train}$), never on validation or pooled data.
+     - Enforce `validate_feature_matrix_isolation()` on every audited matrix: any column matching target or outcome patterns (`target_binary`, `next_close`, etc.) immediately triggers an exception.
+  4. **Collinearity Clustering Protocol:**
+     - Compute pairwise Pearson correlations on training features. Identify and catalog all pairs with $|r| \ge 0.90$ (e.g. raw OHLC prices, moving average pairs, volatility proxies).
+     - Collinear pairs are recorded as candidates for future architectural simplification, but are NOT pruned or removed during Day 21.
+  5. **Exploratory Tree Feature Importance Protocol:**
+     - Expose native booster feature importance scores: split weight for XGBoost (`get_score(importance_type="weight")`) and split count for LightGBM (`feature_importance(importance_type="split")`).
+     - Clearly document that tree split frequencies are exploratory model diagnostics, not causal proof of predictive signal.
+     - Feature selection or removal based on holdout cross-validation performance is strictly prohibited in this phase to prevent meta-overfitting.
+- **Consequences:**
+  - Exposes that while tree models have lower raw accuracy than majority class during bull regimes (Folds 1 & 3), they successfully capture downward sessions (F1 DOWN ~ 45-64%) where majority class fails completely (F1 DOWN = 0%).
+  - Identifies 59 collinear feature pairs for future feature engineering without violating temporal isolation.
+
+
 

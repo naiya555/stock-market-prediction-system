@@ -113,6 +113,9 @@ class ClassificationMetrics:
     positive_samples: int
     negative_samples: int
     positive_rate: float
+    precision_down: float = 0.0
+    recall_down: float = 0.0
+    f1_down: float = 0.0
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize metrics to a dictionary."""
@@ -154,6 +157,15 @@ def compute_classification_metrics(
     recall = float(tp / (tp + fn)) if (tp + fn) > 0 else 0.0
     f1 = float(2.0 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
 
+    # Class 0 (DOWN) class-specific metrics
+    prec_down = float(tn / (tn + fn)) if (tn + fn) > 0 else 0.0
+    rec_down = float(tn / (tn + fp)) if (tn + fp) > 0 else 0.0
+    f1_d = (
+        float(2.0 * prec_down * rec_down / (prec_down + rec_down))
+        if (prec_down + rec_down) > 0
+        else 0.0
+    )
+
     pos_samples = int(np.sum(yt == 1))
     neg_samples = int(np.sum(yt == 0))
     pos_rate = float(pos_samples / total)
@@ -172,6 +184,9 @@ def compute_classification_metrics(
         positive_samples=pos_samples,
         negative_samples=neg_samples,
         positive_rate=round(pos_rate, 4),
+        precision_down=round(prec_down, 4),
+        recall_down=round(rec_down, 4),
+        f1_down=round(f1_d, 4),
     )
 
 
@@ -507,6 +522,14 @@ class XGBoostDirectionClassifier:
         """
         proba = self.predict_proba(X)[:, 1]
         return (proba > threshold).astype(int)
+
+    @property
+    def feature_importances_(self) -> Dict[str, float]:
+        """Return feature importance scores (weight/frequency count) mapped to feature names."""
+        if not self.is_fitted or self.booster is None:
+            raise ValueError("Cannot extract feature importances from unfitted model.")
+        score_dict = self.booster.get_score(importance_type="weight")
+        return {name: float(score_dict.get(name, 0.0)) for name in self.feature_names}
 
     def save_model(self, filepath: Union[str, Path]) -> None:
         """Persist fitted booster to native XGBoost JSON format.

@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 20: Walk-Forward Temporal Cross-Validation<br/>
+> **Status:** Ongoing Project — Day 21: Model Error Analysis & Feature Usefulness Audit<br/>
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -47,14 +47,14 @@ When fully developed, the end-user workflow will operate as follows:
 - **`app/news/`**: Financial news ingestion, deduplication, and entity linking.
 - **`app/nlp/`**: FinBERT sentiment scoring and textual analysis.
 - **`app/prediction/`**: Target formulation (`target.py`), numerical ML predictor, LLM predictor, and ensemble synthesis.
-- **`app/training/`**: Walk-forward validation, dataset splits without temporal leakage, baseline benchmark comparison suite, XGBoost and LightGBM models, and controlled retraining.
+- **`app/training/`**: Walk-forward validation, dataset splits without temporal leakage, baseline benchmark comparison suite, XGBoost and LightGBM models, model error analysis, feature usefulness audit, and controlled retraining.
 - **`app/history/`**: Prediction audit logs, performance evaluation, and accuracy tracking.
 
 ---
 
-## 4. Current Status: Day 20 (Walk-Forward Temporal Cross-Validation)
+## 4. Current Status: Day 21 (Model Error Analysis & Feature Usefulness Audit)
 
-Day 20 implements and empirically validates a leakage-safe walk-forward temporal cross-validation engine (`app/training/walk_forward.py`). The evaluation protocol uses chronological expanding-window folds with a mandatory outcome embargo of $\ge 1$ session to eliminate forward target leakage across boundaries (`train_outcome_cutoff <= val_start_date`). Models and baselines (Majority Class, Uniform Random, Stratified Random, XGBoost, and LightGBM) are evaluated on identical out-of-sample partitions with dual aggregation (macro-average mean ± sample std and micro-pooled metrics across all validation sessions). Across 5 expanding folds on ~5 years of `BHARTIARTL.NS` (720 total out-of-sample sessions spanning 2023–2026), walk-forward validation exposed real-world market regime shifts: Majority Class achieved 52.36% ± 2.53%, LightGBM achieved 51.25% ± 5.16%, and XGBoost achieved 50.69% ± 3.74%, highlighting the critical role of multi-regime cross-validation in preventing overconfidence from isolated single-period holdouts.
+Day 21 implements comprehensive model error analysis and an exploratory feature usefulness audit (`app/training/error_analysis.py`). The error decomposition layer computes symmetrical class metrics for both directions (`precision_down`, `recall_down`, `f1_down`), full confusion matrices, directional prediction bias checks, and training-to-validation class distribution shifts across all walk-forward folds. The feature usefulness audit assesses the canonical 37-feature matrix with strict training-data isolation (zero lookahead leakage into validation sets), verifying 0 missing columns, 0 constant columns, 59 collinear feature pairs ($|r| \ge 0.90$), and native tree feature importances (XGBoost weight vs LightGBM split count). Walk-forward empirical verification on `BHARTIARTL.NS` confirms that while tree models actively capture downward sessions (F1 DOWN 45–64% where Majority Class scores 0%), high collinearity and market regime shifts emphasize the importance of multi-cycle validation over single-holdout optimism. Model hyperparameters and feature sets remain strictly unmutated.
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.
@@ -169,9 +169,16 @@ Day 20 implements and empirically validates a leakage-safe walk-forward temporal
   - Comparative strategy evaluation across identical folds for Majority Class, Uniform Random, Stratified Random, XGBoost, and LightGBM.
   - Dual aggregation metrics: macro-averaged fold mean ± sample standard deviation ($ddof=1$) and micro-pooled confusion matrix accumulation.
   - Robust edge-case handling: separate `SKIPPED_UNDERSIZED_TRAIN` and `SKIPPED_UNDERSIZED_VAL` handling distinct from `SKIPPED_SINGLE_CLASS`, with zero dummy metric fabrication (renders `N/A` or `SKIP`).
+- Model Error Analysis & Feature Usefulness Audit Layer (`app/training/error_analysis.py`):
+  - Symmetrical dual-class evaluation: calculates Accuracy, Precision UP/DOWN, Recall UP/DOWN, and F1 UP/DOWN with zero-division safety.
+  - Per-fold error breakdown: confusion matrices (`[TN, FP / FN, TP]`), predicted vs actual counts, and directional bias detection (`ALL_UP` / `ALL_DOWN`).
+  - Distribution shift analysis: computes training-to-validation UP ratio shift ($Val\_UP\% - Train\_UP\%$) and delta vs Majority Class per fold.
+  - Strict training-isolated feature matrix audit: verifies 0 missing values, 0 constant columns across 37 features without lookahead leakage.
+  - Collinearity clustering: identifies 59 high-correlation feature pairs ($|r| \ge 0.90$) as simplification candidates.
+  - Exploratory tree feature importance: compares XGBoost split weight against LightGBM split count with documented non-causal caveats.
 - Historical Market Visualizer (`app/market/visualizer.py`):
   - Headless Matplotlib rendering (`Agg` backend) generating publication-quality PNG charts.
-- 261 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, XGBoost direction classifier, LightGBM direction classifier, baseline comparison suite, walk-forward cross-validation engine, and visualizer.
+- 269 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, XGBoost direction classifier, LightGBM direction classifier, baseline comparison suite, walk-forward cross-validation engine, model error analysis, feature usefulness audit, and visualizer.
 
 ---
 
