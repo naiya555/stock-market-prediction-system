@@ -36,6 +36,7 @@ def main() -> int:
     print("Day 17 XGBoost direction classifier ready")
     print("Day 18 baseline comparison ready")
     print("Day 19 multi-year evaluation and LightGBM benchmark ready")
+    print("Day 20 walk-forward temporal cross-validation ready")
     print(f"Python runtime: {sys.version.split()[0]}")
     print(f"Environment: {settings.environment}")
     print(f"Project root: {Path(__file__).resolve().parent}")

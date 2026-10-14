@@ -51,8 +51,8 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 - Feature matrix assembly and tabular dataset generation (canonical 37 numeric features, strict X/y isolation guard, explicit timestamp joins, natural warmup missing-value preservation, labeled subset extraction) (Day 16 complete).
 - Establish baseline numerical forecasting model using XGBoost (binary direction classification, chronological holdout split with label outcome embargo, native XGBoost Core API, deterministic evaluation) (Day 17 complete).
 - Baseline comparison & evaluation protocol (Majority-Class Classifier, Fixed-Seed Random Uniform/Stratified baselines, comparative evaluation report, bias identification) (Day 18 complete).
-- Benchmark against LightGBM and evaluate on expanded multi-year dataset (5-year historical lookback, 1,234 sessions, 240-session holdout, XGBoost vs LightGBM vs baselines) (Day 19 complete).
-- Implement walk-forward validation splits (strictly avoiding random cross-validation to prevent temporal leakage).
+- Implement walk-forward validation splits (strictly avoiding random cross-validation to prevent temporal leakage; expanding-window folds with outcome embargo gap, macro/pooled aggregation, single-class guardrails, and comparative benchmarking of Majority, Uniform/Stratified Random, XGBoost, and LightGBM) (Day 20 complete).
+
 
 ### Phase 5: Prediction Engine
 - Build the core prediction service orchestrating feature assembly and model inference.

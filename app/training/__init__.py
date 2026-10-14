@@ -24,6 +24,14 @@ from app.training.lightgbm_classifier import (
     LightGBMConfig,
     LightGBMDirectionClassifier,
 )
+from app.training.walk_forward import (
+    WalkForwardFoldEvaluation,
+    WalkForwardFoldSplit,
+    WalkForwardReport,
+    WalkForwardStrategySummary,
+    evaluate_walk_forward,
+    generate_walk_forward_splits,
+)
 from app.training.xgboost_classifier import (
     ChronologicalSplitResult,
     ClassificationMetrics,
@@ -60,4 +68,11 @@ __all__ = [
     "evaluate_baseline_comparison",
     "LightGBMConfig",
     "LightGBMDirectionClassifier",
+    "WalkForwardFoldSplit",
+    "WalkForwardFoldEvaluation",
+    "WalkForwardStrategySummary",
+    "WalkForwardReport",
+    "generate_walk_forward_splits",
+    "evaluate_walk_forward",
 ]
+

@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 19: Multi-Year Historical Data & LightGBM Benchmark<br/>
+> **Status:** Ongoing Project — Day 20: Walk-Forward Temporal Cross-Validation<br/>
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -52,9 +52,9 @@ When fully developed, the end-user workflow will operate as follows:
 
 ---
 
-## 4. Current Status: Day 19 (Multi-Year Historical Data & LightGBM Benchmark)
+## 4. Current Status: Day 20 (Walk-Forward Temporal Cross-Validation)
 
-Day 19 expands historical data lookback to approximately 5 years (1,234 trading sessions for `BHARTIARTL.NS`), audits corporate actions and dividend-adjustment implications, constructs a high-powered 240-session chronological holdout with a 1-session embargo, and introduces the LightGBM direction classifier baseline (`app/training/lightgbm_classifier.py`). Across 240 unseen holdout sessions (UP=120, DOWN=120), both gradient-boosted tree architectures produce balanced predictions (~50/50 UP/DOWN) and outperform the majority-class heuristic (50.00%): XGBoost achieves **54.17%** accuracy (F1=0.5528) and LightGBM achieves **53.75%** accuracy (F1=0.5394). Multi-seed random evaluation confirms that sampling variance dropped from ±14.16% on N=18 down to ±3.19% on N=240.
+Day 20 implements and empirically validates a leakage-safe walk-forward temporal cross-validation engine (`app/training/walk_forward.py`). The evaluation protocol uses chronological expanding-window folds with a mandatory outcome embargo of $\ge 1$ session to eliminate forward target leakage across boundaries (`train_outcome_cutoff <= val_start_date`). Models and baselines (Majority Class, Uniform Random, Stratified Random, XGBoost, and LightGBM) are evaluated on identical out-of-sample partitions with dual aggregation (macro-average mean ± sample std and micro-pooled metrics across all validation sessions). Across 5 expanding folds on ~5 years of `BHARTIARTL.NS` (720 total out-of-sample sessions spanning 2023–2026), walk-forward validation exposed real-world market regime shifts: Majority Class achieved 52.36% ± 2.53%, LightGBM achieved 51.25% ± 5.16%, and XGBoost achieved 50.69% ± 3.74%, highlighting the critical role of multi-regime cross-validation in preventing overconfidence from isolated single-period holdouts.
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.
@@ -162,9 +162,15 @@ Day 19 expands historical data lookback to approximately 5 years (1,234 trading 
   - Symmetrical baseline hyperparameters matching XGBoost: `objective='binary'`, `metric='binary_logloss'`, `max_depth=3`, `num_leaves=7`, `learning_rate=0.05`, `n_estimators=50`, `subsample=0.8`, `colsample_bytree=0.8`, `random_state=42`, `num_threads=1`, `deterministic=True`.
   - Feature isolation verified via `validate_feature_matrix_isolation(X)` to guarantee zero target or outcome leakage.
   - Native model persistence (`.save_model()` and `.load_model()`) and feature importance extraction.
+- Walk-Forward Temporal Cross-Validation Layer (`app/training/walk_forward.py`):
+  - Chronological expanding-window fold generator (`generate_walk_forward_splits`) supporting configurable initial training sizes, validation steps, and mandatory outcome embargo gaps ($\ge 1$ session).
+  - Strict leakage safeguards: verifies `train_outcome_cutoff <= val_start_date` and zero index overlap across train, embargo, and validation sets.
+  - Comparative strategy evaluation across identical folds for Majority Class, Uniform Random, Stratified Random, XGBoost, and LightGBM.
+  - Dual aggregation metrics: macro-averaged fold mean ± sample standard deviation ($ddof=1$) and micro-pooled confusion matrix accumulation.
+  - Robust edge-case handling for single-class historical training windows and undersized terminal splits.
 - Historical Market Visualizer (`app/market/visualizer.py`):
   - Headless Matplotlib rendering (`Agg` backend) generating publication-quality PNG charts.
-- 243 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, XGBoost direction classifier, LightGBM direction classifier, baseline comparison suite, and visualizer.
+- 255 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, XGBoost direction classifier, LightGBM direction classifier, baseline comparison suite, walk-forward cross-validation engine, and visualizer.
 
 ---
 

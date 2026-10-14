@@ -553,3 +553,45 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   - Both XGBoost (54.17%) and LightGBM (53.75%) produce balanced predictions (~50/50 UP/DOWN) and outperform the majority-class heuristic (50.00%) by ~4 percentage points.
   - Documented disclaimer: ~54% out-of-sample directional accuracy provides preliminary evidence of signal, but does not guarantee live trading profitability after execution slippage and transaction costs.
 
+### 4.15. Walk-Forward Temporal Cross-Validation Layer (`app/training/walk_forward.py`)
+- **Walk-Forward Validation Architecture:**
+  ```text
+  Complete Labeled Feature Matrix (N rows sorted chronologically by timestamp)
+             ↓
+  Expanding-Window Fold Generation (generate_walk_forward_splits):
+    - Configurable initial training size (n_initial_train, default min 240)
+    - Fixed validation step size (val_size, default 144)
+    - Mandatory outcome embargo (embargo_size >= 1 session, purged between train & val)
+    - K Expanding Folds: Fold k trains on [0 : T_k], embargos [T_k : T_k + embargo], validates on [T_k + embargo : T_k + embargo + val_size]
+             ↓
+  Temporal Integrity & Leakage Invariants:
+    - Train outcome cutoff: next_timestamp of last train observation strictly <= val_start_date
+    - Disjoint index invariant: Train ∩ Embargo = ∅, Embargo ∩ Val = ∅, Train ∩ Val = ∅
+    - Monotonically expanding training windows: |Train_{k+1}| > |Train_k|
+             ↓
+  Parallel Strategy Evaluation on Identical Fold Partitions:
+    ├── Baseline A: MajorityClassClassifier (train majority, single-class guard)
+    ├── Baseline B1: RandomClassifier (Uniform coin flip, P=0.5, pre-declared seed)
+    ├── Baseline B2: RandomClassifier (Stratified random, P=train_prior, pre-declared seed)
+    ├── Model C: XGBoostDirectionClassifier (Day 17 conservative baseline, unchanged params)
+    └── Model D: LightGBMDirectionClassifier (Day 19 symmetrical baseline, unchanged params)
+             ↓
+  Dual Aggregation Protocol (WalkForwardReport):
+    - Macro-averaged metrics: unweighted fold mean ± sample standard deviation (ddof=1)
+    - Micro-pooled metrics: global sum of confusion matrices across all validation sessions
+    - Detailed per-fold breakdown table with class distributions and boundary dates
+  ```
+- **Temporal Leakage Safeguards:**
+  - **Outcome Embargo Invariant:** Because target label $y_t$ realizes at session $t+1$, an observation at time $t_{train}$ consumes price data from $t_{train}+1$. An explicit embargo of $\ge 1$ sessions is strictly purged between the training window and validation window, guaranteeing `train_outcome_cutoff <= val_start_date` across all folds.
+  - **Strict Split Isolation:** The validation dataset is strictly out-of-sample. Models and baselines are fit exclusively on the training fold; zero hyperparameter tuning, model selection, or feature engineering is permitted using validation feedback.
+  - **Feature Matrix Isolation Guard:** Feature matrices are checked via `validate_feature_matrix_isolation` to ensure no target columns, outcome timestamps, or future prices can enter the model.
+- **Robustness & Edge-Case Handling:**
+  - **Single-Class Training Guard:** If a historical training window lacks variation (100% UP or 100% DOWN), models safely predict the single present class or record an insufficient-class condition without crashing or fabricating metrics.
+  - **Undersized Fold Handling:** If remaining rows are fewer than `val_size`, fold generation terminates safely or flags the condition explicitly.
+  - **Reproducibility:** Random baselines use deterministic, pre-declared seeds (seed = `base_seed + fold_idx * 1000`) for absolute reproducibility.
+- **Empirical Multi-Regime Findings (Day 20 BHARTIARTL.NS Verification):**
+  - Walk-forward evaluation across 5 expanding folds (720 total out-of-sample sessions from Nov 2023 to Oct 2026) revealed that Bharti Airtel experienced a sustained secular bull regime during 2023–2024, raising the Majority-Class baseline accuracy to **52.36% ± 2.53%**.
+  - LightGBM achieved **51.25% ± 5.16%** macro mean accuracy (pooled 51.25%), while XGBoost achieved **50.69% ± 3.74%** (pooled 50.69%).
+  - Walk-forward cross-validation exposed market-regime sensitivity that was invisible in a single static holdout, proving the necessity of multi-fold temporal validation before claiming predictive edge.
+
+

@@ -657,3 +657,30 @@ This document formalizes the architectural decisions made on Day 1. All future i
   4. **Preliminary Evidence Disclaimer:** Out-of-sample holdout metrics (~53.75% for LightGBM, ~54.17% for XGBoost) provide preliminary empirical evidence of modest signal over majority class (50.00%), but do not constitute proof of a commercial trading edge or profitable market strategy.
 - **Consequences:** Provides a fair, reproducible, deterministic second tree-model benchmark with zero test-set leakage.
 
+---
+
+## ADR 48: Walk-Forward Temporal Cross-Validation, Expanding-Window Architecture, and Outcome Embargo Safeguards
+- **Status:** Accepted
+- **Context:** Single-split chronological holdout evaluations (e.g. Day 17–19) assess model performance on only a single out-of-sample time window. In non-stationary financial markets, performance on a single window is highly susceptible to the specific market regime (e.g., strong trend vs consolidation) present during that window. Standard randomized k-fold cross-validation is forbidden because it shuffles past and future data, causing catastrophic temporal lookahead leakage.
+- **Decision:**
+  1. **Expanding-Window Chronological Folds:**
+     - Implement `generate_walk_forward_splits` and `evaluate_walk_forward` in `app/training/walk_forward.py`.
+     - An initial training partition (default 40% of observations, $N_{train\_init} \ge min\_train\_samples$) is established for the first fold.
+     - The remaining dataset is partitioned into $K$ contiguous, non-overlapping validation folds ($K=5$ default).
+     - Each fold $k$ expands the training window to include all historical observations prior to its validation window.
+  2. **Mandatory Outcome Embargo Gap:**
+     - Enforce a purged embargo window of at least 1 session ($\ge 1$) immediately preceding each validation fold ($[V_{start} - embargo \dots V_{start})$).
+     - Because the next-session return label for observation $t$ materializes at $t+1$, the final training observation's outcome date is guaranteed to fall on or before the embargo boundary and strictly prior to the first validation session ($train\_outcome\_cutoff \le val\_start\_date$).
+  3. **Multi-Strategy Evaluation Parity:**
+     - Every fold evaluates the exact same sample observations across all candidate strategies: Majority-Class, Fixed-Seed Uniform Random ($P=0.5$), Fixed-Seed Stratified Random ($P=train\_prior$, fitted strictly on each fold's $y_{train}$), Day 17 XGBoost, and Day 19 LightGBM.
+     - Model hyperparameters remain completely fixed; zero hyperparameter tuning or post-hoc threshold selection is performed on validation data.
+  4. **Dual Aggregation Protocol (Macro + Pooled Micro):**
+     - *Macro-Averaging:* Compute unweighted mean and sample standard deviation with Bessel correction ($ddof=1$) across folds for Accuracy, Precision, Recall, and F1.
+     - *Micro-Pooled Aggregation:* Sum confusion matrices across all folds ($\sum TN, \sum FP, \sum FN, \sum TP$) across all validation observations (720 sessions across 5 folds) to calculate aggregate out-of-sample performance.
+  5. **Fault Tolerance & Explicit Degradation:**
+     - If a fold training set contains only a single class ($len(unique(y)) < 2$) or is undersized, the evaluation records an explicit `SKIPPED_SINGLE_CLASS` status with reason, preventing silent crashes or fabricated metrics.
+  6. **Scientific Humility & Disclaimer:**
+     - Document that walk-forward cross-validation performance (~50.7% XGBoost, ~51.3% LightGBM, ~52.4% Majority Class across 5 folds on BHARTIARTL) reflects realistic regime shifts and confirms that a single holdout score cannot be extrapolated as a permanent commercial trading edge.
+- **Consequences:** Eliminates regime-specific overfitting, prevents temporal data leakage across fold boundaries, and establishes an auditable, multi-cycle cross-validation standard for all future ML models.
+
+
