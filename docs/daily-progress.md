@@ -2142,6 +2142,113 @@ Executed `scripts/verify_day21.py` on ~5-year historical data (2021 to 2026):
 - Feature pruning or dimensionality reduction (e.g. eliminating redundant price levels or collinear MAs) must be approached cautiously in future phases using domain-driven or training-only feature selection, never by optimizing against validation fold scores.
 - Next scheduled scope: Complete Phase 4 wrap-up and proceed to Phase 5 (Prediction Engine service layer orchestrating feature assembly, inference, confidence scoring, and output generation).
 
+---
+
+## Day 22: Prediction Engine Service Foundation
+
+### Goal
+Build the first reusable prediction-engine service that connects the existing market-data pipeline, canonical feature matrix, trained XGBoost and LightGBM classifiers, and baseline evaluation infrastructure without changing model definitions:
+1. Define a strongly typed prediction request and result contract (`PredictionRequest`, `PredictionResult`, `PredictionDataQuality`, `PredictionStatus`) supporting symbol, prediction timestamp, input bar timestamp, predicted direction (UP/DOWN), class probabilities, model provenance metadata, data quality diagnostics, and explicit failure reasons.
+2. Build `PredictionService` under `app/prediction/service.py` orchestrating market data acquisition, data cleaning, canonical 37-feature matrix assembly, input data validation (warm-up sufficiency $\ge 34$ bars, missing-value checks), and model inference.
+3. Enforce strict inference-time anti-leakage safeguards: consume strictly point-in-time data bounded by request timestamps, validate zero target or forward outcome columns via `validate_feature_matrix_isolation()`, and guarantee column ordering matching `FEATURE_COLUMNS`.
+4. Implement strict model lifecycle separation: inference strictly consumes pre-existing model artifacts or registered instances; automatic on-the-fly retraining during inference requests is strictly prohibited. If an artifact is unavailable, return an actionable `MODEL_UNAVAILABLE` status.
+5. Provide explicit capability boundaries: document that the direction classifier forecasts binary close-to-close sign (UP/DOWN) and raw probability; do not fabricate fictitious target prices, expected percentage returns, or post-hoc narrative explanations.
+6. Verify against real historical data for `BHARTIARTL.NS` and expand unit tests.
+
+### Pre-Checks
+- Current branch: `main`, clean working tree synchronized with `origin/main` at commit `ba95534`.
+- Full existing test suite verified: **269 passed in 4.54s** (0 failures, 0 regressions).
+- Preserved all Day 1–21 code, results, configurations, and journal entries intact.
+
+### What Was Built
+1. **Prediction Contract (`app/prediction/contract.py`):**
+   - `PredictionStatus` enum: `SUCCESS`, `INSUFFICIENT_DATA`, `STALE_DATA`, `MODEL_UNAVAILABLE`, `FEATURE_ERROR`, `INVALID_REQUEST`, `FAILED`.
+   - `PredictionRequest`: typed specification with `symbol`, `model_name` ('xgboost' or 'lightgbm'), `model_artifact_path`, `as_of_date`, `lookback_days` (default $5 \times 365$), `max_stale_days` (default 7), and `allow_stale_data`. Parameter validation rejects empty symbols, unsupported architectures, or insufficient lookback.
+   - `PredictionDataQuality`: tracks `total_bars_fetched`, `cleaned_bars`, `warmup_bars_required` (34), `warmup_complete`, `latest_bar_timestamp`, `missing_feature_count`, `missing_features`, `is_stale`, and `stale_days`.
+   - `PredictionResult`: typed result container providing `symbol`, `prediction_timestamp`, `latest_input_timestamp`, `status`, `predicted_direction` ('UP' or 'DOWN'), `predicted_label` (1 or 0), `probability_up`, `probability_down`, `model_name`, `model_version`, `model_metadata`, `data_quality`, `error_message`, and explicit capability disclaimer with `.to_dict()` serialization.
+2. **Prediction Service Layer (`app/prediction/service.py`):**
+   - `PredictionService`: orchestrates provider data retrieval, market cleaning, feature matrix assembly, data quality auditing, and model execution.
+   - Decoupled model resolution: resolves fitted models from preloaded arguments, in-memory `model_registry`, or filesystem artifacts (`models/{model_name}_direction.*`).
+   - Zero silent retraining: if an artifact is absent, returns an actionable `MODEL_UNAVAILABLE` diagnostic explaining how to train and persist the model.
+   - Warm-up and data quality validation: rejects inference observations with fewer than 34 sessions or any NaN feature values (`FEATURE_ERROR`).
+   - Inference isolation: executes `validate_feature_matrix_isolation()` on the inference feature row ($t = N - 1$), rejecting target or outcome columns.
+   - Feature ordering parity: enforces column alignment matching canonical `FEATURE_COLUMNS`.
+   - `train_and_persist_baseline_model()`: dedicated offline lifecycle function for deliberately training and serializing baseline classifiers to disk.
+3. **Decoupled Package Exports (`app/prediction/__init__.py`):**
+   - Employs PEP 562 `__getattr__` module-level lazy loading for `PredictionService` and `train_and_persist_baseline_model`, decoupling `app.prediction` imports during feature matrix initialization and completely eliminating circular dependencies.
+4. **Application Entry Point Update (`main.py`):**
+   - Added readiness confirmation: `"Day 22 prediction engine service foundation ready"`.
+5. **Real-Data Verification Script (`scripts/verify_day22.py`):**
+   - Offline lifecycle: deliberately trained and persisted baseline XGBoost and LightGBM models for `BHARTIARTL.NS` to `models/`.
+   - Inference execution: executed `PredictionService.predict()` with both models, verifying direction, probabilities, timestamps, and metadata.
+   - Negative testing: verified that missing model artifacts return `MODEL_UNAVAILABLE` without silent retraining, and invalid symbols return `INSUFFICIENT_DATA` / `FAILED`.
+   - Zero bare `assert`: dynamic error logging with exit code 1 on failure.
+
+### Real Data Verification Findings (BHARTIARTL.NS)
+Executed `scripts/verify_day22.py` on real historical market data:
+- **Offline Model Lifecycle:**
+  - Persisted XGBoost model: `models/xgboost_direction.json` (106,757 bytes).
+  - Persisted LightGBM model: `models/lightgbm_direction.txt` (45,074 bytes).
+- **XGBoost Direction Prediction:**
+  - Status: `SUCCESS`
+  - Symbol: `BHARTIARTL`
+  - Predicted Direction: `UP` (label=1)
+  - Direction Probabilities: $P(UP) = 54.68\%$, $P(DOWN) = 45.32\%$ ($P(UP) + P(DOWN) = 1.00$)
+  - Latest Input Bar: `2026-10-13T00:00:00+05:30`
+  - Prediction Timestamp: `2026-10-14T09:42:17.114115+00:00`
+  - Cleaned Input Bars: 1,235 sessions (warmup complete, 0 missing features)
+  - Model Version: `xgboost-direction-v1`
+- **LightGBM Direction Prediction:**
+  - Status: `SUCCESS`
+  - Predicted Direction: `UP` (label=1)
+  - Direction Probabilities: $P(UP) = 55.78\%$, $P(DOWN) = 44.22\%$ ($P(UP) + P(DOWN) = 1.00$)
+  - Model Version: `lightgbm-direction-v1`
+- **Error Containment & Safeguard Invariants:**
+  - Missing model artifact (`non_existent_model.json`): returned `MODEL_UNAVAILABLE` with error message `"Model artifact not found ... Automatic on-the-fly retraining during inference is prohibited"`. Confirmed zero silent retraining.
+  - Invalid ticker symbol (`NONEXISTENT_TICKER_XYZ`): handled gracefully with `INSUFFICIENT_DATA` status without unhandled exceptions.
+
+### Tests
+- Created `tests/test_prediction_service.py` with 13 comprehensive unit tests:
+  1. `test_valid_prediction_request_with_preloaded_xgboost`: verifies valid prediction with preloaded XGBoost model.
+  2. `test_valid_prediction_request_with_preloaded_lightgbm`: verifies valid prediction with preloaded LightGBM model.
+  3. `test_in_memory_model_registry`: verifies service resolves models from in-memory registry.
+  4. `test_unsupported_and_invalid_symbols`: verifies validation rejects empty symbols and unsupported model architectures.
+  5. `test_missing_market_data`: verifies graceful handling when provider returns zero bars.
+  6. `test_insufficient_feature_history`: verifies rejection when bars are fewer than minimum warmup (34).
+  7. `test_target_and_future_columns_excluded`: verifies inference row excludes forbidden target/outcome patterns.
+  8. `test_feature_order_consistency`: verifies exact column ordering sent to model matches `FEATURE_COLUMNS`.
+  9. `test_missing_model_artifacts_error_actionable`: verifies missing artifact returns actionable `MODEL_UNAVAILABLE`.
+  10. `test_model_prediction_runtime_error_handled`: verifies runtime exceptions in `predict_proba` are safely caught as `FAILED`.
+  11. `test_up_down_class_and_probability_mapping`: verifies thresholding ($p > 0.5 \implies UP$, $p \le 0.5 \implies DOWN$) and probability symmetry.
+  12. `test_reproducibility_with_persisted_model`: verifies identical predictions across separate calls using persisted artifact.
+  13. `test_prediction_timestamp_and_input_data_timestamp`: verifies distinctness and ordering of prediction generation time and input observation time.
+- **Full Test Suite Results:**
+  - Previous baseline: 269 passed
+  - New total: **282 passed in 4.50s** (13 new tests, 0 failures, 0 regressions). Zero external network dependencies.
+
+### Review
+- **CodeRabbit:** CodeRabbit CLI is not installed in the local environment; noted explicitly. Senior dev clean-code principles applied: strict type hints, dataclasses with `.to_dict()`, PEP 562 lazy exports, division-by-zero guards, and complete lifecycle separation.
+- **Roo Code:** Remained disabled.
+- **Ponytail / Senior Dev Mode:** Reused existing data pipeline, cleaner, indicators, trend, and feature matrix without duplication. Zero silent retraining, zero new dependencies.
+
+### Documentation
+- Updated `README.md` to Day 22 status with 282 passing tests.
+- Updated `docs/architecture.md` with Section 4.17 detailing Prediction Engine Service Layer.
+- Updated `docs/decisions.md` with ADR 50 (Prediction Engine Service Architecture, Inference Contract, and Lifecycle Isolation).
+- Updated `docs/roadmap.md` with Phase 5 / Day 22 completion details.
+- Updated `docs/daily-progress.md` with Day 22 development log.
+
+### Git Commits
+- **Feature Commit:** `1df339f` — `feat(prediction): implement prediction engine service foundation for Day 22`
+- **Documentation Commit:** `521af7c` — `docs: record Day 22 prediction engine service foundation in daily-progress.md`
+
+### Known Limitations & Next Steps
+- The current prediction service forecasts next-session binary direction (`UP`/`DOWN`) and raw tree probability; it does not predict target price levels or percentage return magnitudes.
+- Raw probabilities represent tree split frequencies and are not yet calibrated using Platt scaling or isotonic regression.
+- Predictions operate per symbol in isolation; NIFTY context and market breadth features remain scheduled for subsequent phases (Phase 8).
+- Next scheduled scope: Proceed with Phase 5 expansion (probability calibration, threshold optimization, and prediction persistence).
+
+
 
 
 
