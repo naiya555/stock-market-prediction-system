@@ -748,6 +748,34 @@ This document formalizes the architectural decisions made on Day 1. All future i
   - Eliminates code duplication across feature calculation and model inference.
   - Guarantees zero lookahead leakage and prevents silent model retraining or drift.
 
+---
+
+## ADR 51: Structured Prediction Output Contract, Uncalibrated Probability Transparency, and Explicit Expected Movement Boundaries
+- **Status:** Accepted
+- **Context:**
+  - Day 22 built the prediction engine service foundation (`PredictionService` and `PredictionResult`).
+  - To finalize Day 23 (Phase 4 / Phase 5 prediction output), the structured prediction output contract requires rigorous formalization of capability boundaries and machine/human readability.
+  - In financial machine learning, tree-based classifiers (XGBoost, LightGBM) output raw split frequencies via `predict_proba`. These raw probabilities are not calibrated Bayesian posterior probabilities; presenting them without explicit calibration status can mislead consumers into overestimating certainty.
+  - Furthermore, direction classifiers model binary direction sign ($y \in \{0, 1\}$); they do not calculate expected price moves ($\Delta Close$) or percentage return magnitudes ($R$). Returning fabricated numeric price targets or speculative expected returns violates the foundational anti-fabrication mandate.
+- **Decision:**
+  1. **Uncalibrated Probability Transparency:**
+     - Add `is_probability_calibrated: bool = False` and `probability_calibration: str = "uncalibrated"` to `PredictionResult`.
+     - Explicitly document in the contract and serialized outputs that model probabilities reflect raw booster scores prior to any Platt scaling or isotonic calibration.
+  2. **Explicit Expected Movement Boundaries:**
+     - Add `expected_movement: Optional[float] = None` and `expected_movement_status: str = "UNSUPPORTED"` to `PredictionResult`.
+     - Strictly prohibit synthesizing numeric target prices or expected return percentages unless a dedicated, validated regression model is introduced in a future phase.
+     - On all directional prediction requests, `expected_movement` evaluates to `None` with status `"UNSUPPORTED"`.
+  3. **Lossless Machine Serialization:**
+     - `PredictionResult.to_dict()` recursively transforms the contract and nested `PredictionDataQuality` into Python primitives suitable for JSON serialization and REST API payloads.
+  4. **Human-Readable Text Summary:**
+     - Implement `PredictionResult.format_summary()` providing structured multiline text rendering for CLI inspection, operational logs, and verification reporting.
+  5. **Symmetrical Probability Guarantee:**
+     - Verify $P(UP) + P(DOWN) == 1.00$ with $P \in [0.0, 1.0]$ across all successful outputs.
+- **Consequences:**
+  - Provides full transparency on what the model does and does not predict.
+  - Prevents premature or speculative price forecasting while cleanly preparing the prediction engine for downstream database storage (Phase 6) and API consumption (Phase 13).
+
+
 
 
 

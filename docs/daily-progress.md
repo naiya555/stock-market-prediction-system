@@ -2248,6 +2248,96 @@ Executed `scripts/verify_day22.py` on real historical market data:
 - Predictions operate per symbol in isolation; NIFTY context and market breadth features remain scheduled for subsequent phases (Phase 8).
 - Next scheduled scope: Proceed with Phase 5 expansion (probability calibration, threshold optimization, and prediction persistence).
 
+---
+
+## Day 23 - Structured Prediction Output
+
+### Goal
+Implement and validate the structured prediction output contract using the existing Day 22 `PredictionService` and `PredictionResult` contract:
+1. Ensure the output strictly includes predicted direction, uncalibrated model probability (clearly marked), symbol, prediction timestamp, latest input-data timestamp, model name/version, and data-quality status.
+2. Return `expected_movement` as `None` with an explicit `expected_movement_status = "UNSUPPORTED"` confirming that direction classifiers predict binary directional movement rather than numeric price targets or percentage return magnitudes.
+3. Provide lossless JSON-serializable transformation via `.to_dict()` and clean human-readable audit text rendering via `.format_summary()`.
+4. Strictly avoid probability calibration, threshold tuning, database/history, CLI tooling, frontend, or new model architectures today.
+5. Add focused unit tests, run the full test suite, verify against real historical data for `BHARTIARTL.NS`, and preserve clean repository state.
+
+### Pre-Checks
+- Current branch: `main`, clean working tree synchronized with `origin/main` at commit `f380033`.
+- Full existing test suite verified: **282 passed in 4.99s** (0 failures, 0 regressions).
+- Roadmap alignment verified: followed roadmap clarification for Phase 4 / Phase 5 Day 23 — Structured Prediction Output without jumping ahead to Phase 6 (database) or Phase 13 (frontend).
+
+### What Was Built
+1. **Enhanced Prediction Contract (`app/prediction/contract.py`):**
+   - **Uncalibrated Probability Transparency:** Added `is_probability_calibrated: bool = False` and `probability_calibration: str = "uncalibrated"` to `PredictionResult`, clearly distinguishing raw tree booster split frequencies from calibrated Bayesian posterior probabilities.
+   - **Explicit Expected Movement Boundaries:** Added `expected_movement: Optional[float] = None` and `expected_movement_status: str = "UNSUPPORTED"` to `PredictionResult`, formalizing the capability boundary that direction classifiers do not predict price targets or return magnitudes.
+   - **Human-Readable Summary Rendering:** Added `.format_summary() -> str` method on `PredictionResult` to format a clean text audit block displaying status, timestamps, model metadata, direction, uncalibrated probabilities, data quality metrics, and capability disclaimers.
+   - **Machine-Readable Serialization:** Preserved and validated `.to_dict()` recursive dictionary conversion returning JSON-serializable primitives for all fields including calibration flags and expected movement status.
+2. **Prediction Service Updates (`app/prediction/service.py`):**
+   - Updated `PredictionService.predict()` and `PredictionService._build_error_result()` to explicitly set `is_probability_calibrated=False`, `probability_calibration="uncalibrated"`, `expected_movement=None`, and `expected_movement_status="UNSUPPORTED"` across all successful and error outputs.
+3. **Application Entry Point Update (`main.py`):**
+   - Added readiness check: `"Day 23 structured prediction output ready"`.
+4. **Focused Unit Tests (`tests/test_prediction_output.py`):**
+   - Implemented 6 comprehensive unit tests validating:
+     1. `test_structured_prediction_output_schema_and_types`: validates field types and required metadata.
+     2. `test_uncalibrated_probability_transparency`: confirms uncalibrated flags and probability bounds $P \in [0, 1]$.
+     3. `test_expected_movement_explicitly_unsupported`: confirms `expected_movement is None` and status is `"UNSUPPORTED"`.
+     4. `test_prediction_result_to_dict_serialization`: confirms JSON serializability and nested dictionary structure.
+     5. `test_prediction_result_format_summary`: verifies human-readable summary output text.
+     6. `test_structured_error_output_contains_required_diagnostics`: verifies error containment on missing artifacts.
+5. **Real-Data Verification Script (`scripts/verify_day23.py`):**
+   - Verified end-to-end execution on real market data for `BHARTIARTL.NS` (1,235 bars up to 2026-10-14).
+   - Validated both XGBoost and LightGBM outputs, JSON serialization, and summary formatting.
+   - Enforced `try...finally` artifact cleanup to keep working tree clean and preserve Day 1 repository foundation invariants.
+
+### Real Data Verification Findings (BHARTIARTL.NS)
+Executed `scripts/verify_day23.py` on real historical market data:
+- **XGBoost Structured Prediction Output:**
+  - Status: `SUCCESS`
+  - Symbol: `BHARTIARTL`
+  - Predicted Direction: `DOWN` (label=0)
+  - Direction Probabilities: $P(UP) = 46.86\%$, $P(DOWN) = 53.14\%$ ($P(UP) + P(DOWN) = 1.00$)
+  - Probability Calibration: `uncalibrated` (`is_calibrated=False`)
+  - Expected Movement: `None` (`status=UNSUPPORTED`)
+  - Prediction Timestamp: `2026-10-14T10:05:42.291596+00:00`
+  - Latest Input Bar: `2026-10-14T00:00:00+05:30`
+  - Model Version: `xgboost-direction-v1`
+  - Data Quality: 1,235 cleaned bars, warmup complete, 0 missing features
+- **LightGBM Structured Prediction Output:**
+  - Status: `SUCCESS`
+  - Predicted Direction: `DOWN` (label=0)
+  - Direction Probabilities: $P(UP) = 47.72\%$, $P(DOWN) = 52.28\%$ ($P(UP) + P(DOWN) = 1.00$)
+  - Probability Calibration: `uncalibrated` (`is_calibrated=False`)
+  - Expected Movement: `None` (`status=UNSUPPORTED`)
+  - Model Version: `lightgbm-direction-v1`
+- **Output Inspection & Formatting:**
+  - Confirmed `.to_dict()` outputs valid JSON dictionary (1,463 characters).
+  - Confirmed `.format_summary()` outputs clean audit text block.
+  - Confirmed missing model artifact returns structured error with `status=MODEL_UNAVAILABLE`, `predicted_direction=None`, `probability_up=None`, and `expected_movement=None`.
+
+### Tests
+- **Full Test Suite Results:**
+  - Previous baseline: 282 passed
+  - New total: **288 passed in 3.81s** (6 new tests in `tests/test_prediction_output.py`, 0 failures, 0 regressions across 21 test modules).
+  - Zero external network dependencies in automated tests.
+
+### Review
+- **CodeRabbit:** CodeRabbit CLI not installed locally; noted explicitly.
+- **Roo Code:** Remained disabled.
+- **Ponytail / Senior Dev Mode:** Reused existing `PredictionResult` and `PredictionService` without creating duplicate classes or adding unnecessary abstractions. Standard library dataclasses and methods only.
+- **Strict Boundaries:** Zero probability calibration, zero threshold tuning, zero database code, zero CLI tooling, zero frontend, zero new model architectures.
+
+### Documentation
+- Updated `README.md` to Day 23 status with 288 passing tests.
+- Updated `docs/architecture.md` with Section 4.18 detailing Prediction Output Layer & Transparency Guarantees.
+- Updated `docs/decisions.md` with ADR 51.
+- Updated `docs/roadmap.md` with Phase 5 / Day 23 completion details.
+- Updated `docs/daily-progress.md` with Day 23 development log.
+
+### Known Limitations & Next Steps
+- Model probabilities remain uncalibrated raw tree split frequencies. Probability calibration (e.g., Platt scaling or isotonic regression) is scheduled for future work before trading decisions are evaluated.
+- Direction classifiers output binary directional sign only. Expected price movement ($\Delta Close$) and percentage return ($R$) are not calculated or modeled.
+- Next scheduled scope: Transition to Phase 6 (Prediction History & Database — SQLite schema, prediction persistence, and immutable audit logs).
+
+
 
 
 

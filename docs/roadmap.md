@@ -57,7 +57,7 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 
 ### Phase 5: Prediction Engine
 - Build the core prediction service orchestrating feature assembly and model inference (`PredictionService` in `app/prediction/service.py`, typed `PredictionRequest` and `PredictionResult` contracts, zero silent retraining, strict inference isolation) (Day 22 complete).
-- Generate directional forecast (`UP` / `DOWN`), class probabilities, and input data quality auditing without fabricating target prices or uncalibrated confidence scores.
+- Structured prediction output & transparency layer: generate validated directional forecast (`UP` / `DOWN`), class probabilities explicitly marked uncalibrated (`is_probability_calibrated=False`), input data quality auditing, explicit expected movement boundaries (`expected_movement=None`, `expected_movement_status="UNSUPPORTED"` for direction classifiers), full JSON serialization via `.to_dict()`, and text audit formatting via `.format_summary()` without fabricating target prices or uncalibrated confidence scores (Day 23 complete).
 
 ### Phase 6: Prediction History & Database
 - Design SQLite database schema (predictions, stocks, actuals, model_versions).
