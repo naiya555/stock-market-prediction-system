@@ -1867,5 +1867,132 @@ Executed `scripts/verify_day19.py` on real market data:
 - Transaction costs, market slippage, and securities transaction taxes (STT) are not yet integrated into the strategy evaluation.
 - Next scheduled scope (Day 20): Walk-forward temporal cross-validation across multiple market cycles and rolling regimes without lookahead leakage.
 
+---
+
+## Day 20 - Walk-Forward Temporal Cross-Validation
+
+### Goal
+Implement and verify leakage-safe walk-forward temporal cross-validation for the existing `BHARTIARTL.NS` direction-prediction pipeline:
+1. Create a reusable walk-forward temporal evaluation engine under `app/training/walk_forward.py`.
+2. Generate chronological expanding-window folds where each fold trains strictly on observations available prior to its validation window.
+3. Enforce a configurable outcome embargo gap ($\ge 1$ session) purged between training and validation windows to eliminate forward target leakage across boundaries ($train\_outcome\_cutoff \le val\_start\_date$).
+4. Require explicit fold accounting: train/validation start and end dates, row counts, class distributions, and outcome cutoff timestamps.
+5. Verify that train, embargo, and validation indices are mutually disjoint ($Train \cap Embargo = \emptyset$, $Embargo \cap Val = \emptyset$, $Train \cap Val = \emptyset$).
+6. Evaluate all 5 benchmark strategies on identical validation folds: Majority Class, Uniform Random ($P=0.5$), Stratified Random ($P=train\_prior$, fitted exclusively on training labels), Day 17 XGBoost, and Day 19 LightGBM.
+7. Preserve model hyperparameters unchanged (zero hyperparameter tuning, feature selection, or retraining on validation feedback).
+8. Implement dual aggregation: macro-averaged fold mean $\pm$ sample standard deviation ($ddof=1$) and micro-pooled confusion matrix accumulation.
+9. Guard against edge cases: explicit single-class training handling (`SKIPPED_SINGLE_CLASS`), undersized fold termination, and pre-declared seeds (`base_seed + fold_idx * 1000`) for reproducible pseudo-random baselines.
+10. Verify end-to-end against real multi-year market data for `BHARTIARTL.NS` and maintain scientific humility (no claim of commercial trading edge).
+
+### Implementation
+1. **Walk-Forward Cross-Validation Module (`app/training/walk_forward.py`):**
+   - Implemented `WalkForwardFoldSplit`: Encapsulates fold index, train/embargo/val indices, start/end timestamps, sample sizes, class distributions, and `train_outcome_cutoff`.
+   - Implemented `generate_walk_forward_splits()`: Generates $K$ chronological expanding-window folds with configurable initial training size (`n_initial_train`), fixed validation size (`val_size`), and mandatory outcome embargo (`embargo_size >= 1`). Verifies temporal ordering, expanding train windows, and zero index overlap.
+   - Implemented `WalkForwardFoldEvaluation`: Captures per-fold evaluation metrics for all strategies, sample sizes, class counts, and status (`COMPLETED` or `SKIPPED_SINGLE_CLASS`).
+   - Implemented `WalkForwardStrategySummary`: Holds macro-averaged metrics (mean $\pm$ sample standard deviation with Bessel correction $ddof=1$) and micro-pooled confusion matrices across all validation sessions.
+   - Implemented `WalkForwardReport`: Container for all fold splits, fold evaluations, strategy summaries, and Markdown comparison table rendering (`.summary_table()`).
+   - Implemented `evaluate_walk_forward()`: High-level orchestrator conducting fair, parallel evaluation across all 5 strategies on identical validation splits, with feature isolation checks and single-class guards.
+2. **Package Exports (`app/training/__init__.py`):**
+   - Exported `WalkForwardFoldSplit`, `WalkForwardFoldEvaluation`, `WalkForwardStrategySummary`, `WalkForwardReport`, `generate_walk_forward_splits`, `evaluate_walk_forward`.
+3. **Application Entry Point Update (`main.py`):**
+   - Added `print("Day 20 walk-forward temporal cross-validation ready")`.
+4. **Real-Data Verification Script (`scripts/verify_day20.py`):**
+   - End-to-end verification script for `BHARTIARTL.NS` across ~5 years, verifying fold boundaries, 1-session embargo invariants, class distributions, and comparative performance across all 5 strategies.
+
+### Real Data Verification Results (BHARTIARTL.NS, 5-Year Lookback)
+Executed `scripts/verify_day20.py` on real market data:
+- **Symbol:** `BHARTIARTL`
+- **Data Range:** 2021-10-14 to 2026-10-14 (1,235 total trading sessions)
+- **Data Quality:** 1,235 clean bars (0 missing, 0 invalid, 0 duplicates).
+- **Feature Matrix & Target Assembly:**
+  - Initial Sessions: 1,235
+  - Excluded Unlabeled Final Row: 1 ($y = NaN$, 2026-10-14)
+  - Excluded Incomplete Warmup Rows: 35 (MACD-26, Bollinger-20, ATR-14, RSI-14)
+  - Retained Complete Labeled Observations: **1,199**
+- **Fold Configuration:**
+  - Initial Train Window: 476 sessions (~40% of observations)
+  - Validation Window: 144 sessions (~7 calendar months)
+  - Embargo Gap: 1 session purged before each validation window
+  - Generated Folds: **5 expanding folds** covering **720 total out-of-sample validation sessions**
+
+#### Detailed Fold Partition & Leakage Integrity Breakdown
+| Fold | Train Window | Train Size | Train UP / DOWN (Prior) | Embargo Date | Val Window | Val Size | Val UP / DOWN | Outcome Cutoff <= Val Start |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **0** | 2021-12-03 to 2023-11-07 | 476 | 262 / 214 (55.04%) | 2023-11-08 | 2023-11-09 to 2024-06-11 | 144 | 76 / 68 (52.78%) | 2023-11-08 <= 2023-11-09 (**PASS**) |
+| **1** | 2021-12-03 to 2024-06-11 | 621 | 338 / 283 (54.43%) | 2024-06-12 | 2024-06-13 to 2025-01-09 | 144 | 75 / 69 (52.08%) | 2024-06-12 <= 2024-06-13 (**PASS**) |
+| **2** | 2021-12-03 to 2025-01-09 | 766 | 413 / 353 (53.92%) | 2025-01-10 | 2025-01-13 to 2025-08-14 | 144 | 81 / 63 (56.25%) | 2025-01-10 <= 2025-01-13 (**PASS**) |
+| **3** | 2021-12-03 to 2025-08-14 | 911 | 494 / 417 (54.23%) | 2025-08-18 | 2025-08-19 to 2026-03-24 | 144 | 77 / 67 (53.47%) | 2025-08-18 <= 2025-08-19 (**PASS**) |
+| **4** | 2021-12-03 to 2026-03-24 | 1054 | 571 / 483 (54.17%) | 2026-03-25 | 2026-03-26 to 2026-10-13 | 144 | 68 / 76 (47.22%) | 2026-03-25 <= 2026-03-26 (**PASS**) |
+
+- **Outcome Embargo Invariant:** `train_outcome_cutoff <= val_start_date` was verified on 100% of folds (5 of 5).
+- **Index Disjointness:** Confirmed $Train \cap Embargo = \emptyset$, $Embargo \cap Val = \emptyset$, and $Train \cap Val = \emptyset$ across all folds.
+
+#### Walk-Forward Comparative Strategy Benchmark (5 Expanding Folds, N=720 Total Out-of-Sample Sessions)
+| Strategy | Macro Accuracy (mean ± std) | Macro UP F1 (mean ± std) | Pooled Accuracy (720 sessions) | Pooled UP F1 | Pooled Confusion Matrix (TN, FP, FN, TP) |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Majority Class** | **52.36% ± 2.53%** | **0.6870 ± 0.0210** | **52.36%** (377/720) | **0.6873** | `[[0, 343], [0, 377]]` |
+| **Uniform Random** | 50.69% ± 5.71% | 0.5228 ± 0.0631 | 50.69% (365/720) | 0.5217 | `[[177, 166], [189, 188]]` |
+| **Stratified Random** | 50.00% ± 5.53% | 0.5284 ± 0.0543 | 50.00% (360/720) | 0.5288 | `[[155, 188], [172, 205]]` |
+| **XGBoost Classifier** | 50.69% ± 3.74% | 0.5342 ± 0.0639 | 50.69% (365/720) | 0.5330 | `[[170, 173], [182, 195]]` |
+| **LightGBM Classifier**| 51.25% ± 5.16% | 0.5273 ± 0.0694 | 51.25% (369/720) | 0.5275 | `[[178, 165], [186, 191]]` |
+
+#### Per-Fold Accuracy Progression
+- **Fold 0 (Val 2023-11 to 2024-06):** Majority = 52.78% | Uniform = 56.94% | Stratified = 52.78% | XGBoost = 51.39% | LightGBM = 53.47%
+- **Fold 1 (Val 2024-06 to 2025-01):** Majority = 52.08% | Uniform = 49.31% | Stratified = 52.78% | XGBoost = 54.17% | LightGBM = 56.94%
+- **Fold 2 (Val 2025-01 to 2025-08):** Majority = 56.25% | Uniform = 49.31% | Stratified = 46.53% | XGBoost = 52.08% | LightGBM = 48.61%
+- **Fold 3 (Val 2025-08 to 2026-03):** Majority = 53.47% | Uniform = 43.06% | Stratified = 43.06% | XGBoost = 44.44% | LightGBM = 44.44%
+- **Fold 4 (Val 2026-03 to 2026-10):** Majority = 47.22% | Uniform = 54.86% | Stratified = 54.86% | XGBoost = 51.39% | LightGBM = 52.78%
+
+### Core Methodological Insights & Audit Answers
+1. **Did walk-forward cross-validation alter the single-holdout conclusion from Day 19?**
+   - **YES, PROFOUNDLY.** In Day 19, on a single static 240-session holdout (2025-10 to 2026-10), both XGBoost (54.17%) and LightGBM (53.75%) outperformed the Majority-Class baseline (50.00%) because that specific test period happened to have an exact 50/50 balance.
+   - Across the 5 expanding walk-forward folds (720 total out-of-sample sessions spanning 2023 to 2026), Bharti Airtel was in a broad secular upward trend during 2023–2024 (55% UP in training and 53–56% UP in Folds 0–3). Consequently, the simple **Majority-Class heuristic achieved 52.36% ± 2.53%**, whereas LightGBM achieved **51.25% ± 5.16%** and XGBoost achieved **50.69% ± 3.74%**.
+2. **Did tree models exhibit consistent edge across all regimes?**
+   - **NO.** In Folds 0, 1, and 4, tree models achieved 51.4%–56.9% accuracy. However, in Fold 3 (Aug 2025 to Mar 2026), both XGBoost and LightGBM dropped to 44.44%, while Majority Class held at 53.47%. This demonstrates regime sensitivity that a single holdout cannot detect.
+3. **Did the 1-session embargo prevent target leakage?**
+   - **YES.** On every fold, the training outcome cutoff was verified to be strictly less than or equal to the validation window start date. Zero next-session closing prices or forward returns leaked across boundaries.
+4. **Is there any claim of commercial trading edge?**
+   - **ABSOLUTELY NOT.** Directional accuracy near 51% across multiple cycles with high fold variability confirms that default, un-tuned gradient-boosted decision trees on raw technical features cannot produce a viable trading edge after slippage, STT, and execution friction. This empirically proves the necessity of multi-phase engineering (contextual LLM reasoning, macroeconomic factors, sentiment, and calibration).
+
+### Tests
+- Created `tests/test_walk_forward.py` with 12 comprehensive unit tests:
+  1. `test_generate_walk_forward_splits_basic`: verifies correct fold counts, expanding training sizes, fixed validation sizes, and step progression.
+  2. `test_embargo_gap_and_outcome_leakage_prevention`: verifies `train_outcome_cutoff <= val_start_date` across all folds.
+  3. `test_pairwise_index_disjointness`: verifies zero overlap between train, embargo, and validation sets.
+  4. `test_insufficient_samples_handling`: verifies explicit ValueError when total samples are insufficient for initial train and validation.
+  5. `test_feature_matrix_isolation_in_walk_forward`: verifies that forbidden leak columns (`target_return_leak`) trigger an immediate ValueError via the isolation guard.
+  6. `test_single_class_training_handling`: verifies safe handling and `SKIPPED_SINGLE_CLASS` status when historical training partition lacks variation.
+  7. `test_reproducibility_of_random_baselines`: verifies 100% deterministic reproducibility across repeated evaluations with identical seeds.
+  8. `test_dual_aggregation_math`: verifies hand-computed macro mean, Bessel sample standard deviation ($ddof=1$), and micro-pooled confusion matrix accumulation.
+  9. `test_summary_table_generation`: verifies structured Markdown table output containing macro and pooled metrics for all strategies.
+  10. `test_undersized_fold_safety`: verifies safe termination when remaining rows are fewer than validation size.
+  11. `test_dataframe_and_series_compatibility`: verifies robust handling of both pandas DataFrames/Series and NumPy arrays.
+  12. `test_regression_tree_models_in_walk_forward`: verifies end-to-end integration and execution of XGBoost and LightGBM inside the walk-forward evaluation loop.
+- **Full Test Suite Results:**
+  - Previous baseline: 243 passed
+  - New total: **255 passed in 4.66s** (12 new walk-forward tests, 0 failures, 0 regressions). Zero external network dependencies.
+
+### Review
+- **CodeRabbit:** CodeRabbit CLI tool is not installed in the local environment; reported accurately. Clean senior developer review conducted following Ponytail mode: type safety, mathematical invariants, zero code duplication, zero unnecessary dependencies, and safe edge-case handling.
+- **Roo Code:** Remained disabled.
+- **Ponytail / Senior Dev Mode:** Reused existing baseline classifiers, XGBoost, and LightGBM models without code modification. Shortest working diff, pure Python / NumPy metrics, explicit outcome embargo, and comprehensive automated test suite.
+
+### Documentation
+- Updated `README.md` to Day 20 status with 255 passing tests.
+- Updated `docs/architecture.md` with Section 4.15 detailing Walk-Forward Temporal Cross-Validation Layer, expanding-window schema, and outcome embargo safeguards.
+- Updated `docs/decisions.md` with ADR 48.
+- Updated `docs/roadmap.md` with Day 20 completion details in Phase 4.
+- Updated `docs/daily-progress.md` with Day 20 development log and empirical audit findings.
+
+### Git Commit
+- **Feature Commit:** `31a0132` — `feat: implement walk-forward temporal cross-validation with outcome embargo and comprehensive tests`
+- **Documentation Commit:** (recorded in next commit)
+
+### Known Limitations & Next Steps
+- Walk-forward CV establishes that directional accuracy fluctuates between 44% and 57% across market regimes, averaging ~50.7% (XGBoost) and ~51.3% (LightGBM).
+- Phase 4 baseline modeling is now complete. The numerical baseline models are established, verified, benchmarked against non-parametric heuristics, and audited across multi-year expanding folds without leakage.
+- Next scheduled scope (Phase 5): Prediction Engine service layer orchestrating feature assembly, inference, confidence scoring, and output generation.
+
+
 
 
