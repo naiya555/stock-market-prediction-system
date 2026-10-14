@@ -630,14 +630,20 @@ This document formalizes the architectural decisions made on Day 1. All future i
   1. **Preservation of Raw Unadjusted Price Convention (`auto_adjust=False`):**
      - Canonical `MarketOHLCV` records retain raw traded prices, ensuring physical candlestick geometry ($Low \le Open, Close \le High$), authentic intraday spreads, and point-in-time permanence.
      - Historical prices must never be retroactively rewritten upon subsequent dividend distributions.
-  2. **Empirical Dividend Impact Audit on Target Equity (BHARTIARTL.NS):**
+  2. **Distinction Between Raw Price Direction and Total Return:**
+     - *Raw Close-to-Close Price Direction:* Measures nominal traded price change ($Close_{t+1} / Close_t - 1.0 > 0$). It reflects exchange quote movement and capital gains/losses excluding cash flows.
+     - *Dividend-Inclusive Total Return:* Measures investor economic wealth accrual ($[Close_{t+1} + Dividend_{t+1}] / Close_t - 1.0 > 0$). It reflects the true economic payoff of holding the equity across ex-dividend dates.
+  3. **Empirical Dividend Impact Audit on Target Equity (BHARTIARTL.NS):**
      - Across the 5-year observation period (1,234 sessions), exactly 5 dividend events occurred (totaling ₹55.00/share).
      - Directional label impact: On 4 of the 5 dividend dates (80%), the directional classification was identical between raw price returns and dividend-adjusted returns.
      - Exactly 1 session (2024-08-07, ₹8.00 payout) experienced a direction flip (-0.12% raw vs +0.43% dividend-adjusted).
-     - Total directional discrepancy represents 1 out of 1,234 sessions (0.081% of the dataset), confirming that raw price direction is an empirically valid and stable target proxy.
-  3. **No Silent Target Alteration:**
-     - The supervised binary classification target remains defined strictly by next-session raw close-to-close returns ($Close_{t+1} / Close_t - 1.0 > 0$), consistent with ADR 42.
-- **Consequences:** Preserves data contract integrity, prevents retroactive look-ahead scaling of historical candles, and documents corporate-action effects with empirical transparency.
+     - *Methodological Caveat:* High empirical label agreement (99.919% across all sessions) demonstrates sample sensitivity for BHARTIARTL over this window, but raw-versus-adjusted directional comparisons alone do NOT establish that raw price direction is the economically "correct" label. For an investor, cash received is genuine return; treating an ex-dividend price drop as a negative outcome misrepresents economic performance on that single session.
+  4. **Preservation of Existing Target Policy (No Silent Alteration):**
+     - For the Day 19 and Day 20 baselines, the supervised binary classification target remains defined strictly by next-session raw close-to-close returns ($Close_{t+1} / Close_t - 1.0 > 0$), consistent with ADR 42.
+  5. **Unresolved Limitations & Future Decision Pathway:**
+     - *Limitations:* Mechanical ex-dividend price gaps introduce artificial downward label bias on ex-dates. On high-yielding equities, utilities, or REITs, directional divergences between raw price return and total return will be significantly larger than 0.081%.
+     - *Future Decision:* If trading strategy backtesting, execution modeling, or portfolio performance evaluation is introduced (Phases 5+), a separate architectural decision will formally define a Total Return Target Layer (or corporate-action adjustment policy) without mutating canonical raw market data records.
+- **Consequences:** Preserves data contract integrity, prevents retroactive look-ahead scaling of historical candles, documents corporate-action effects with scientific precision, and avoids conflating exchange quote forecasting with economic total return.
 
 ---
 

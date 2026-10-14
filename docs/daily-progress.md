@@ -1752,8 +1752,11 @@ Execute two focused validation gates prior to commencing Day 19 work (validation
     4. `2025-07-18`: ₹16.00 payout | Raw: -1.50% (DOWN) vs Adj: -0.67% (DOWN) — Direction Match: **YES**
     5. `2026-07-24`: ₹24.00 payout | Raw: -1.70% (DOWN) vs Adj: -0.46% (DOWN) — Direction Match: **YES**
 - **Methodological Finding & Decision (ADR 46):**
-  - Direction flipped on exactly 1 session out of 1,234 trading sessions (0.081% of the dataset).
+  - Direction flipped on exactly 1 session out of 1,234 trading sessions (0.081% of the dataset: 2024-08-07, ₹8.00 payout, -0.12% raw vs +0.43% dividend-adjusted).
   - Maintained canonical raw unadjusted price convention (`auto_adjust=False`) to preserve authentic traded levels and physical candle bounds without retroactive price revision.
+  - *Distinction Between Raw Direction and Total Return:* Raw close-to-close price direction tracks nominal exchange quoted movement ($Close_{t+1} / Close_t - 1.0 > 0$), whereas total return models investor economic wealth including cash distributions ($[Close_{t+1} + Div_{t+1}] / Close_t - 1.0 > 0$).
+  - *Critical Clarification:* High empirical directional agreement (99.919%) shows low sensitivity on this specific ticker, but empirical raw-versus-adjusted agreement alone does NOT establish raw price direction as the economically "correct" label. For an investor, cash received is actual return.
+  - *Unresolved Limitations & Future Decision:* Mechanical price drops on ex-dividend dates create artificial downward label bias on ex-dates. On high-dividend stocks, divergence will be higher. If trading execution or portfolio backtesting is introduced in later phases, a separate methodological decision will formally define a Total Return Target Layer while preserving raw candle records.
 
 ### Phase 2 & 3: Multi-Year Historical Pipeline & Dataset Rebuild
 - **Historical Query:** `BHARTIARTL` queried via `YFinanceProvider` from `2021-10-14` to `2026-10-13` (5 calendar years).
@@ -1853,10 +1856,14 @@ Executed `scripts/verify_day19.py` on real market data:
 
 ### Git Commit & Push
 - **Feature Commit:** `76b283b` — `feat: implement LightGBM binary classifier baseline and corresponding tests`
+- **Documentation Commit:** `4a40492` — `docs: record Day 19 commit hash and next steps in daily-progress.md`
+- **Remediation Commit:** `82d0572` — `feat: add baseline direction classifiers and comparative evaluation suite with tests and documentation`
 - **Remote Status:** PUSHED and verified on `origin/main` (`https://github.com/naiya555/stock-market-prediction-system`)
 
 ### Known Limitations & Next Steps
 - Both XGBoost (54.17%) and LightGBM (53.75%) achieve ~54% directional accuracy on the out-of-sample holdout, beating the majority class (50.00%) and random baseline distributions (~50.0% +/- 3.2%). However, single-split holdout metrics are preliminary evidence of signal and must be tested under rolling walk-forward cross-validation.
+- **Random Baseline Aggregation Conventions:** `scripts/verify_day19.py` reports standard deviation using `numpy.std` default `ddof=0` (population stdev: ±3.19% for uniform, ±3.24% for stratified on N=50 seeds), whereas `scripts/verify_pre_day19_gate.py` explicitly uses `ddof=1` (sample stdev: ±14.16% on N=18 holdout). For N=50 seeds, sample standard deviation ($ddof=1$) scales standard error by $\sqrt{50/49} \approx 1.0102$ (±3.22% uniform, ±3.27% stratified), leaving all substantive conclusions unchanged.
+- **Corporate Action Semantics:** Supervised targets currently predict raw nominal close-to-close price direction, which models exchange quote direction rather than dividend-inclusive investor wealth accrual. Cash dividends create mechanical downward price jumps on ex-dividend dates; a dedicated Total Return Target Layer will be evaluated in future phases if portfolio backtesting or execution modeling is introduced.
 - Transaction costs, market slippage, and securities transaction taxes (STT) are not yet integrated into the strategy evaluation.
 - Next scheduled scope (Day 20): Walk-forward temporal cross-validation across multiple market cycles and rolling regimes without lookahead leakage.
 
