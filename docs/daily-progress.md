@@ -1986,7 +1986,33 @@ Executed `scripts/verify_day20.py` on real market data:
 
 ### Git Commit
 - **Feature Commit:** `31a0132` — `feat: implement walk-forward temporal cross-validation with outcome embargo and comprehensive tests`
-- **Documentation Commit:** (recorded in next commit)
+- **Documentation Commit:** `b0f0a5d` — `docs: record Day 20 walk-forward cross-validation log in daily-progress.md`
+
+### Review & Remediation (CodeRabbit Findings in Walk-Forward Cross-Validation)
+- **Finding 1 (Zero Dummy Metric Fabrication on Skipped Folds):**
+  - *Analysis:* When a fold was skipped due to single-class training labels, `evaluate_walk_forward` computed dummy metrics using an all-zero prediction array, calculating and storing an arbitrary accuracy score. Furthermore, `fold_breakdown_table` and `summary_table` defaulted to `0.0%` for missing/skipped evaluations.
+  - *Fix:* Made `WalkForwardFoldEvaluation.metrics` optional (`None` for skipped evaluations). Removed dummy metric computation. Updated table formatters to display `SKIP` or `N/A` rather than inventing accuracy values. Filtered only evaluated strategies (`folds_evaluated > 0`) when identifying best strategies.
+- **Finding 2 (Input Validation & Target Label Integrity):**
+  - *Analysis:* Input DataFrames missing `target_binary`, tuples with mismatched row/label counts, or target arrays containing NaNs or invalid non-binary labels (e.g. `2`, `-1`) could enter split generation undetected.
+  - *Fix:* Added upfront checks in `generate_walk_forward_splits` enforcing `target_binary` presence in DataFrames, matching lengths in `(X, y)` tuples, absence of nulls/NaNs, and strict adherence of labels to $\{0, 1\}$.
+- **Finding 3 (Consistent Parameter Defaults Across Code & Documentation):**
+  - *Analysis:* Documentation previously referenced `n_initial_train=240` and `val_size=144`, whereas the code implementation dynamically calculates them via `min_train_ratio=0.4` and `n_splits=5`.
+  - *Fix:* Reconciled parameter names and defaults across `app/training/walk_forward.py`, `docs/architecture.md`, `docs/decisions.md` (ADR 48), `docs/roadmap.md`, and `README.md`.
+- **Finding 4 (Separate Handling of Undersized Folds vs Single-Class Folds):**
+  - *Analysis:* Undersized partitions were conflated with single-class folds or raised late.
+  - *Fix:* Implemented separate fault-tolerant checks in `evaluate_walk_forward`: partitions with $N_{train} < min\_train\_samples$ record `SKIPPED_UNDERSIZED_TRAIN`, partitions with $N_{val} < min\_val\_samples$ record `SKIPPED_UNDERSIZED_VAL`, and partitions lacking target variance record `SKIPPED_SINGLE_CLASS`, each with explicit sample-count reasons.
+- **Finding 5 (Dynamic Invariant Validation in Verification Script):**
+  - *Analysis:* `scripts/verify_day20.py` relied on a bare `assert` statement and printed hardcoded text without programmatically verifying the configured fold count and structural invariants.
+  - *Fix:* Replaced bare assertions with explicit conditional error reporting (`file=sys.stderr`, return code 1). Added dynamic validation verifying that `len(report.folds) == n_splits`, indices are pairwise disjoint, training windows expand monotonically, and embargo sizing matches `embargo_sessions`.
+- **Finding 6 (Regression Tests):**
+  - Added 6 focused regression tests in `tests/test_walk_forward.py`:
+    1. `test_walk_forward_no_fabricated_metrics_on_skipped_evaluation`
+    2. `test_walk_forward_summary_table_unfitted_strategy_renders_na`
+    3. `test_walk_forward_input_validation_missing_target_binary`
+    4. `test_walk_forward_input_validation_tuple_length_mismatch`
+    5. `test_walk_forward_input_validation_invalid_target_labels`
+    6. `test_walk_forward_separate_handling_undersized_train_and_val`
+  - **Full Test Suite:** **261 passed in 4.63s** (0 failures, 0 regressions). Zero external network dependencies.
 
 ### Known Limitations & Next Steps
 - Walk-forward CV establishes that directional accuracy fluctuates between 44% and 57% across market regimes, averaging ~50.7% (XGBoost) and ~51.3% (LightGBM).

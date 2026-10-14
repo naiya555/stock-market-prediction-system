@@ -665,11 +665,11 @@ This document formalizes the architectural decisions made on Day 1. All future i
 - **Decision:**
   1. **Expanding-Window Chronological Folds:**
      - Implement `generate_walk_forward_splits` and `evaluate_walk_forward` in `app/training/walk_forward.py`.
-     - An initial training partition (default 40% of observations, $N_{train\_init} \ge min\_train\_samples$) is established for the first fold.
-     - The remaining dataset is partitioned into $K$ contiguous, non-overlapping validation folds ($K=5$ default).
+     - An initial training partition is established via `min_train_ratio=0.4` ($N_{train\_init} = \max(min\_train\_samples, \lfloor N \times min\_train\_ratio \rfloor)$, default $min\_train\_samples=20$).
+     - The remaining dataset is partitioned into $K$ contiguous, non-overlapping validation folds (`n_splits=5` default, $val\_size = (N - N_{train\_init}) // n\_splits \ge min\_val\_samples=5$).
      - Each fold $k$ expands the training window to include all historical observations prior to its validation window.
   2. **Mandatory Outcome Embargo Gap:**
-     - Enforce a purged embargo window of at least 1 session ($\ge 1$) immediately preceding each validation fold ($[V_{start} - embargo \dots V_{start})$).
+     - Enforce a purged embargo window of at least 1 session (`embargo_sessions=1` default) immediately preceding each validation fold ($[V_{start} - embargo\_sessions \dots V_{start})$).
      - Because the next-session return label for observation $t$ materializes at $t+1$, the final training observation's outcome date is guaranteed to fall on or before the embargo boundary and strictly prior to the first validation session ($train\_outcome\_cutoff \le val\_start\_date$).
   3. **Multi-Strategy Evaluation Parity:**
      - Every fold evaluates the exact same sample observations across all candidate strategies: Majority-Class, Fixed-Seed Uniform Random ($P=0.5$), Fixed-Seed Stratified Random ($P=train\_prior$, fitted strictly on each fold's $y_{train}$), Day 17 XGBoost, and Day 19 LightGBM.
@@ -678,7 +678,10 @@ This document formalizes the architectural decisions made on Day 1. All future i
      - *Macro-Averaging:* Compute unweighted mean and sample standard deviation with Bessel correction ($ddof=1$) across folds for Accuracy, Precision, Recall, and F1.
      - *Micro-Pooled Aggregation:* Sum confusion matrices across all folds ($\sum TN, \sum FP, \sum FN, \sum TP$) across all validation observations (720 sessions across 5 folds) to calculate aggregate out-of-sample performance.
   5. **Fault Tolerance & Explicit Degradation:**
-     - If a fold training set contains only a single class ($len(unique(y)) < 2$) or is undersized, the evaluation records an explicit `SKIPPED_SINGLE_CLASS` status with reason, preventing silent crashes or fabricated metrics.
+     - Strict input validation: DataFrames must contain `target_binary`, $(X, y)$ tuples must match in row count, and all targets must be non-null and belong strictly to $\{0, 1\}$.
+     - Separate handling of undersized folds: If $N_{train} < min\_train\_samples$ or $N_{val} < min\_val\_samples$, evaluations record distinct `SKIPPED_UNDERSIZED_TRAIN` or `SKIPPED_UNDERSIZED_VAL` statuses with explicit reasons.
+     - Single-class training guard: If training labels lack target variance ($len(unique(y)) < 2$), evaluation records an explicit `SKIPPED_SINGLE_CLASS` status.
+     - Zero metric fabrication: Skipped evaluations set `metrics=None` with zero dummy predictions; Markdown reports display `N/A` or `SKIP` rather than inventing accuracy values.
   6. **Scientific Humility & Disclaimer:**
      - Document that walk-forward cross-validation performance (~50.7% XGBoost, ~51.3% LightGBM, ~52.4% Majority Class across 5 folds on BHARTIARTL) reflects realistic regime shifts and confirms that a single holdout score cannot be extrapolated as a permanent commercial trading edge.
 - **Consequences:** Eliminates regime-specific overfitting, prevents temporal data leakage across fold boundaries, and establishes an auditable, multi-cycle cross-validation standard for all future ML models.

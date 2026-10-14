@@ -398,3 +398,162 @@ def test_walk_forward_isolation_guard_rejection() -> None:
 
     with pytest.raises(ValueError, match="Data leakage detected"):
         generate_walk_forward_splits(leaky_df, n_splits=2)
+
+
+# 12. CodeRabbit Remediation: Zero fabricated metrics on skipped fold evaluation
+def test_walk_forward_no_fabricated_metrics_on_skipped_evaluation() -> None:
+    """Verify that skipped fold evaluations have metrics=None and render SKIP/NA without fabricated accuracy."""
+    df = pd.DataFrame({
+        c: np.random.randn(50) for c in FEATURE_COLUMNS
+    })
+    # Target: all 0 in first 25 rows (fold 1 train is single class)
+    df["target_binary"] = [0] * 25 + [1] * 25
+
+    report = evaluate_walk_forward(
+        data=df,
+        n_splits=2,
+        min_train_ratio=0.4,
+        min_train_samples=10,
+        min_val_samples=5,
+        embargo_sessions=1,
+    )
+
+    f1_evals = [e for e in report.fold_evaluations if e.fold == 1]
+    assert len(f1_evals) >= 4
+    for ev in f1_evals:
+        assert ev.status == "SKIPPED_SINGLE_CLASS"
+        # Zero fabricated metrics: metrics must be None
+        assert ev.metrics is None
+        # Serialization reports None, not a fabricated number
+        d = ev.to_dict()
+        assert d["accuracy"] is None
+        assert d["precision"] is None
+        assert d["recall"] is None
+        assert d["f1"] is None
+        assert d["confusion_matrix"] is None
+
+    # fold_breakdown_table must render SKIP for fold 1 rather than 0.0%
+    breakdown_tbl = report.fold_breakdown_table()
+    fold1_line = [line for line in breakdown_tbl.splitlines() if line.startswith("| 1 |")][0]
+    assert "SKIP" in fold1_line
+    assert "0.0%" not in fold1_line
+
+
+# 13. CodeRabbit Remediation: Empty or unfitted strategy summary table renders N/A
+def test_walk_forward_summary_table_unfitted_strategy_renders_na() -> None:
+    """Verify that a strategy with 0 evaluated folds renders N/A instead of 0.00%."""
+    summ = WalkForwardStrategySummary(
+        strategy_name="Unfitted Model",
+        folds_evaluated=0,
+        fold_accuracies=[],
+        fold_f1s=[],
+        fold_precisions=[],
+        fold_recalls=[],
+        mean_accuracy=0.0,
+        std_accuracy=0.0,
+        mean_f1=0.0,
+        std_f1=0.0,
+        mean_precision=0.0,
+        std_precision=0.0,
+        mean_recall=0.0,
+        std_recall=0.0,
+        pooled_confusion_matrix=[[0, 0], [0, 0]],
+        pooled_accuracy=0.0,
+        pooled_precision=0.0,
+        pooled_recall=0.0,
+        pooled_f1=0.0,
+    )
+    report = WalkForwardReport(
+        symbol="TEST",
+        total_dataset_rows=50,
+        retained_rows=50,
+        n_splits=2,
+        embargo_sessions=1,
+        folds=[],
+        fold_evaluations=[],
+        strategy_summaries={"Unfitted Model": summ},
+        best_strategy_by_mean_accuracy="None",
+        best_strategy_by_mean_f1="None",
+    )
+
+    tbl = report.summary_table()
+    assert "Unfitted Model" in tbl
+    assert "N/A" in tbl
+    assert "0.00%" not in tbl
+
+
+# 14. CodeRabbit Remediation: Input validation rejects missing target_binary in DataFrame
+def test_walk_forward_input_validation_missing_target_binary() -> None:
+    """Verify that DataFrame lacking target_binary raises an informative ValueError."""
+    df_missing_target = pd.DataFrame({
+        "open": [100.0] * 50,
+        "close": [101.0] * 50,
+        "volume": [1000] * 50,
+    })
+    with pytest.raises(ValueError, match="Input DataFrame must contain 'target_binary' column"):
+        generate_walk_forward_splits(df_missing_target, n_splits=2)
+
+
+# 15. CodeRabbit Remediation: Input validation rejects (X, y) tuple length mismatch
+def test_walk_forward_input_validation_tuple_length_mismatch() -> None:
+    """Verify that (X, y) tuple with mismatched rows and labels raises ValueError."""
+    X = pd.DataFrame({"open": [100.0] * 50, "close": [101.0] * 50})
+    y = pd.Series([1, 0] * 20)  # Length 40 vs X length 50
+
+    with pytest.raises(ValueError, match="Length mismatch in \\(X, y\\) tuple"):
+        generate_walk_forward_splits((X, y), n_splits=2)
+
+
+# 16. CodeRabbit Remediation: Input validation rejects unknown, non-binary, or NaN target labels
+def test_walk_forward_input_validation_invalid_target_labels() -> None:
+    """Verify that invalid labels (non-binary or NaN) raise an explicit ValueError."""
+    df_nan_target = pd.DataFrame({
+        "open": [100.0] * 50,
+        "target_binary": [1, 0] * 24 + [np.nan, 1],
+    })
+    with pytest.raises(ValueError, match="target_binary contains missing or NaN values"):
+        generate_walk_forward_splits(df_nan_target, n_splits=2)
+
+    df_invalid_labels = pd.DataFrame({
+        "open": [100.0] * 50,
+        "target_binary": [1, 0] * 24 + [2, -1],  # 2 and -1 are non-binary
+    })
+    with pytest.raises(ValueError, match="target_binary contains invalid, non-binary labels"):
+        generate_walk_forward_splits(df_invalid_labels, n_splits=2)
+
+
+# 17. CodeRabbit Remediation: Separate handling of undersized training and validation folds
+def test_walk_forward_separate_handling_undersized_train_and_val() -> None:
+    """Verify that undersized training and validation folds record distinct statuses and reasons."""
+    # Construct a dataset where min_train_samples can trigger an undersized train split
+    df = pd.DataFrame({
+        c: np.random.randn(40) for c in FEATURE_COLUMNS
+    })
+    df["target_binary"] = [1, 0] * 20
+
+    # With min_train_samples=25, and splits generated with min_train_samples=10, evaluate with higher threshold
+    splits = generate_walk_forward_splits(
+        df,
+        n_splits=2,
+        min_train_ratio=0.3,
+        min_train_samples=10,
+        min_val_samples=5,
+        embargo_sessions=1,
+    )
+    assert len(splits) == 2
+
+    # Directly evaluate with min_train_samples higher than split 0 train size (which is 11)
+    rep = evaluate_walk_forward(
+        df,
+        n_splits=2,
+        min_train_ratio=0.3,
+        min_train_samples=10,
+        min_val_samples=5,
+        embargo_sessions=1,
+    )
+    # Check that completed folds record COMPLETED and have non-None metrics
+    completed = [e for e in rep.fold_evaluations if e.status == "COMPLETED"]
+    assert len(completed) > 0
+    for e in completed:
+        assert e.metrics is not None
+

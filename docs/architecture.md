@@ -559,10 +559,10 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   Complete Labeled Feature Matrix (N rows sorted chronologically by timestamp)
              ↓
   Expanding-Window Fold Generation (generate_walk_forward_splits):
-    - Configurable initial training size (n_initial_train, default min 240)
-    - Fixed validation step size (val_size, default 144)
-    - Mandatory outcome embargo (embargo_size >= 1 session, purged between train & val)
-    - K Expanding Folds: Fold k trains on [0 : T_k], embargos [T_k : T_k + embargo], validates on [T_k + embargo : T_k + embargo + val_size]
+    - Configurable initial training ratio: min_train_ratio=0.4 (N_train_init = max(min_train_samples, floor(N * min_train_ratio)), min_train_samples=20)
+    - Configurable validation fold count: n_splits=5 (val_size = (N - N_train_init) // n_splits >= min_val_samples=5)
+    - Mandatory outcome embargo: embargo_sessions=1 (purged between train & val to prevent forward target leakage)
+    - K Expanding Folds: Fold k trains on [0 : v_start - embargo_sessions), embargos [v_start - embargo_sessions : v_start), validates on [v_start : v_end)
              ↓
   Temporal Integrity & Leakage Invariants:
     - Train outcome cutoff: next_timestamp of last train observation strictly <= val_start_date
@@ -586,9 +586,10 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   - **Strict Split Isolation:** The validation dataset is strictly out-of-sample. Models and baselines are fit exclusively on the training fold; zero hyperparameter tuning, model selection, or feature engineering is permitted using validation feedback.
   - **Feature Matrix Isolation Guard:** Feature matrices are checked via `validate_feature_matrix_isolation` to ensure no target columns, outcome timestamps, or future prices can enter the model.
 - **Robustness & Edge-Case Handling:**
-  - **Single-Class Training Guard:** If a historical training window lacks variation (100% UP or 100% DOWN), models safely predict the single present class or record an insufficient-class condition without crashing or fabricating metrics.
-  - **Undersized Fold Handling:** If remaining rows are fewer than `val_size`, fold generation terminates safely or flags the condition explicitly.
-  - **Reproducibility:** Random baselines use deterministic, pre-declared seeds (seed = `base_seed + fold_idx * 1000`) for absolute reproducibility.
+  - **Strict Input Validation & Target Integrity:** Tuple inputs validate length equality between $X$ and $y$. DataFrames must contain `target_binary`. Target labels must be non-null and belong strictly to $\{0, 1\}$; unknown or invalid labels are immediately rejected.
+  - **Separate Handling of Undersized vs Single-Class Folds:** Undersized training partitions ($N_{train} < min\_train\_samples$) and undersized validation partitions ($N_{val} < min\_val\_samples$) record distinct `SKIPPED_UNDERSIZED_TRAIN` and `SKIPPED_UNDERSIZED_VAL` statuses with explicit reasons, strictly separated from `SKIPPED_SINGLE_CLASS`.
+  - **Zero Metric Fabrication Policy:** Skipped fold evaluations record `metrics=None` with zero dummy predictions or fabricated accuracies. Markdown tables display `N/A` or `SKIP` rather than defaulting to `0.0%`.
+  - **Reproducibility:** Random baselines use deterministic, pre-declared seeds (seed = `random_seed + fold`) for absolute reproducibility across repeated runs.
 - **Empirical Multi-Regime Findings (Day 20 BHARTIARTL.NS Verification):**
   - Walk-forward evaluation across 5 expanding folds (720 total out-of-sample sessions from Nov 2023 to Oct 2026) revealed that Bharti Airtel experienced a sustained secular bull regime during 2023–2024, raising the Majority-Class baseline accuracy to **52.36% ± 2.53%**.
   - LightGBM achieved **51.25% ± 5.16%** macro mean accuracy (pooled 51.25%), while XGBoost achieved **50.69% ± 3.74%** (pooled 50.69%).

@@ -163,14 +163,15 @@ Day 20 implements and empirically validates a leakage-safe walk-forward temporal
   - Feature isolation verified via `validate_feature_matrix_isolation(X)` to guarantee zero target or outcome leakage.
   - Native model persistence (`.save_model()` and `.load_model()`) and feature importance extraction.
 - Walk-Forward Temporal Cross-Validation Layer (`app/training/walk_forward.py`):
-  - Chronological expanding-window fold generator (`generate_walk_forward_splits`) supporting configurable initial training sizes, validation steps, and mandatory outcome embargo gaps ($\ge 1$ session).
+  - Chronological expanding-window fold generator (`generate_walk_forward_splits`) with explicit configurable defaults: `n_splits=5`, `min_train_ratio=0.4` (initial train size $N_{train\_init} \ge min\_train\_samples=20$), validation step size $val\_size \ge min\_val\_samples=5$, and mandatory outcome embargo (`embargo_sessions=1`).
   - Strict leakage safeguards: verifies `train_outcome_cutoff <= val_start_date` and zero index overlap across train, embargo, and validation sets.
+  - Consistent input validation: validates $(X, y)$ tuple row counts, requires `target_binary` in DataFrames, and rejects null or non-binary labels.
   - Comparative strategy evaluation across identical folds for Majority Class, Uniform Random, Stratified Random, XGBoost, and LightGBM.
   - Dual aggregation metrics: macro-averaged fold mean ± sample standard deviation ($ddof=1$) and micro-pooled confusion matrix accumulation.
-  - Robust edge-case handling for single-class historical training windows and undersized terminal splits.
+  - Robust edge-case handling: separate `SKIPPED_UNDERSIZED_TRAIN` and `SKIPPED_UNDERSIZED_VAL` handling distinct from `SKIPPED_SINGLE_CLASS`, with zero dummy metric fabrication (renders `N/A` or `SKIP`).
 - Historical Market Visualizer (`app/market/visualizer.py`):
   - Headless Matplotlib rendering (`Agg` backend) generating publication-quality PNG charts.
-- 255 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, XGBoost direction classifier, LightGBM direction classifier, baseline comparison suite, walk-forward cross-validation engine, and visualizer.
+- 261 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, XGBoost direction classifier, LightGBM direction classifier, baseline comparison suite, walk-forward cross-validation engine, and visualizer.
 
 ---
 

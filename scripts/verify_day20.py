@@ -107,6 +107,11 @@ def verify_day20() -> int:
     )
     report.symbol = symbol
 
+    # Validate configured fold count
+    if len(report.folds) != n_splits:
+        print(f"ERROR: Expected {n_splits} folds, but evaluate_walk_forward produced {len(report.folds)}", file=sys.stderr)
+        return 1
+
     # Step 4: Fold Boundaries and Class Balance Report
     print("\n" + "-" * 115)
     print("WALK-FORWARD FOLD BOUNDARIES, EMBARGO GAPS & CLASS DISTRIBUTIONS")
@@ -114,21 +119,55 @@ def verify_day20() -> int:
     print(f"{'Fold':<5} {'Train Range':<24} {'Train Rows (UP/DN)':<22} {'Embargo Date':<14} {'Val Range':<24} {'Val Rows (UP/DN)':<20}")
     print("-" * 115)
 
-    for f in report.folds:
+    for i, f in enumerate(report.folds):
         t_span = f"{f.train_start_date} to {f.train_end_date}"
         t_bal = f"{f.train_rows} (UP={f.train_up_count}, DN={f.train_down_count})"
         e_date = str(f.train_outcome_cutoff)
         v_span = f"{f.val_start_date} to {f.val_end_date}"
         v_bal = f"{f.val_rows} (UP={f.val_up_count}, DN={f.val_down_count})"
 
-        # Verify embargo integrity invariant
-        assert f.train_outcome_cutoff <= f.val_start_date, f"Leakage breach on fold {f.fold}"
+        # 1. Verify embargo integrity invariant (no bare assert)
+        if f.train_outcome_cutoff is None or f.val_start_date is None or f.train_outcome_cutoff > f.val_start_date:
+            print(
+                f"ERROR: Temporal leakage breach on fold {f.fold}: "
+                f"train_outcome_cutoff ({f.train_outcome_cutoff}) > val_start_date ({f.val_start_date})",
+                file=sys.stderr,
+            )
+            return 1
+
+        # 2. Verify pairwise disjointness of indices
+        set_tr = set(f.train_indices)
+        set_em = set(f.embargo_indices)
+        set_va = set(f.val_indices)
+        if not set_tr.isdisjoint(set_em) or not set_tr.isdisjoint(set_va) or not set_em.isdisjoint(set_va):
+            print(f"ERROR: Overlapping index sets detected in fold {f.fold}", file=sys.stderr)
+            return 1
+
+        # 3. Verify embargo session sizing
+        if f.embargo_rows != embargo_sessions:
+            print(
+                f"ERROR: Fold {f.fold} embargo rows ({f.embargo_rows}) != configured embargo_sessions ({embargo_sessions})",
+                file=sys.stderr,
+            )
+            return 1
+
+        # 4. Verify monotonic expanding training window across folds
+        if i > 0 and f.train_rows <= report.folds[i - 1].train_rows:
+            print(
+                f"ERROR: Non-expanding training window on fold {f.fold}: "
+                f"{f.train_rows} <= {report.folds[i - 1].train_rows}",
+                file=sys.stderr,
+            )
+            return 1
 
         print(f"{f.fold:<5} {t_span:<24} {t_bal:<22} {e_date:<14} {v_span:<24} {v_bal:<20}")
 
     print("-" * 115)
-    print("  [Invariant Check] All 5 folds strictly satisfy train_outcome_cutoff <= val_start_date.")
+    print(f"  [Invariant Check] All {len(report.folds)} configured folds verified.")
+    print("  [Invariant Check] All folds strictly satisfy train_outcome_cutoff <= val_start_date.")
     print("  [Invariant Check] All train, embargo, and validation indices are pairwise disjoint.")
+    print("  [Invariant Check] Training windows expand monotonically across folds.")
+    print(f"  [Invariant Check] Embargo size matches configured {embargo_sessions} session(s) per fold.")
 
     # Step 5: Fold-by-Fold Accuracy Breakdown Table
     print("\n" + "-" * 115)

@@ -141,7 +141,7 @@ def generate_walk_forward_splits(
     if min_train_ratio <= 0.0 or min_train_ratio >= 1.0:
         raise ValueError(f"min_train_ratio must be between 0.0 and 1.0 (exclusive), got {min_train_ratio}")
 
-    # Step 1: Extract clean tabular DataFrame
+    # Step 1: Extract clean tabular DataFrame with strict input validation
     if isinstance(data, FeatureMatrixDataset):
         if drop_incomplete_warmup:
             complete_mask = data.y.notna() & data.X.notna().all(axis=1)
@@ -149,13 +149,51 @@ def generate_walk_forward_splits(
             complete_mask = data.y.notna()
         sub_df = data.df[complete_mask].copy().reset_index(drop=True)
     elif isinstance(data, pd.DataFrame):
+        if "target_binary" not in data.columns:
+            raise ValueError(
+                "Input DataFrame must contain 'target_binary' column. "
+                f"Available columns: {list(data.columns)}"
+            )
         sub_df = data.copy().reset_index(drop=True)
     elif isinstance(data, tuple) and len(data) == 2:
         X_in, y_in = data
-        sub_df = X_in.copy().reset_index(drop=True)
-        sub_df["target_binary"] = y_in.values
+        if not hasattr(X_in, "__len__") or not hasattr(y_in, "__len__"):
+            raise ValueError("Both X and y in tuple input must be sized objects with a valid length.")
+        if len(X_in) != len(y_in):
+            raise ValueError(
+                f"Length mismatch in (X, y) tuple: X has {len(X_in)} rows, but y has {len(y_in)} labels."
+            )
+        if isinstance(X_in, pd.DataFrame):
+            sub_df = X_in.copy().reset_index(drop=True)
+        elif isinstance(X_in, np.ndarray):
+            sub_df = pd.DataFrame(X_in).reset_index(drop=True)
+        else:
+            sub_df = pd.DataFrame(list(X_in)).reset_index(drop=True)
+
+        if isinstance(y_in, (pd.Series, np.ndarray, list)):
+            sub_df["target_binary"] = np.asarray(y_in)
+        else:
+            raise ValueError(f"Unsupported label collection type in (X, y) tuple: {type(y_in)}")
     else:
-        raise ValueError(f"Unsupported data type for walk-forward splitting: {type(data)}")
+        raise ValueError(
+            f"Unsupported data type for walk-forward splitting: {type(data)}. "
+            "Expected FeatureMatrixDataset, pd.DataFrame, or (X, y) tuple."
+        )
+
+    # Validate target_binary integrity: no nulls, non-empty, strictly binary {0, 1}
+    if "target_binary" not in sub_df.columns:
+        raise ValueError("DataFrame is missing 'target_binary' column.")
+
+    if sub_df["target_binary"].isna().any():
+        raise ValueError("target_binary contains missing or NaN values; drop or clean before cross-validation.")
+
+    unique_targets = set(sub_df["target_binary"].unique())
+    invalid_targets = unique_targets - {0, 1, 0.0, 1.0}
+    if invalid_targets:
+        raise ValueError(
+            f"target_binary contains invalid, non-binary labels: {invalid_targets}. "
+            "All supervised training and validation labels must strictly belong to {0, 1}."
+        )
 
     n_samples = len(sub_df)
     min_required = min_train_samples + (n_splits * min_val_samples) + embargo_sessions
@@ -308,9 +346,9 @@ class WalkForwardFoldEvaluation:
 
     fold: int
     strategy_name: str
-    metrics: ClassificationMetrics
-    pred_up_count: int
-    pred_down_count: int
+    metrics: Optional[ClassificationMetrics] = None
+    pred_up_count: int = 0
+    pred_down_count: int = 0
     status: str = "COMPLETED"
     skip_reason: Optional[str] = None
 
@@ -321,14 +359,14 @@ class WalkForwardFoldEvaluation:
             "strategy_name": self.strategy_name,
             "status": self.status,
             "skip_reason": self.skip_reason,
-            "accuracy": self.metrics.accuracy,
-            "precision": self.metrics.precision,
-            "recall": self.metrics.recall,
-            "f1": self.metrics.f1,
-            "confusion_matrix": self.metrics.confusion_matrix,
+            "accuracy": self.metrics.accuracy if self.metrics else None,
+            "precision": self.metrics.precision if self.metrics else None,
+            "recall": self.metrics.recall if self.metrics else None,
+            "f1": self.metrics.f1 if self.metrics else None,
+            "confusion_matrix": self.metrics.confusion_matrix if self.metrics else None,
             "pred_up_count": self.pred_up_count,
             "pred_down_count": self.pred_down_count,
-            "total_samples": self.metrics.total_samples,
+            "total_samples": self.metrics.total_samples if self.metrics else (self.pred_up_count + self.pred_down_count),
         }
 
 
@@ -429,13 +467,22 @@ class WalkForwardReport:
 
         rows = []
         for name, summ in self.strategy_summaries.items():
-            acc_str = f"{summ.mean_accuracy*100:.2f}% (±{summ.std_accuracy*100:.2f}%)"
-            f1_str = f"{summ.mean_f1:.4f} (±{summ.std_f1:.4f})"
-            prec_str = f"{summ.mean_precision*100:.2f}%"
-            rec_str = f"{summ.mean_recall*100:.2f}%"
-            p_acc_str = f"{summ.pooled_accuracy*100:.2f}%"
-            p_f1_str = f"{summ.pooled_f1:.4f}"
-            cm_str = str(summ.pooled_confusion_matrix).replace(" ", "")
+            if summ.folds_evaluated == 0:
+                acc_str = "N/A"
+                f1_str = "N/A"
+                prec_str = "N/A"
+                rec_str = "N/A"
+                p_acc_str = "N/A"
+                p_f1_str = "N/A"
+                cm_str = "N/A"
+            else:
+                acc_str = f"{summ.mean_accuracy*100:.2f}% (±{summ.std_accuracy*100:.2f}%)"
+                f1_str = f"{summ.mean_f1:.4f} (±{summ.std_f1:.4f})"
+                prec_str = f"{summ.mean_precision*100:.2f}%"
+                rec_str = f"{summ.mean_recall*100:.2f}%"
+                p_acc_str = f"{summ.pooled_accuracy*100:.2f}%"
+                p_f1_str = f"{summ.pooled_f1:.4f}"
+                cm_str = str(summ.pooled_confusion_matrix).replace(" ", "")
 
             row_str = (
                 f"| {name:<{col_w[0]}} "
@@ -458,11 +505,18 @@ class WalkForwardReport:
             "| Fold | Train Range | Val Range | Train (UP/DN) | Val (UP/DN) | Maj Acc | Unif Acc | Strat Acc | XGB Acc | LGB Acc |",
             "|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|",
         ]
-        eval_by_fold: Dict[int, Dict[str, float]] = {}
+        eval_by_fold: Dict[int, Dict[str, WalkForwardFoldEvaluation]] = {}
         for ev in self.fold_evaluations:
             if ev.fold not in eval_by_fold:
                 eval_by_fold[ev.fold] = {}
-            eval_by_fold[ev.fold][ev.strategy_name] = ev.metrics.accuracy
+            eval_by_fold[ev.fold][ev.strategy_name] = ev
+
+        def _fmt(ev_entry: Optional[WalkForwardFoldEvaluation]) -> str:
+            if ev_entry is None:
+                return "N/A"
+            if ev_entry.status != "COMPLETED" or ev_entry.metrics is None:
+                return "SKIP"
+            return f"{ev_entry.metrics.accuracy*100:.1f}%"
 
         for f in self.folds:
             t_span = f"{f.train_start_date}..{f.train_end_date}" if f.train_start_date else f"N={f.train_rows}"
@@ -471,11 +525,11 @@ class WalkForwardReport:
             v_bal = f"{f.val_up_count}/{f.val_down_count}"
 
             m = eval_by_fold.get(f.fold, {})
-            maj = f"{m.get('Baseline A (Majority Class)', 0.0)*100:.1f}%"
-            unif = f"{m.get('Baseline B1 (Uniform Random, p=0.5)', 0.0)*100:.1f}%"
-            strat = f"{m.get('Baseline B2 (Stratified Random, p=train_prior)', 0.0)*100:.1f}%"
-            xgb = f"{m.get('Model C (Day 17 XGBoost)', 0.0)*100:.1f}%"
-            lgb = f"{m.get('Model D (Day 19 LightGBM)', 0.0)*100:.1f}%"
+            maj = _fmt(m.get("Baseline A (Majority Class)"))
+            unif = _fmt(m.get("Baseline B1 (Uniform Random, p=0.5)"))
+            strat = _fmt(m.get("Baseline B2 (Stratified Random, p=train_prior)"))
+            xgb = _fmt(m.get("Model C (Day 17 XGBoost)"))
+            lgb = _fmt(m.get("Model D (Day 19 LightGBM)"))
 
             lines.append(
                 f"| {f.fold} | {t_span} | {v_span} | {t_bal} | {v_bal} | {maj} | {unif} | {strat} | {xgb} | {lgb} |"
@@ -488,7 +542,7 @@ def _aggregate_strategy_metrics(
     evals: Sequence[WalkForwardFoldEvaluation],
 ) -> WalkForwardStrategySummary:
     """Aggregate individual fold evaluations into macro and pooled summary statistics."""
-    valid_evals = [e for e in evals if e.status == "COMPLETED"]
+    valid_evals = [e for e in evals if e.status == "COMPLETED" and e.metrics is not None]
     n_folds = len(valid_evals)
 
     if n_folds == 0:
@@ -637,27 +691,64 @@ def evaluate_walk_forward(
         y_va = s.y_val.values
         X_tr = s.X_train
         X_va = s.X_val
-        n_val = len(y_va)
+        n_tr = len(y_tr)
+        n_va = len(y_va)
 
-        # Invariant check: Single class guard
+        # Fault tolerance 1: Handle undersized training partition
+        if n_tr < min_train_samples:
+            skip_msg = f"Training sample count ({n_tr}) is smaller than min_train_samples ({min_train_samples})"
+            logger.warning("Fold %d undersized training: %s; skipping evaluation.", s.fold, skip_msg)
+            for name in strat_names:
+                all_evaluations.append(
+                    WalkForwardFoldEvaluation(
+                        fold=s.fold,
+                        strategy_name=name,
+                        metrics=None,
+                        pred_up_count=0,
+                        pred_down_count=0,
+                        status="SKIPPED_UNDERSIZED_TRAIN",
+                        skip_reason=skip_msg,
+                    )
+                )
+            continue
+
+        # Fault tolerance 2: Handle undersized validation partition
+        if n_va < min_val_samples:
+            skip_msg = f"Validation sample count ({n_va}) is smaller than min_val_samples ({min_val_samples})"
+            logger.warning("Fold %d undersized validation: %s; skipping evaluation.", s.fold, skip_msg)
+            for name in strat_names:
+                all_evaluations.append(
+                    WalkForwardFoldEvaluation(
+                        fold=s.fold,
+                        strategy_name=name,
+                        metrics=None,
+                        pred_up_count=0,
+                        pred_down_count=0,
+                        status="SKIPPED_UNDERSIZED_VAL",
+                        skip_reason=skip_msg,
+                    )
+                )
+            continue
+
+        # Fault tolerance 3: Handle single-class training partition (no target variance)
         unique_classes = np.unique(y_tr)
         if len(unique_classes) < 2:
+            skip_msg = f"Training labels contain only a single class: {unique_classes.tolist()}"
             logger.warning(
                 "Fold %d has single-class training labels (%s); skipping model fits.",
                 s.fold,
                 unique_classes.tolist(),
             )
             for name in strat_names:
-                dummy_m = compute_classification_metrics(y_va, np.zeros(n_val, dtype=int))
                 all_evaluations.append(
                     WalkForwardFoldEvaluation(
                         fold=s.fold,
                         strategy_name=name,
-                        metrics=dummy_m,
+                        metrics=None,
                         pred_up_count=0,
-                        pred_down_count=n_val,
+                        pred_down_count=0,
                         status="SKIPPED_SINGLE_CLASS",
-                        skip_reason=f"Training set has single class {unique_classes.tolist()}",
+                        skip_reason=skip_msg,
                     )
                 )
             continue
@@ -743,9 +834,10 @@ def evaluate_walk_forward(
         strat_evals = [e for e in all_evaluations if e.strategy_name == name]
         summaries[name] = _aggregate_strategy_metrics(name, strat_evals)
 
-    # Determine best strategies
-    best_acc = max(summaries.values(), key=lambda s: s.mean_accuracy) if summaries else None
-    best_f1 = max(summaries.values(), key=lambda s: s.mean_f1) if summaries else None
+    # Determine best strategies (from strategies with at least one completed evaluation fold)
+    valid_summaries = [s for s in summaries.values() if s.folds_evaluated > 0]
+    best_acc = max(valid_summaries, key=lambda s: s.mean_accuracy) if valid_summaries else None
+    best_f1 = max(valid_summaries, key=lambda s: s.mean_f1) if valid_summaries else None
 
     return WalkForwardReport(
         symbol=symbol,
