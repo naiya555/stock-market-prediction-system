@@ -2337,6 +2337,103 @@ Executed `scripts/verify_day23.py` on real historical market data:
 - Direction classifiers output binary directional sign only. Expected price movement ($\Delta Close$) and percentage return ($R$) are not calculated or modeled.
 - Next scheduled scope: Transition to Phase 6 (Prediction History & Database — SQLite schema, prediction persistence, and immutable audit logs).
 
+---
+
+## Day 24 - SQLite Prediction Database & Immutable Persistence
+
+### Goal
+Implement the Phase 6 foundation for prediction history and relational persistence:
+1. Design and deploy the SQLite relational schema in `app/database/schema.py` (`stocks`, `model_versions`, `predictions`, and `actuals`) with WAL mode, foreign key enforcement, and query performance indexes.
+2. Implement tamper-proof immutability at the database engine level using SQLite triggers (`trg_prevent_prediction_update` and `trg_prevent_prediction_delete`) aborting any attempt to modify or delete logged predictions.
+3. Build `PredictionRepository` in `app/database/repository.py` providing strongly-typed persistence for `PredictionResult` objects with automatic stock/model parent record registration.
+4. Strictly preserve Day 23 transparency semantics: uncalibrated probabilities (`is_probability_calibrated=False`, `probability_calibration="uncalibrated"`) and unsupported expected movement (`expected_movement=None`, `expected_movement_status="UNSUPPORTED"`).
+5. Integrate optional repository persistence into `PredictionService.predict(..., persist=True)`.
+6. Add comprehensive unit tests, execute real-data verification for `BHARTIARTL.NS`, and maintain zero untracked database files in the repository.
+
+### Pre-Checks
+- Current branch: `main`, clean working tree synchronized with `origin/main` at commit `4f0b9ba`.
+- Baseline test suite verified: **288 passed in 21.50s** (0 failures, 0 regressions across 21 modules).
+- Roadmap alignment confirmed via explicit user clarification: executed Phase 6 SQLite schema and immutable persistence scope.
+
+### What Was Built
+1. **SQLite Connection & Transaction Management (`app/database/connection.py`):**
+   - Implemented `create_connection(db_path)` configuring `PRAGMA foreign_keys = ON;`, `PRAGMA busy_timeout = 5000;`, `PRAGMA journal_mode = WAL;` (for disk databases), and `conn.row_factory = sqlite3.Row`.
+   - Implemented `db_session()` context manager for transactional safety with automatic commit and rollback.
+2. **Relational Schema & Native Immutability Triggers (`app/database/schema.py`):**
+   - **`stocks` table:** tracks symbol (PK), company name, exchange (default 'NSE'), active status, and creation timestamps.
+   - **`model_versions` table:** tracks model name, version identifier, JSON-serialized hyperparameters, and registration timestamps (`UNIQUE(model_name, model_version)`).
+   - **`predictions` table:** immutable audit log of predictions storing queryable metadata, operational statuses, predicted directions/labels, uncalibrated probabilities, data quality diagnostics, error messages, and full raw payloads (`raw_result_json`).
+   - **`actuals` table:** schema designed for Phase 7 realized market outcomes, linked via foreign keys to `predictions` and `stocks`.
+   - **Performance Indexes:** `idx_predictions_symbol_timestamp`, `idx_predictions_model`, `idx_predictions_latest_bar`, and `idx_actuals_symbol_date`.
+   - **Engine-Level Immutability Triggers:**
+     - `trg_prevent_prediction_update`: `BEFORE UPDATE ON predictions BEGIN SELECT RAISE(ABORT, 'Predictions are immutable: updates are strictly prohibited.'); END;`
+     - `trg_prevent_prediction_delete`: `BEFORE DELETE ON predictions BEGIN SELECT RAISE(ABORT, 'Predictions are immutable: deletions are strictly prohibited.'); END;`
+3. **Strongly-Typed Repository Layer (`app/database/repository.py`):**
+   - Implemented `PredictionRepository` providing `save_prediction()`, `get_prediction()`, `list_predictions()`, `count_predictions()`, `upsert_stock()`, `get_stocks()`, and `register_model_version()`.
+   - Automatically checks and registers parent records in `stocks` and `model_versions` during `save_prediction()`.
+   - Dual-persistence model: stores indexed columns for efficient queries alongside complete lossless JSON in `raw_result_json`.
+4. **Prediction Service Integration (`app/prediction/service.py`):**
+   - Extended `PredictionService.__init__` with optional `repository: Optional[PredictionRepository] = None`.
+   - Extended `PredictionService.predict()` with optional `persist: bool = False` flag to persist successful prediction results atomically upon request without altering default behavior.
+5. **Entry Point & Package Exports (`app/database/__init__.py`, `main.py`):**
+   - Cleanly exported all database primitives and added Day 24 readiness status print to `main.py`.
+
+### Real-Data Verification Findings (BHARTIARTL.NS)
+Executed `scripts/verify_day24.py` using live market data for `BHARTIARTL.NS`:
+- **Database Initialization:** Created temporary SQLite database, verified tables `stocks`, `model_versions`, `predictions`, `actuals`, and triggers `trg_prevent_prediction_update`, `trg_prevent_prediction_delete`.
+- **Prediction Execution & Atomic Persistence:**
+  - Status: `SUCCESS`
+  - Symbol: `BHARTIARTL`
+  - Predicted Direction: `DOWN` (label=0)
+  - Direction Probabilities: $P(UP) = 46.86\%$, $P(DOWN) = 53.14\%$
+  - Calibration: `uncalibrated` (`is_probability_calibrated=0`)
+  - Expected Movement: `None` (`status="UNSUPPORTED"`)
+- **Persistence Verification in SQLite:**
+  - Retrieved prediction record `b4d574d19aef4c7e9f1a57fdcff9a1fc` from database.
+  - Confirmed column values match exact Day 23 transparency semantics.
+  - Verified lossless JSON deserialization (`raw_result` contains full diagnostic dictionary).
+  - Verified `stocks` and `model_versions` parent rows populated.
+- **Engine-Level Immutability Audit:**
+  - Executed raw SQL `UPDATE predictions SET predicted_direction = 'FLIPPED' WHERE prediction_id = ...`: rejected with `sqlite3.DatabaseError: Predictions are immutable: updates are strictly prohibited.`
+  - Executed raw SQL `DELETE FROM predictions WHERE prediction_id = ...`: rejected with `sqlite3.DatabaseError: Predictions are immutable: deletions are strictly prohibited.`
+  - Executed duplicate insertion of identical `prediction_id`: rejected with `sqlite3.IntegrityError: UNIQUE constraint failed: predictions.prediction_id`.
+- **Cleanup Guarantee:** All transient verification database and model files cleaned up in `try...finally`.
+
+### Tests
+- Created `tests/test_prediction_database.py` with 11 comprehensive unit tests:
+  1. `test_database_schema_initialization`: verifies tables, triggers, and foreign key activation.
+  2. `test_stock_metadata_upsert`: verifies stock insertion and idempotent metadata updating.
+  3. `test_model_version_registration`: verifies model version tracking and hyperparameter serialization.
+  4. `test_save_and_get_prediction_preserves_semantics`: verifies uncalibrated probability flags and lossless recovery.
+  5. `test_immutability_trigger_prevents_updates`: verifies SQLite engine rejects direct UPDATE statements.
+  6. `test_immutability_trigger_prevents_deletions`: verifies SQLite engine rejects direct DELETE statements.
+  7. `test_duplicate_prediction_id_rejected`: verifies primary key / unique constraint enforcement.
+  8. `test_foreign_key_enforcement`: verifies orphan records are rejected when foreign keys are active.
+  9. `test_list_and_count_predictions`: verifies filtering by symbol and model name, pagination, and counts.
+  10. `test_save_error_prediction_result`: verifies structured error results can be logged for debugging audits.
+  11. `test_prediction_service_optional_persistence`: verifies atomic auto-persistence via `service.predict(..., persist=True)`.
+- **Full Test Suite Results:**
+  - Previous baseline: 288 passed
+  - New total: **299 passed in 11.75s** (11 new tests, 0 failures, 0 regressions across 22 test modules).
+  - Zero external network dependencies in automated tests.
+
+### Review
+- **CodeRabbit:** CodeRabbit CLI not installed locally; noted explicitly.
+- **Roo Code:** Remained disabled.
+- **Ponytail / Senior Dev Mode:** Built with standard library `sqlite3` only. Zero third-party ORMs or dependencies added. Native database triggers enforce immutability with minimum lines of code.
+
+### Documentation
+- Updated `README.md` to Day 24 status with 299 passing tests.
+- Updated `docs/architecture.md` with Section 4.19 detailing Prediction History & Relational Storage Layer.
+- Updated `docs/decisions.md` with ADR 52.
+- Updated `docs/roadmap.md` with Phase 6 / Day 24 completion details.
+- Updated `docs/daily-progress.md` with Day 24 development log.
+
+### Known Limitations & Next Steps
+- Predictions are logged immutably, but realized market outcomes are not yet ingested or compared against past forecasts.
+- Next scheduled scope: Implement Phase 7 (Verification & Accuracy — market outcome recording into `actuals` table, direction precision/recall evaluation, and error calculation).
+
+
 
 
 

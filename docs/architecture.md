@@ -696,6 +696,40 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   - `.to_dict()` provides recursive conversion to native Python dictionaries suitable for JSON transmission to downstream databases or REST APIs.
   - `.format_summary()` provides standardized, human-readable terminal/log formatting for operations and verification audits.
 
+### 4.19. Prediction History & Relational Storage Layer (`app/database/`)
+- **Architectural Overview (Phase 6 / Day 24):**
+  ```text
+  PredictionResult
+         ↓
+  PredictionRepository.save_prediction(result)
+         ├── 1. Upsert Stock (stocks table: symbol, company_name, exchange)
+         ├── 2. Register Model Version (model_versions: model_name, version, hyperparameters JSON)
+         └── 3. Insert Prediction (predictions table)
+                    ├── Indexed queryable columns (symbol, timestamps, status, probabilities)
+                    ├── Preserved Day 23 semantics (is_calibrated=0, movement=None)
+                    └── Full lossless raw JSON (raw_result_json)
+                           ↓
+  Immutability Enforcement via SQLite Engine Triggers:
+    ├── UPDATE -> RAISE(ABORT, 'Predictions are immutable: updates are strictly prohibited.')
+    └── DELETE -> RAISE(ABORT, 'Predictions are immutable: deletions are strictly prohibited.')
+  ```
+- **Relational Schema Design:**
+  - **`stocks`**: Equities metadata (`symbol` PK, `company_name`, `exchange` default 'NSE', `is_active`, `created_at`).
+  - **`model_versions`**: Registered model configurations (`id` PK, `model_name`, `model_version`, `hyperparameters` JSON, `created_at`, unique on `(model_name, model_version)`).
+  - **`predictions`**: Immutable record of all prediction attempts (`id` PK, `prediction_id` UNIQUE, `symbol` FK, `model_name`, `model_version`, `prediction_timestamp`, `latest_input_timestamp`, `status`, `predicted_direction`, `predicted_label`, `probability_up`, `probability_down`, `is_probability_calibrated`, `probability_calibration`, `expected_movement`, `expected_movement_status`, `total_bars_fetched`, `cleaned_bars`, `warmup_bars_required`, `warmup_complete`, `missing_feature_count`, `error_message`, `disclaimer`, `raw_result_json`, `created_at`).
+  - **`actuals`**: Planned table for Phase 7 realized market outcomes (`id` PK, `prediction_id` FK UNIQUE, `symbol` FK, `target_date`, `actual_direction`, `actual_label`, `actual_return`, `actual_close`, `recorded_at`).
+- **Native SQLite Immutability Triggers:**
+  - `trg_prevent_prediction_update`: Any direct SQL `UPDATE` statement targeting the `predictions` table causes the SQLite engine to abort with an exception.
+  - `trg_prevent_prediction_delete`: Any direct SQL `DELETE` statement targeting the `predictions` table causes the SQLite engine to abort with an exception.
+  - Immutability is enforced at the database engine level, making it impossible for accidental application-level logic or external tools to mutate or purge historical records.
+- **Connection Management & Concurrency:**
+  - `create_connection()` configures WAL mode (`PRAGMA journal_mode=WAL`), foreign key enforcement (`PRAGMA foreign_keys=ON`), busy timeout (`PRAGMA busy_timeout=5000`), and `sqlite3.Row` factory.
+  - `db_session()` provides transactional context management with automatic commit/rollback.
+- **Repository Interface (`PredictionRepository`):**
+  - Strongly typed data access methods: `save_prediction()`, `get_prediction()`, `list_predictions()`, `count_predictions()`, `upsert_stock()`, `get_stocks()`, and `register_model_version()`.
+  - Zero third-party ORM dependencies (Python stdlib `sqlite3` only), adhering to Ponytail minimalism principles.
+
+
 
 
 

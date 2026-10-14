@@ -59,17 +59,20 @@ class PredictionService:
         provider: Optional[BaseMarketDataProvider] = None,
         models_dir: Optional[Union[str, Path]] = None,
         model_registry: Optional[Dict[str, Any]] = None,
+        repository: Optional[Any] = None,
     ) -> None:
-        """Initialize prediction service with data provider and model storage.
+        """Initialize prediction service with data provider, model storage, and optional repository.
 
         Args:
             provider: Market data provider instance (defaults to YFinanceProvider).
             models_dir: Filesystem directory containing persisted model artifacts.
             model_registry: Optional in-memory mapping of model_name -> fitted classifier.
+            repository: Optional PredictionRepository for persisting prediction results.
         """
         self.provider = provider or YFinanceProvider()
         self.models_dir = Path(models_dir) if models_dir else Path("models")
         self.model_registry: Dict[str, Any] = dict(model_registry) if model_registry else {}
+        self.repository = repository
 
     def _get_default_artifact_path(self, model_name: str) -> Path:
         """Resolve the canonical default artifact filepath for a model architecture."""
@@ -140,6 +143,7 @@ class PredictionService:
         self,
         request: PredictionRequest,
         preloaded_model: Optional[Any] = None,
+        persist: bool = False,
     ) -> PredictionResult:
         """Execute directional movement prediction for a stock symbol.
 
@@ -386,7 +390,7 @@ class PredictionService:
         model_meta = cfg.to_dict() if hasattr(cfg, "to_dict") else {}
         model_version = f"{request.model_name}-direction-v1"
 
-        return PredictionResult(
+        result = PredictionResult(
             symbol=clean_symbol,
             prediction_timestamp=pred_time_str,
             latest_input_timestamp=latest_bar_iso,
@@ -405,6 +409,11 @@ class PredictionService:
             data_quality=quality,
             error_message=None,
         )
+
+        if persist and self.repository is not None:
+            self.repository.save_prediction(result)
+
+        return result
 
     def _build_error_result(
         self,

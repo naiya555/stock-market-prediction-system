@@ -775,6 +775,40 @@ This document formalizes the architectural decisions made on Day 1. All future i
   - Provides full transparency on what the model does and does not predict.
   - Prevents premature or speculative price forecasting while cleanly preparing the prediction engine for downstream database storage (Phase 6) and API consumption (Phase 13).
 
+---
+
+## ADR 52: SQLite Prediction History Schema, Engine-Level Immutability Triggers, and Lossless Audit Persistence
+- **Status:** Accepted
+- **Context:**
+  - Phase 6 (Day 24) introduces relational persistence for stock market predictions, equity metadata, model architecture versions, and future realized market outcomes.
+  - The foundational project philosophy (`PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`) demands an unalterable, tamper-proof record of predictions logged strictly before market outcomes materialize.
+  - If predictions could be updated or deleted in place, retrospective data tampering or hindsight bias would invalidate accuracy evaluation and walk-forward verification.
+  - Furthermore, all Day 23 structured output semantics—uncalibrated probabilities (`is_probability_calibrated=False`), unsupported expected movement (`expected_movement=None`, `expected_movement_status="UNSUPPORTED"`), and diagnostic data quality metrics—must be faithfully persisted without data loss.
+  - Under Ponytail rules, solutions must avoid unnecessary external dependencies or complex ORM frameworks when the standard library already solves the problem.
+- **Decision:**
+  1. **Standard Library SQLite Architecture (`app/database/connection.py`):**
+     - Use Python's built-in `sqlite3` module with zero third-party dependencies (no SQLAlchemy or heavy ORM).
+     - Configure connections with Write-Ahead Logging (`PRAGMA journal_mode=WAL`), foreign key constraint enforcement (`PRAGMA foreign_keys=ON`), busy timeout (`PRAGMA busy_timeout=5000`), and `sqlite3.Row` row factory.
+     - Provide a transactional context manager `db_session()` with automatic commit and rollback.
+  2. **Canonical Relational Schema (`app/database/schema.py`):**
+     - `stocks`: equity tracking status, exchange, and creation timestamps (`symbol` PRIMARY KEY).
+     - `model_versions`: model architectures, version strings, and serialized hyperparameters (`UNIQUE(model_name, model_version)`).
+     - `predictions`: immutable records of prediction attempts, storing indexed search columns alongside full lossless JSON payloads (`raw_result_json`).
+     - `actuals`: placeholder schema for Phase 7 outcome ingestion linked via foreign keys to `predictions` and `stocks`.
+  3. **Native Engine-Level Immutability Triggers:**
+     - Implement SQLite triggers `trg_prevent_prediction_update` and `trg_prevent_prediction_delete` that raise `ABORT` on any attempted `UPDATE` or `DELETE` targeting the `predictions` table.
+     - Immutability is guaranteed by the database engine itself, preventing silent mutation from buggy application logic, migrations, or external database tools.
+  4. **Strongly-Typed Repository (`app/database/repository.py`):**
+     - Implement `PredictionRepository` providing `save_prediction()`, `get_prediction()`, `list_predictions()`, `count_predictions()`, `upsert_stock()`, and `register_model_version()`.
+     - Automatically register parent records in `stocks` and `model_versions` during `save_prediction()`.
+  5. **PredictionService Integration:**
+     - Add optional `repository` parameter to `PredictionService` and `persist: bool = False` flag to `PredictionService.predict()` to enable seamless, atomic prediction logging without breaking existing callers or tests.
+- **Consequences:**
+  - Establishes a permanent, tamper-proof audit trail for Indian equity forecasts.
+  - Zero performance regression or additional runtime dependencies.
+  - Perfectly positions the system for Phase 7 (Verification & Accuracy: realized outcome recording and error metrics).
+
+
 
 
 
