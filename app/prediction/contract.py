@@ -90,8 +90,8 @@ class PredictionDataQuality:
 class PredictionResult:
     """Structured response container for directional prediction inference.
 
-    Captures predicted direction, probability, model provenance, data quality,
-    and explicit capability boundaries.
+    Captures predicted direction, probability (explicitly uncalibrated),
+    model provenance, data quality, expected movement status, and capability boundaries.
 
     Attributes:
         symbol: Ticker symbol.
@@ -100,12 +100,16 @@ class PredictionResult:
         status: High-level operational status (SUCCESS, MODEL_UNAVAILABLE, etc.).
         predicted_direction: 'UP' or 'DOWN' (None if prediction failed).
         predicted_label: 1 for UP, 0 for DOWN (None if prediction failed).
-        probability_up: Estimated probability of next session closing higher.
+        probability_up: Estimated probability of next session closing higher (uncalibrated tree output).
         probability_down: Estimated probability of next session closing lower or equal.
         model_name: Selected model identifier ('xgboost' or 'lightgbm').
         model_version: Version identifier of the model.
         model_metadata: Hyperparameters and configuration dictionary of the model.
         data_quality: Audit record of input data health and warm-up sufficiency.
+        is_probability_calibrated: Boolean indicating whether probability calibration was applied (False for raw tree probabilities).
+        probability_calibration: Explicit descriptor of calibration status ("uncalibrated").
+        expected_movement: Expected return magnitude or price move (None if unsupported).
+        expected_movement_status: Status of expected movement calculation ("UNSUPPORTED" for binary direction classifiers).
         error_message: Detailed diagnostic error message if status is not SUCCESS.
         disclaimer: Explicit disclosure of model capabilities and boundaries.
     """
@@ -122,6 +126,10 @@ class PredictionResult:
     model_version: str
     model_metadata: Dict[str, Any]
     data_quality: PredictionDataQuality
+    is_probability_calibrated: bool = False
+    probability_calibration: str = "uncalibrated"
+    expected_movement: Optional[float] = None
+    expected_movement_status: str = "UNSUPPORTED"
     error_message: Optional[str] = None
     disclaimer: str = (
         "The directional forecast predicts the binary sign of next-session close-to-close return "
@@ -134,3 +142,28 @@ class PredictionResult:
         data = asdict(self)
         data["status"] = self.status.value
         return data
+
+    def format_summary(self) -> str:
+        """Render a clean, human-readable text summary of the structured prediction output."""
+        lines = [
+            f"Prediction Summary for {self.symbol}:",
+            f"  Status:                 {self.status.value}",
+            f"  Prediction Timestamp:   {self.prediction_timestamp}",
+            f"  Latest Input Bar:       {self.latest_input_timestamp or 'N/A'}",
+            f"  Model:                  {self.model_name} ({self.model_version})",
+        ]
+        if self.status == PredictionStatus.SUCCESS:
+            p_up_str = f"{self.probability_up * 100:.2f}%" if self.probability_up is not None else "N/A"
+            p_dn_str = f"{self.probability_down * 100:.2f}%" if self.probability_down is not None else "N/A"
+            lines.extend([
+                f"  Predicted Direction:    {self.predicted_direction} (label={self.predicted_label})",
+                f"  Probabilities:          P(UP)={p_up_str}, P(DOWN)={p_dn_str} ({self.probability_calibration})",
+                f"  Calibrated:             {self.is_probability_calibrated}",
+                f"  Expected Movement:      {self.expected_movement if self.expected_movement is not None else 'null'} (status={self.expected_movement_status})",
+                f"  Data Quality:           {self.data_quality.cleaned_bars} bars, warmup={'complete' if self.data_quality.warmup_complete else 'incomplete'}, missing_features={self.data_quality.missing_feature_count}",
+            ])
+        else:
+            lines.append(f"  Error Message:          {self.error_message}")
+            lines.append(f"  Data Quality:           {self.data_quality.cleaned_bars} bars, warmup={'complete' if self.data_quality.warmup_complete else 'incomplete'}")
+        lines.append(f"  Disclaimer:             {self.disclaimer}")
+        return "\n".join(lines)
