@@ -716,5 +716,38 @@ This document formalizes the architectural decisions made on Day 1. All future i
   - Exposes that while tree models have lower raw accuracy than majority class during bull regimes (Folds 1 & 3), they successfully capture downward sessions (F1 DOWN ~ 45-64%) where majority class fails completely (F1 DOWN = 0%).
   - Identifies 59 collinear feature pairs for future feature engineering without violating temporal isolation.
 
+---
+
+## ADR 50: Prediction Engine Service Architecture, Inference Contract, and Lifecycle Isolation
+- **Status:** Accepted
+- **Context:**
+  - Phase 5 transitions from offline model evaluation and walk-forward cross-validation (Phase 4) to real-world prediction service delivery.
+  - A dedicated inference orchestration service is needed that bridges market data providers, data cleaning, technical indicator engines, and trained classifiers without duplicating feature logic or schemas.
+  - Strict anti-leakage safeguards are required: inference must consume strictly historical data available up to the request reference time, exclude all forward target/outcome columns, and maintain feature schema alignment.
+  - The model lifecycle must strictly isolate deliberate offline training/persistence from online prediction inference: automated on-the-fly retraining during inference requests is strictly forbidden.
+  - Model capabilities and limitations must be explicitly disclosed: the baseline direction classifier forecasts next-session binary direction and class probability; it does not predict target prices, percentage return magnitudes, or trade execution timing.
+- **Decision:**
+  1. **Typed Prediction Contract (`app/prediction/contract.py`):**
+     - Implement `PredictionRequest`, `PredictionResult`, and `PredictionDataQuality` using immutable dataclasses with `.to_dict()` serialization.
+     - `PredictionRequest` specifies `symbol`, `model_name` ('xgboost' or 'lightgbm', default 'xgboost'), `model_artifact_path`, `as_of_date`, `lookback_days`, `max_stale_days`, and `allow_stale_data`.
+     - `PredictionResult` records `predicted_direction` ('UP' or 'DOWN'), `predicted_label` (1 or 0), `probability_up`, `probability_down`, `model_name`, `model_version`, `model_metadata`, `data_quality`, and explicit capability disclaimers.
+  2. **Prediction Engine Service Orchestration (`app/prediction/service.py`):**
+     - Implement `PredictionService` consuming pluggable `BaseMarketDataProvider` and resolving models from in-memory preloaded models, registry, or filesystem artifacts.
+     - Enforce `validate_feature_matrix_isolation()` on the inference feature row ($t = N - 1$).
+     - Guarantee column schema and ordering parity strictly matching canonical `FEATURE_COLUMNS`.
+     - Verify technical indicator warm-up history (minimum 34 sessions required for MACD slow EMA 26 + signal EMA 9).
+  3. **Model Lifecycle & Retraining Prohibition:**
+     - Inference strictly consumes existing model artifacts (`models/{model_name}_direction.*`).
+     - Automatic on-the-fly retraining during prediction requests is completely forbidden. If a requested artifact is absent, `PredictionService` returns an explicit `MODEL_UNAVAILABLE` status and an actionable diagnostic message.
+     - Deliberate training and persistence occurs exclusively via dedicated offline lifecycle functions (`train_and_persist_baseline_model()`).
+  4. **Capability Boundaries & Anti-Fabrication Rule:**
+     - Prohibit inventing fictitious target prices, return percentages, or post-hoc narrative explanations.
+     - Disclose that probabilities represent raw, uncalibrated tree model outputs and do not constitute trading advice or commercial edge.
+- **Consequences:**
+  - Establishes a clean, reusable, testable prediction service foundation for Phase 5.
+  - Eliminates code duplication across feature calculation and model inference.
+  - Guarantees zero lookahead leakage and prevents silent model retraining or drift.
+
+
 
 

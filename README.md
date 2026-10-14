@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 21: Model Error Analysis & Feature Usefulness Audit<br/>
+> **Status:** Ongoing Project — Day 22: Prediction Engine Service Foundation<br/>
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -46,15 +46,15 @@ When fully developed, the end-user workflow will operate as follows:
 - **`app/market/`**: Market data acquisition, cleaning, technical feature engineering (returns, volatility, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features), trend engine (swing points, market structure, trend classification), market breadth, pipeline orchestration, and visualization.
 - **`app/news/`**: Financial news ingestion, deduplication, and entity linking.
 - **`app/nlp/`**: FinBERT sentiment scoring and textual analysis.
-- **`app/prediction/`**: Target formulation (`target.py`), numerical ML predictor, LLM predictor, and ensemble synthesis.
+- **`app/prediction/`**: Target formulation (`target.py`), directional prediction service (`service.py`), and inference contract (`contract.py`).
 - **`app/training/`**: Walk-forward validation, dataset splits without temporal leakage, baseline benchmark comparison suite, XGBoost and LightGBM models, model error analysis, feature usefulness audit, and controlled retraining.
 - **`app/history/`**: Prediction audit logs, performance evaluation, and accuracy tracking.
 
 ---
 
-## 4. Current Status: Day 21 (Model Error Analysis & Feature Usefulness Audit)
+## 4. Current Status: Day 22 (Prediction Engine Service Foundation)
 
-Day 21 implements comprehensive model error analysis and an exploratory feature usefulness audit (`app/training/error_analysis.py`). The error decomposition layer computes symmetrical class metrics for both directions (`precision_down`, `recall_down`, `f1_down`), full confusion matrices, directional prediction bias checks, and training-to-validation class distribution shifts across all walk-forward folds. The feature usefulness audit assesses the canonical 37-feature matrix with strict training-data isolation (zero lookahead leakage into validation sets), verifying 0 missing columns, 0 constant columns, 59 collinear feature pairs ($|r| \ge 0.90$), and native tree feature importances (XGBoost weight vs LightGBM split count). Walk-forward empirical verification on `BHARTIARTL.NS` confirms that while tree models actively capture downward sessions (F1 DOWN 45–64% where Majority Class scores 0%), high collinearity and market regime shifts emphasize the importance of multi-cycle validation over single-holdout optimism. Model hyperparameters and feature sets remain strictly unmutated.
+Day 22 introduces the first reusable prediction-engine service (`app/prediction/service.py`) connecting the existing market-data pipeline, canonical feature matrix, trained XGBoost and LightGBM classifiers, and data-quality validation layer into a unified inference workflow. Operating on a strongly typed contract (`PredictionRequest` and `PredictionResult` in `app/prediction/contract.py`), the service validates historical warm-up sufficiency ($\ge 34$ bars), enforces feature matrix isolation (rejecting all target and future outcome columns), ensures canonical column ordering matching `FEATURE_COLUMNS`, and extracts next-session binary direction and probabilities ($P(UP)$ and $P(DOWN)$). Inference strictly consumes pre-existing model artifacts or registered instances; automatic on-the-fly retraining during inference requests is strictly prohibited. If an artifact is unavailable, the service returns an explicit `MODEL_UNAVAILABLE` status and an actionable diagnostic message. Output boundaries are strictly observed: no fictitious target prices, expected returns, or uncalibrated confidence scores are fabricated.
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.
@@ -176,9 +176,17 @@ Day 21 implements comprehensive model error analysis and an exploratory feature 
   - Strict training-isolated feature matrix audit: verifies 0 missing values, 0 constant columns across 37 features without lookahead leakage.
   - Collinearity clustering: identifies 59 high-correlation feature pairs ($|r| \ge 0.90$) as simplification candidates.
   - Exploratory tree feature importance: compares XGBoost split weight against LightGBM split count with documented non-causal caveats.
+- Prediction Engine Service Layer (`app/prediction/service.py` & `app/prediction/contract.py`):
+  - Typed prediction contract (`PredictionRequest`, `PredictionResult`, `PredictionDataQuality`, `PredictionStatus`).
+  - End-to-end inference orchestration consuming market-data provider, data cleaning, and canonical 37-feature matrix without code duplication.
+  - Strict model lifecycle isolation: consumes pre-existing persisted model artifacts or registered instances; zero hidden on-the-fly retraining during inference.
+  - Actionable error reporting when model artifacts are missing (`MODEL_UNAVAILABLE`).
+  - Data quality and warm-up validation: verifies minimum 34 sessions required for indicators and identifies any missing feature values.
+  - Strict inference feature matrix isolation: validates absence of target/outcome columns and enforces feature order matching `FEATURE_COLUMNS`.
+  - Discloses model boundaries: binary direction (UP/DOWN) and class probability without fabricated target prices or confidence scores.
 - Historical Market Visualizer (`app/market/visualizer.py`):
   - Headless Matplotlib rendering (`Agg` backend) generating publication-quality PNG charts.
-- 269 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, XGBoost direction classifier, LightGBM direction classifier, baseline comparison suite, walk-forward cross-validation engine, model error analysis, feature usefulness audit, and visualizer.
+- 282 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, XGBoost direction classifier, LightGBM direction classifier, baseline comparison suite, walk-forward cross-validation engine, model error analysis, feature usefulness audit, prediction service engine, and visualizer.
 
 ---
 

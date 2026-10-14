@@ -615,5 +615,43 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   - **Regime Outperformance:** In Fold 4 (where validation UP ratio dropped to 49.3%), tree models strongly outperformed Majority Class (+6.9% for XGBoost, +9.0% for LightGBM). In strong bull folds (Fold 1, Val UP 56.2%), tree models lagged majority class because they actively hedged downside risk.
   - **Feature Importance Agreement:** Both XGBoost and LightGBM independently identified short-term volatility (`rolling_volatility_5d`, `bb_bandwidth`), candlestick geometry (`candle_body_ratio`, `candle_body_abs`), and momentum (`rolling_return_5d`, `macd_signal`) as the most utilized split features.
 
+### 4.17. Prediction Engine Service Layer (`app/prediction/service.py`)
+- **Prediction Service Architecture:**
+  ```text
+  PredictionRequest(symbol, model_name, as_of_date, lookback_days)
+             ↓
+  Market Data Ingestion (run_market_data_pipeline via BaseMarketDataProvider)
+             ↓
+  Data Cleaning & Quality Audit (CleaningSummary, warmup >= 34 bars, staleness check)
+             ↓
+  Canonical Feature Matrix Assembly (37 features via assemble_feature_matrix)
+             ↓
+  Inference Observation Extraction (final observation t = N - 1, strictly unlabeled)
+             ↓
+  Feature Isolation Guard (validate_feature_matrix_isolation rejects target/outcome columns)
+             ↓
+  Model Resolution & Schema Verification (preloaded, in-memory registry, or disk artifact)
+    - Prohibits silent retraining: returns MODEL_UNAVAILABLE if artifact absent
+    - Verifies feature order against FEATURE_COLUMNS
+             ↓
+  Model Inference (model.predict_proba -> P(UP), P(DOWN), binary direction label)
+             ↓
+  PredictionResult(symbol, direction, probabilities, timestamps, data_quality, disclaimer)
+  ```
+- **Inference Anti-Leakage Safeguards:**
+  - **Point-in-Time Scope:** Data retrieval is strictly bounded by `as_of_date` (or current timestamp), preventing forward information leakage.
+  - **Unlabeled Inference Row:** The prediction observation corresponds to session $t = N - 1$, which naturally has no forward target realized (`has_target=False`).
+  - **Feature Matrix Isolation:** `validate_feature_matrix_isolation` validates that zero target or outcome columns (`target_*`, `next_*`, `future_*`, `outcome_*`) enter inference.
+  - **Strict Feature Ordering:** Feature matrix columns are strictly sorted by canonical `FEATURE_COLUMNS` before passing to booster `predict_proba`.
+- **Model Lifecycle Isolation:**
+  - Separation of concerns: inference strictly consumes pre-existing model artifacts.
+  - Automatic on-the-fly retraining during `predict()` is prohibited to protect model auditability and avoid silent model drift.
+  - Models are trained and serialized deliberately using `train_and_persist_baseline_model()`.
+- **Explicit Boundary Disclosures:**
+  - `PredictionResult` outputs binary direction (`UP` or `DOWN`) and probability.
+  - Target prices, percentage return forecasts, and narrative rationales are NOT fabricated.
+  - Explicit disclaimer attached to every prediction payload disclosing that predictions reflect directional classification without commercial edge guarantee.
+
+
 
 

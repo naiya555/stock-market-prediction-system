@@ -56,8 +56,8 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 
 
 ### Phase 5: Prediction Engine
-- Build the core prediction service orchestrating feature assembly and model inference.
-- Generate directional forecast (`UP` / `DOWN` / `SIDEWAYS`), confidence, and target range.
+- Build the core prediction service orchestrating feature assembly and model inference (`PredictionService` in `app/prediction/service.py`, typed `PredictionRequest` and `PredictionResult` contracts, zero silent retraining, strict inference isolation) (Day 22 complete).
+- Generate directional forecast (`UP` / `DOWN`), class probabilities, and input data quality auditing without fabricating target prices or uncalibrated confidence scores.
 
 ### Phase 6: Prediction History & Database
 - Design SQLite database schema (predictions, stocks, actuals, model_versions).
