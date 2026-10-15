@@ -893,6 +893,52 @@ This document formalizes the architectural decisions made on Day 1. All future i
   - Provides a robust, leak-free benchmark context and sector relative performance engine for Indian equities.
   - Enables rich macro/sector context features for downstream prediction models without data leakage or fragility.
 
+---
+
+## ADR 55: Financial News Ingestion Foundation, Deduplication, and Point-in-Time Isolation
+- **Status:** Accepted
+- **Context:**
+  - In Phase 9 (Day 27), the system initiates textual and news information processing to support future financial sentiment analysis (FinBERT) and LLM context synthesis.
+  - Financial news processing introduces critical risks of data leakage and narrative distortion:
+    1. Look-ahead bias: Ingesting news published after a market decision cutoff (e.g. after session close or after market hours) and associating it retrospectively with that session.
+    2. Conflation of publication and ingestion time: Treating publication timestamp as the moment the system learned of the news, or vice-versa.
+    3. Noise and syndicated duplicates: Financial news is heavily syndicated across news agencies and regional outlets (PTI, Reuters, Bloomberg, Livemint, Economic Times, Moneycontrol), creating redundant duplicate records that distort frequency counts.
+    4. Causal over-interpretation: Inferring that a headline mechanically causes a stock to rise or fall without empirical validation.
+- **Decision:**
+  1. **Provider Contract & Architecture (`app/news/providers/`):**
+     - Define `BaseNewsProvider(ABC)` establishing a uniform interface matching the market data provider pattern (`BaseMarketDataProvider`).
+     - Implement concrete `RSSNewsProvider` using Python standard library XML parsing (`xml.etree.ElementTree`) and URL retrieval (`urllib.request`), requiring zero additional third-party dependencies.
+     - Support custom fetcher callable injection for 100% deterministic, offline unit testing.
+  2. **Canonical Typed Contract (`NewsArticle` in `app/news/schemas.py`):**
+     - Define immutable `NewsArticle` dataclass with boundary validation:
+       - `headline`: Non-empty cleaned headline string.
+       - `source`: Publisher / outlet identifier (e.g. 'Economic Times', 'Moneycontrol').
+       - `published_at`: Timezone-aware publication timestamp (normalized to `Asia/Kolkata` IST).
+       - `ingested_at`: Distinct timezone-aware timestamp marking when the local system acquired the record.
+       - `symbols`: Tuple of associated uppercase ticker strings (with exchange suffixes `.NS`/`.BO` cleanly stripped).
+       - `url`: Optional validated HTTP/HTTPS URL.
+       - `summary`: Optional summary/description with HTML markup stripped.
+       - `provider`: Provider adapter identifier (`rss_news_provider`).
+       - `article_id`: Deterministic 16-hex collision-resistant SHA-256 hash derived from `headline + source + published_at`.
+  3. **Syndicated Deduplication Algorithm (`deduplicate_news` in `app/news/cleaner.py`):**
+     - Deduplication follows a 3-tier precedence rule:
+       1. Exact Article ID match.
+       2. Exact URL match.
+       3. Syndicated Headline Match: identical normalized headline text (lowercased, punctuation removed) within a configurable `dedup_window_hours` (default 48h).
+     - Earliest published instance is preserved as the canonical origin; subsequent syndicated duplicates are discarded.
+     - Produces `NewsCleaningResult` with `NewsDeduplicationSummary` tracking input counts, unique counts, and removed IDs.
+  4. **Strict Point-in-Time Session Filtering (`filter_news_point_in_time` in `app/news/cleaner.py`):**
+     - When associating news with a market session cutoff `as_of_time`:
+       $$\text{Eligible} \iff published\_at \le as\_of\_time \quad \text{AND} \quad ingested\_at \le as\_of\_time$$
+     - Strictly excludes all articles published or ingested after `as_of_time`, guaranteeing zero look-ahead leakage.
+     - Supports optional lookback window (e.g. 24h/48h) to filter relevant pre-session news.
+  5. **Non-Causal Representation:**
+     - News headlines are strictly normalized textual observations with metadata; no predictive direction or causal inference is attributed to headlines at the ingestion layer.
+- **Consequences:**
+  - Establishes an auditable, leak-free news ingestion foundation for Indian equities.
+  - Prepares the system cleanly for subsequent FinBERT sentiment scoring (Phase 9) and future LLM integration (Phase 11) without architectural churn.
+
+
 
 
 

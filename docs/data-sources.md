@@ -49,8 +49,8 @@ This document catalogs the candidate data sources required for the Indian Stock 
 
 | Information | Candidate Providers / Mechanisms | Status | Notes / Verification Requirements |
 |---|---|:---:|---|
-| Domestic Financial Media Headlines | Economic Times, Moneycontrol, Livemint, Business Standard RSS | **PLANNED / TO BE VERIFIED** | Verify scraping/RSS policies, deduplication across outlets, and timestamp reliability. |
-| Global Financial News Feeds | Reuters, Bloomberg, Yahoo Finance RSS feeds | **PLANNED / TO BE VERIFIED** | Verify coverage of India-focused multi-national developments. |
+| Domestic Financial Media Headlines | Google News RSS for Indian financial media (Economic Times, Livemint, Moneycontrol, Business Standard) | **VERIFIED (Day 27)** | Verified point-in-time parsing, RFC 2822 to IST conversion, headline normalization, and syndicated deduplication via `RSSNewsProvider`. |
+| Global Financial News Feeds | Reuters, Bloomberg, Yahoo Finance RSS feeds | **PLANNED / TO BE VERIFIED** | Ingested via RSS provider adapter; verify coverage of India-focused multi-national developments. |
 
 ---
 

@@ -823,6 +823,49 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   - **Calendar Discrepancy Tolerance:** When market holidays or trading halts cause one series to have an observation while the other is missing, unpaired observations evaluate gracefully to `None` without distorting the surrounding time series.
   - **Zero-Division & Low-Variance Guards:** When volatility collapses or series exhibit zero variance, rolling beta and correlation evaluate to `None`, avoiding floating-point exceptions or spurious infinities.
 
+### 4.22. Financial News Ingestion & Cleaning Engine (`app/news/`)
+- **Architectural Overview (Phase 9 / Day 27):**
+  ```text
+  Raw Financial News RSS Feeds (Indian Financial Media / Google News RSS)
+              │
+              ▼
+  1. News Provider Adapter (RSSNewsProvider)
+        ├── URL Query Formatting: company name + ticker + 'stock NSE'
+        ├── Standard Library XML Parsing: xml.etree.ElementTree
+        ├── Header & Attribution Parsing: extracts publisher and strips title suffixes
+        ├── Timestamp Normalization: RFC 2822 / ISO parsed to Asia/Kolkata (IST)
+        └── Ingestion Stamping: assigns distinct ingested_at timestamp (now)
+              │
+              ▼
+  2. Canonical Schema Normalization (NewsArticle)
+        ├── headline: Non-empty string
+        ├── source: Publisher name (e.g. 'Economic Times', 'Moneycontrol')
+        ├── published_at: Timezone-aware publication datetime
+        ├── ingested_at: Distinct timezone-aware system acquisition datetime
+        ├── symbols: Tuple of canonical uppercase symbols (e.g. ('BHARTIARTL',))
+        ├── url: Validated HTTP/HTTPS URL
+        ├── summary: Cleaned description with HTML tags stripped
+        ├── provider: Provider name ('rss_news_provider')
+        └── article_id: Deterministic SHA-256 hash (16-hex characters)
+              │
+              ▼
+  3. Syndicated News Deduplication (deduplicate_news in cleaner.py)
+        ├── 1. Exact Article ID match check
+        ├── 2. Exact URL match check
+        └── 3. Syndicated Headline Match: identical normalized text within 48h window
+                └── Preserves earliest publication as canonical; discards later syndications
+              │
+              ▼
+  4. Point-in-Time Session Filtering (filter_news_point_in_time)
+        ├── Enforces published_at <= as_of_time AND ingested_at <= as_of_time
+        ├── Optional lookback window (e.g. 24h, 48h)
+        └── Zero look-ahead bias: future post-cutoff news strictly eliminated
+  ```
+- **Temporal Invariants & Anti-Leakage Guarantees:**
+  - **Separation of Publication and Ingestion:** Publication timestamp (`published_at`) reflects when the story broke publicly. Ingestion timestamp (`ingested_at`) records when the system acquired the record. Both must precede the market decision cutoff $T_{cutoff}$ for the news item to enter any historical backtest or feature join.
+  - **Non-Causal Representation:** The news ingestion layer strictly provides clean textual observations with provenance; it does not infer price directions, target price movements, or claim mechanical market causality.
+
+
 
 
 

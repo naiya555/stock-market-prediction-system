@@ -2619,6 +2619,82 @@ Executed `scripts/verify_day26.py` against live market data:
 - Benchmark and sector context features are computed at the market data layer; integration into the canonical training feature matrix (`app/training/feature_matrix.py`) and prediction pipeline will follow in the model refinement roadmap.
 - Next scheduled scope: Phase 9 (News & Financial Sentiment: financial news retrieval, deduplication, and FinBERT sentiment scoring).
 
+---
+
+## Day 27 - Financial News Ingestion Foundation
+
+### Goal
+Establish the financial-news ingestion foundation for Phase 9: News & Financial Sentiment:
+1. Create a maintainable news provider interface (`BaseNewsProvider`) consistent with the existing market-data architecture.
+2. Normalize news items into a typed, canonical contract (`NewsArticle`) capturing headline, source publisher, timezone-aware publication time, distinct ingestion time, symbol associations, URL, summary, and deterministic content ID.
+3. Build a concrete RSS news provider adapter (`RSSNewsProvider`) backed by standard library XML parsing (`xml.etree.ElementTree`) and URL retrieval (`urllib.request`), requiring zero additional third-party dependencies.
+4. Implement a multi-tier syndicated news deduplication engine (`deduplicate_news`) and strict point-in-time session filtering (`filter_news_point_in_time`) to eliminate look-ahead leakage.
+5. Provide comprehensive automated unit tests (deterministic, mock-based) and execute real-world live verification across Indian equities.
+
+### Work Completed
+1. **Canonical Schema Contract (`app/news/schemas.py`):**
+   - Created `NewsArticle` dataclass enforcing non-empty headlines and publishers, timezone-aware timestamps, clean uppercase symbols (with `.NS`/`.BO` exchange suffixes cleanly stripped), valid URLs, and deterministic 16-character SHA-256 `article_id` hashes (`headline + source + published_at`).
+   - Implemented `.to_dict()` serialization.
+2. **Provider Contract & RSS Adapter (`app/news/providers/`):**
+   - Defined `BaseNewsProvider(ABC)` establishing uniform `fetch_news()` contract with symbol, date range, and limit parameters.
+   - Defined `NewsProviderError` for graceful error propagation.
+   - Implemented `RSSNewsProvider` supporting query building for Indian equities (`COMPANY_NAME_MAP`), standard library XML element tree parsing, RFC 2822 to IST datetime normalization, publisher source extraction, and summary HTML stripping.
+   - Supported dependency injection of custom fetcher functions for 100% deterministic, offline unit testing.
+3. **Deduplication & Point-in-Time Filtering (`app/news/cleaner.py`):**
+   - Implemented `deduplicate_news()` with a 3-tier precedence rule: exact ID match, exact URL match, and syndicated headline match within a configurable window (default 48h), preserving earliest publication origin.
+   - Created `NewsCleaningResult` and `NewsDeduplicationSummary` containers.
+   - Implemented `filter_news_point_in_time()` enforcing $published\_at \le as\_of\_time$ and $ingested\_at \le as\_of\_time$, strictly preventing look-ahead bias when aligning news to historical market sessions.
+4. **Module Exports & Entry Point:**
+   - Exported all schemas, providers, and cleaner functions in `app/news/__init__.py`.
+   - Updated `main.py` verifying Day 27 readiness.
+
+### Real-Data Verification Findings (BHARTIARTL, RELIANCE, TCS, HDFCBANK)
+Executed `scripts/verify_day27.py` against live financial news feeds:
+- **Live Ingestion:** Fetched 40 live news articles across Bharti Airtel, Reliance, TCS, and HDFC Bank.
+- **Provenance & Timestamp Isolation:** Verified all articles contained valid headlines, publisher sources (e.g. Moneycontrol, Kalkine India, scanx.trade), timezone-aware publication times in IST, and distinct local ingestion timestamps.
+- **Deduplication:** Successfully detected and removed syndicated duplicates across media outlets.
+- **Point-in-Time Isolation:** Verified that establishing an earlier cutoff timestamp safely excludes all post-cutoff articles with zero look-ahead bias.
+- **Serialization:** Verified lossless `.to_dict()` JSON serialization.
+
+### Tests
+- Created `tests/test_news_ingestion.py` with 15 comprehensive unit tests:
+  1. `test_valid_news_article_normalization`: verifies schema parsing, symbol cleanup, and `.to_dict()`.
+  2. `test_missing_and_malformed_fields`: verifies validation errors on blank headlines, blank sources, naive datetimes, and invalid URLs.
+  3. `test_publication_time_distinct_from_ingestion_time`: verifies temporal isolation between publication and system ingestion.
+  4. `test_parse_valid_rss_payload`: verifies XML parsing, title suffix stripping, RFC 2822 to IST parsing, and summaries.
+  5. `test_parse_empty_or_whitespace_payload`: verifies safe empty list return on empty XML.
+  6. `test_parse_malformed_xml_raises_provider_error`: verifies `NewsProviderError` on broken XML syntax.
+  7. `test_parse_skips_items_with_missing_titles_or_dates`: verifies graceful item skipping for corrupt entries.
+  8. `test_fetch_news_with_custom_fetcher`: verifies offline deterministic mock fetcher.
+  9. `test_fetch_news_handles_fetcher_exception`: verifies graceful exception propagation on network failure.
+  10. `test_company_name_mapping`: verifies company query string generation.
+  11. `test_deduplicate_identical_ids_and_urls`: verifies exact duplicate removal.
+  12. `test_deduplicate_syndicated_headlines_within_window`: verifies syndicated headline deduplication.
+  13. `test_deduplicate_empty_input`: verifies safe handling of empty inputs.
+  14. `test_filter_news_point_in_time_excludes_future_articles`: verifies zero look-ahead leakage.
+  15. `test_filter_news_lookback_window`: verifies lookback window filtering.
+- **Full Test Suite Results:**
+  - Previous baseline: 327 passed
+  - New total: **342 passed in 11.73s** (15 new tests, 0 failures, 0 regressions across 25 test modules).
+  - Deterministic fixtures and mocks; zero external network dependencies in unit tests.
+
+### Review
+- **Ponytail / Senior Dev Mode:** Built using standard library `xml.etree.ElementTree`, `urllib.request`, `email.utils`, `hashlib`, `re`, `html`, `dataclasses`, and `datetime`. Zero third-party packages or heavy dependencies added.
+
+### Documentation
+- Updated `README.md` to Day 27 status with 342 passing tests.
+- Updated `docs/architecture.md` with Section 4.22 detailing Financial News Ingestion & Cleaning Engine.
+- Updated `docs/decisions.md` with ADR 55.
+- Updated `docs/roadmap.md` with Phase 9 / Day 27 foundation details.
+- Updated `docs/data-sources.md` marking Section 5 Domestic Financial News as VERIFIED (Day 27).
+- Updated `docs/daily-progress.md` with Day 27 development log.
+
+### Known Limitations & Next Steps
+- Day 27 implements the news ingestion and deduplication foundation. FinBERT domain-specific sentiment scoring, sentiment feature generation, and textual embedding will follow in subsequent Phase 9 steps.
+- Neither Gemma 3 12B nor Laya AI is introduced today; LLM reasoning and news entity classification remain scheduled for their designated future phases.
+- Next scheduled scope: FinBERT sentiment scoring foundation and financial news sentiment feature engineering.
+
+
 
 
 

@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 26: NIFTY Benchmark & Sector Context Engine<br/>
+> **Status:** Ongoing Project — Day 27: Financial News Ingestion Foundation<br/>
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -44,19 +44,19 @@ When fully developed, the end-user workflow will operate as follows:
 - **`app/core/`**: Centralized configuration (`config.py`), logging foundation (`logging_config.py`), and canonical schema contracts (`schemas.py`).
 - **`app/database/`**: Relational database persistence (SQLite schema, WAL mode, foreign keys, immutability triggers, and PredictionRepository).
 - **`app/market/`**: Market data acquisition, cleaning, technical feature engineering (returns, volatility, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features), trend engine (swing points, market structure, trend classification), market breadth and benchmark relative performance (`benchmark.py`), pipeline orchestration, and visualization.
-- **`app/news/`**: Financial news ingestion, deduplication, and entity linking.
-- **`app/nlp/`**: FinBERT sentiment scoring and textual analysis.
+- **`app/news/`**: Financial news ingestion (`providers/base.py`, `providers/rss_provider.py`), typed article schemas (`schemas.py`), deduplication, and point-in-time filtering (`cleaner.py`).
+- **`app/nlp/`**: FinBERT sentiment scoring and textual analysis (planned).
 - **`app/prediction/`**: Target formulation (`target.py`), directional prediction service (`service.py`), and inference contract (`contract.py`).
 - **`app/training/`**: Walk-forward validation, dataset splits without temporal leakage, baseline benchmark comparison suite, XGBoost and LightGBM models, model error analysis, feature usefulness audit, and controlled retraining.
 - **`app/history/`**: Prediction audit logs, outcome verification engine (`verifier.py`), evaluation service (`evaluator.py`), and accuracy tracking.
 
 ---
 
-## 4. Current Status: Day 26 (NIFTY Benchmark & Sector Context Engine)
+## 4. Current Status: Day 27 (Financial News Ingestion Foundation)
 
-Day 26 implements Phase 8: NIFTY & Sector Context (`app/market/benchmark.py`). It establishes historical index ingestion (`^NSEI`, `^NSEBANK`, `^CNXIT`), point-in-time session alignment across equities and benchmarks, relative performance features (daily excess return/alpha, relative strength ratio, 5d/20d relative strength momentum), rolling 20-session beta and correlation with zero-variance safety, and cross-sectional market breadth calculation (advances, declines, unchanged, advance-decline ratio, breadth thrust, net advances, and 20-day SMA breadth participation percentage).
+Day 27 implements Phase 9: Financial News Ingestion Foundation (`app/news/`). It establishes an extensible news provider interface (`BaseNewsProvider`), concrete RSS adapter (`RSSNewsProvider`) normalizing Indian financial media feeds into canonical `NewsArticle` records, a multi-tier syndicated news deduplication engine (`deduplicate_news`), and strict point-in-time session filtering (`filter_news_point_in_time`).
 
-Crucially, zero look-ahead bias is strictly maintained: benchmark sessions are aligned strictly to matching calendar dates ($bar.timestamp.date()$), and market breadth evaluates constituent return and moving average states without referencing future sessions. All Day 23 uncalibrated probability and unsupported expected movement boundaries are rigorously preserved.
+Crucially, publication timestamp (`published_at`) is strictly isolated from local ingestion timestamp (`ingested_at`), and zero look-ahead bias is guaranteed by eliminating any articles published or ingested after a given market decision cutoff. No LLM integration or FinBERT sentiment scoring is introduced prematurely. All Day 23 uncalibrated probability and unsupported expected movement boundaries are rigorously preserved.
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.
@@ -217,7 +217,13 @@ Crucially, zero look-ahead bias is strictly maintained: benchmark sessions are a
   - Relative performance features (`compute_relative_performance`): daily excess return (alpha), relative strength ratio, 5d and 20d relative strength momentum.
   - 20-session rolling beta and correlation with sample degrees of freedom ($ddof=1$) and zero-variance guards ($Var(R_b) < 1e-12 \implies None$).
   - Cross-sectional market breadth calculation (`compute_market_breadth` & `compute_multi_symbol_breadth_series`): advances, declines, unchanged, advance-decline ratio, breadth thrust, net advances, and 20-day SMA breadth participation percentage.
-- 327 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, XGBoost direction classifier, LightGBM direction classifier, baseline comparison suite, walk-forward cross-validation engine, model error analysis, feature usefulness audit, prediction service engine, structured prediction output, visualizer, SQLite prediction database, outcome verification/evaluation, and benchmark context engine.
+- Financial News Ingestion Foundation (`app/news/` - Day 27 complete):
+  - Abstract news provider interface `BaseNewsProvider` and concrete `RSSNewsProvider` adapter acquiring live financial news for Indian equities (NSE/BSE).
+  - Canonical immutable `NewsArticle` schema capturing cleaned headline, publisher source, timezone-aware publication time (`Asia/Kolkata`), distinct ingestion time, symbol associations, URL, summary, and deterministic 16-character SHA-256 `article_id`.
+  - Multi-tier syndicated news deduplication engine (`deduplicate_news` in `cleaner.py`): removes exact ID duplicates, URL duplicates, and syndicated matching headlines across outlets within configurable time windows (default 48h) while preserving earliest publication provenance.
+  - Strict point-in-time session filtering (`filter_news_point_in_time`): enforces $published\_at \le as\_of\_time$ and $ingested\_at \le as\_of\_time$, strictly preventing look-ahead leakage when joining news with historical trading sessions.
+  - Non-causal representation: headlines are preserved as clean textual observations without mechanical causal inferences.
+- 342 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, XGBoost direction classifier, LightGBM direction classifier, baseline comparison suite, walk-forward cross-validation engine, model error analysis, feature usefulness audit, prediction service engine, structured prediction output, visualizer, SQLite prediction database, outcome verification/evaluation, benchmark context engine, and financial news ingestion foundation.
 
 ---
 

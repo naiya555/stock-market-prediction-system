@@ -15,9 +15,9 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 | **5** | **Prediction Engine** | Point-in-time quantitative forecasting service. | Complete (Day 22-23) |
 | **6** | **Prediction History & Database** | Relational schema and immutable storage for predictions. | Complete (Day 24) |
 | **7** | **Verification & Accuracy** | Outcome recording, MAE/RMSE calculation, and accuracy tracking. | Complete (Day 25) |
-| **8** | **NIFTY & Sector Context** | Broader market indicators, benchmark relative strength, and sector mapping. | **Complete (Day 26)** |
-| **9** | **News & Financial Sentiment** | Financial news ingestion and FinBERT sentiment extraction pipeline. | Future (Next Phase) |
-| **10** | **Regulatory & Global Events** | Macroeconomic, RBI, governmental, and geopolitical event parser. | Future |
+| **8** | **NIFTY & Sector Context** | Broader market indicators, benchmark relative strength, and sector mapping. | Complete (Day 26) |
+| **9** | **News & Financial Sentiment** | Financial news ingestion and FinBERT sentiment extraction pipeline. | **Current Phase (Day 27 Foundation Complete)** |
+| **10** | **Regulatory & Global Events** | Macroeconomic, RBI, governmental, and geopolitical event parser. | Future (Next Phase) |
 | **11** | **LLM Integration** | Dual-role LLM setup: contextual entity extraction and independent forecasting. | Future |
 | **12** | **ML + LLM Combination** | Ensemble layer combining numerical ML and LLM predictions transparently. | Future |
 | **13** | **Web Application** | Interactive FastAPI endpoints and user-facing presentation dashboard. | Future |
@@ -76,9 +76,13 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 - Cross-sectional market breadth calculation: advances, declines, unchanged counts, advance-decline ratio, breadth thrust, net advances, and 20-day SMA breadth participation percentage across equity universes.
 - Strict session alignment preventing look-ahead bias and handling calendar discrepancies.
 
-### Phase 9: News & Financial Sentiment
-- Implement financial news retrieval and deduplication.
-- Integrate FinBERT for domain-specific positive/neutral/negative sentiment scoring.
+### Phase 9: News & Financial Sentiment (Current - Day 27 Foundation Complete)
+- Implement financial news retrieval and deduplication (`app/news/`):
+  - Extensible provider contract `BaseNewsProvider` and concrete `RSSNewsProvider` adapter for Indian market news.
+  - Canonical immutable schema `NewsArticle` capturing headline, publisher source, timezone-aware publication time, distinct ingestion time, symbol associations, URL, summary, and deterministic `article_id`.
+  - News deduplication engine (`deduplicate_news` in `cleaner.py`): removes exact article ID duplicates, duplicate URLs, and syndicated headlines within configurable time windows while preserving the earliest publication.
+  - Strict point-in-time session filtering (`filter_news_point_in_time`): prevents temporal look-ahead leakage by excluding any news published or ingested after the decision cutoff timestamp.
+- Integrate FinBERT for domain-specific positive/neutral/negative sentiment scoring (upcoming Phase 9 task).
 
 ### Phase 10: Regulatory & Global Events
 - Structured ingestion of RBI monetary policy, Union Budget announcements, SEBI circulars, and global indicators (crude oil, USD/INR, US markets).
