@@ -918,3 +918,57 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
 - **Strict Boundary Disclosures:**
   - **Sentiment is Classification, Not Forecast:** Article sentiment reflects the linguistic tone of the article text; it is strictly NOT a price forecast, price target, or directional trading recommendation.
   - **Confidence is Not Market Prediction Probability:** Classifier confidence represents Softmax probability across text categories, NOT calibrated Bayesian confidence of market direction.
+
+### 4.24. Macroeconomic, Regulatory & External Events Ingestion Engine (`app/events/`)
+- **Architectural Overview (Phase 10 / Day 29):**
+  ```text
+  Official Regulatory Feeds & Global Time-Series (RBI, SEBI, Yahoo Finance)
+              │
+              ▼
+  1. Provider Adapters (BaseEventProvider):
+        ├── RBIEventProvider (https://rbi.org.in/pressreleases_rss.xml):
+        │     ├── Ingests official press releases and Monetary Policy Committee (MPC) decisions
+        │     ├── Standard library XML parsing (xml.etree.ElementTree)
+        │     ├── Classifies MONETARY_POLICY vs REGULATORY and extracts repo rate values
+        │     └── Dependency injection support for 100% offline deterministic test doubles
+        ├── SEBIEventProvider (https://www.sebi.gov.in/sebirss.xml):
+        │     ├── Ingests master circulars, regulatory guidelines, and enforcement orders
+        │     ├── Parses SEBI custom date formats localized to Asia/Kolkata (IST)
+        │     └── Assigns equity market sector targeting
+        └── ExternalMarketProvider:
+              ├── Ingests continuous macro variables: Brent Crude (BZ=F), USD/INR (INR=X), S&P 500 (^GSPC)
+              ├── Normalizes into ExternalMarketObservation time-series records
+              └── Bridges continuous variables into canonical MacroEvent via .to_event()
+              │
+              ▼
+  2. Canonical Event Schemas (MacroEvent & ExternalMarketObservation):
+        ├── event_id: Deterministic 16-character SHA-256 hash
+        ├── category: MONETARY_POLICY | REGULATORY | GOVERNMENT | MACRO_INDICATOR | EXTERNAL_MARKET
+        ├── event_type: E.g., 'monetary_policy_statement', 'circular', 'enforcement_order'
+        ├── source_org: Authoritative publishing organization
+        ├── Temporal Anchors: published_at, announced_at, effective_at, ingested_at (all timezone-aware)
+        ├── structured_value: Optional StructuredEventValue (metric_name, value, unit, prior_value, change)
+        ├── affected_sectors: E.g. ('BANKING', 'FINANCIAL_SERVICES') or ('EQUITY_MARKET',)
+        └── url & summary: Validated source link and factual description
+              │
+              ▼
+  3. Syndicated Event Deduplication (deduplicate_events in cleaner.py):
+        ├── Rule 1: Exact Event ID match
+        ├── Rule 2: Exact URL match
+        └── Rule 3: Source organization + normalized title match within configurable window (default 72h)
+              │
+              ▼
+  4. Strict Point-in-Time Session Filtering (filter_events_point_in_time):
+        ├── Invariants:
+        │     - Primary availability timestamp (published_at or announced_at) <= as_of_time
+        │     - System acquisition timestamp (ingested_at) <= as_of_time
+        │     - Future-published and future-ingested events strictly excluded (zero look-ahead leakage)
+        └── Effective Date Preservation: Events announced before cutoff but effective in the future
+              are safely preserved with unaltered effective_at timestamps
+  ```
+- **Temporal Invariants & Provenance Integrity:**
+  - **Multi-Timestamp Isolation:** Discrete event records maintain complete separation between when an event was published (`published_at`), when it was verbally announced (`announced_at`), when it becomes legally effective (`effective_at`), and when the local system acquired the record (`ingested_at`).
+  - **Preservation of Effective Dates:** A policy announced on a Friday afternoon that takes effect the following Monday morning is eligible for Friday evening decision cutoffs, but its `effective_at` timestamp preserves the true future effective date.
+  - **Separation of Time-Series from Discrete Announcements:** Continuous external market measurements (Brent crude, USD/INR, S&P 500) are modeled distinctly as `ExternalMarketObservation` time-series records and are not conflated with discrete regulatory notices or central bank policy decisions.
+- **Strict Non-Causal Disclosure:**
+  - Macroeconomic, central bank, and regulatory events provide contextual market observations; they do NOT have fixed directional or causal effects on individual stock price movements. No automated trading rules or causal price movements are inferred from macro events.

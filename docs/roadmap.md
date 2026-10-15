@@ -17,8 +17,8 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 | **7** | **Verification & Accuracy** | Outcome recording, MAE/RMSE calculation, and accuracy tracking. | Complete (Day 25) |
 | **8** | **NIFTY & Sector Context** | Broader market indicators, benchmark relative strength, and sector mapping. | Complete (Day 26) |
 | **9** | **News & Financial Sentiment** | Financial news ingestion and FinBERT sentiment extraction pipeline. | Complete (Day 27-28) |
-| **10** | **Regulatory & Global Events** | Macroeconomic, RBI, governmental, and geopolitical event parser. | **Next Phase (Phase 10)** |
-| **11** | **LLM Integration** | Dual-role LLM setup: contextual entity extraction and independent forecasting. | Future |
+| **10** | **Regulatory & Global Events** | Macroeconomic, RBI, governmental, and geopolitical event parser. | **Current Phase (Day 29 Foundation Complete)** |
+| **11** | **LLM Integration** | Dual-role LLM setup: contextual entity extraction and independent forecasting. | Future (Next Phase) |
 | **12** | **ML + LLM Combination** | Ensemble layer combining numerical ML and LLM predictions transparently. | Future |
 | **13** | **Web Application** | Interactive FastAPI endpoints and user-facing presentation dashboard. | Future |
 | **14** | **Live Data Pipeline** | Point-in-time current price, breadth, and market session intake. | Future |
@@ -92,9 +92,18 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Canonical `ArticleSentimentResult` schema capturing article ID, headline, sentiment label, winning confidence score, class probability distribution, model provenance, and execution timestamp (`scored_at`).
   - Strict non-causal disclosure: sentiment classification is text tone representation, not a directional stock price prediction.
 
-### Phase 10: Regulatory & Global Events
-- Structured ingestion of RBI monetary policy, Union Budget announcements, SEBI circulars, and global indicators (crude oil, USD/INR, US markets).
-- Contextual impact mapping instead of naive headline matching.
+### Phase 10: Regulatory & Global Events (Current - Day 29 Foundation Complete)
+- Macroeconomic, regulatory, and external events ingestion foundation (`app/events/` - Day 29 complete):
+  - Canonical immutable schema `MacroEvent` with four distinct timezone-aware timestamps (`published_at`, `announced_at`, `effective_at`, `ingested_at`), deterministic SHA-256 `event_id`, and `StructuredEventValue`.
+  - Canonical `ExternalMarketObservation` schema representing continuous macro variables (Brent Crude, USD/INR, S&P 500) as distinct time-series observations.
+  - Official primary-source adapters:
+    - `RBIEventProvider` (`https://rbi.org.in/pressreleases_rss.xml`): ingests press releases, MPC decisions, and repo rate levels.
+    - `SEBIEventProvider` (`https://www.sebi.gov.in/sebirss.xml`): ingests master circulars, regulatory guidelines, and enforcement orders.
+    - `ExternalMarketProvider`: ingests continuous macro time-series measurements (`BZ=F`, `INR=X`, `^GSPC`).
+  - Multi-tier event deduplication engine (`deduplicate_events` in `cleaner.py`): removes exact IDs, duplicate URLs, and matching source+title records within configurable time windows.
+  - Strict point-in-time session filtering (`filter_events_point_in_time`): eliminates look-ahead leakage across market decision cutoffs while preserving future legal effective dates.
+  - Non-causal representation: macro events and external market observations represent contextual information without asserting causal stock price direction rules.
+- Contextual impact mapping and cross-sectional event features (upcoming Phase 10 task).
 
 ### Phase 11: LLM Integration
 - Deploy LLM for structured context extraction (Role A).

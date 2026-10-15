@@ -977,3 +977,42 @@ This document formalizes the architectural decisions made on Day 1. All future i
 - **Consequences:**
   - Establishes a robust, reproducible, and verifiable FinBERT sentiment foundation.
   - Guarantees fast, offline unit testing and clean error quarantining.
+
+---
+
+## ADR 57: Macroeconomic, Regulatory & External Events Schema, Temporal Availability Rules, and Ingestion Architecture
+- **Status:** Accepted
+- **Context:**
+  - In Phase 10 (Day 29), the system expands from company-specific news to broader macroeconomic, central bank (RBI), market regulator (SEBI), and external market drivers (Brent crude oil, USD/INR, US indices).
+  - Ingesting macroeconomic and regulatory information introduces critical risks of data distortion and lookahead leakage:
+    1. Temporal conflation: Confusing announcement time, publication time, legal effective date, and system acquisition time (e.g. treating an effective date on next Monday as if it was known last week, or treating an event announced Friday afternoon as if it took effect immediately).
+    2. Category confusion: Conflating continuous time-series market variables (e.g. daily Brent crude settle prices, USD/INR exchange rates) with discrete regulatory circulars or central bank rate decisions.
+    3. Unverified scraping & fragile scrapers: Attempting to scrape dynamic government portals with fragile HTML scrapers that break on minor layout shifts.
+    4. Causal over-interpretation: Mechanically assuming that rate hikes, oil price increases, or currency depreciations have fixed deterministic directional effects on equity prices without statistical validation.
+- **Decision:**
+  1. **Canonical Typed Schema & Temporal Anchor Architecture (`app/events/schemas.py`):**
+     - Define `MacroEvent` with four distinct timezone-aware timestamps:
+       - `published_at`: When the text became publicly readable online.
+       - `announced_at`: When an oral or televised press conference made the announcement public.
+       - `effective_at`: When the regulation, policy rate, or mandate legally takes effect.
+       - `ingested_at`: When the local system acquired and normalized the record.
+     - Require at least one temporal anchor (`published_at`, `announced_at`, or `effective_at`).
+     - Represent unknown timestamps strictly as `None`; never synthesize fictitious publication times.
+     - Deterministic 16-hex collision-resistant SHA-256 identifier (`event_id`).
+  2. **Separation of Continuous Market Measurements from Discrete Announcements:**
+     - Continuous variables are represented as `ExternalMarketObservation` records (`series_id`, `timestamp`, `close`, `unit`, `daily_return`).
+     - Distinct from discrete `MacroEvent` policy announcements; `.to_event()` adapter provided for unified stream consumption when needed.
+  3. **Official Primary Source RSS Feeds (`app/events/providers/`):**
+     - `RBIEventProvider`: Ingests official press releases from `https://rbi.org.in/pressreleases_rss.xml`.
+     - `SEBIEventProvider`: Ingests official circulars and orders from `https://www.sebi.gov.in/sebirss.xml`.
+     - Standard library `xml.etree.ElementTree` parsing, requiring zero external scraping libraries or third-party packages.
+     - Injectable custom fetchers for 100% deterministic, offline unit testing.
+  4. **Strict Point-in-Time Availability Rule (`filter_events_point_in_time`):**
+     - An event is eligible at market decision cutoff $T_{cutoff}$ if and only if its primary availability timestamp (`published_at` or `announced_at`) $\le T_{cutoff}$ AND its system acquisition timestamp (`ingested_at`) $\le T_{cutoff}$.
+     - Events announced before $T_{cutoff}$ that take effect in the future (`effective_at > T_{cutoff}`) are eligible, but their `effective_at` timestamps are strictly preserved without modification.
+     - Zero look-ahead leakage: future-published and future-ingested records are strictly eliminated.
+  5. **Non-Causal Representation Disclosure:**
+     - Macro events and external market variables represent contextual information; they do NOT assert causal or deterministic stock price movement predictions.
+- **Consequences:**
+  - Establishes a clean, extensible, auditable event ingestion architecture.
+  - Guarantees zero look-ahead bias and maintains temporal integrity across all macro and regulatory feeds.

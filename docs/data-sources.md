@@ -58,9 +58,9 @@ This document catalogs the candidate data sources required for the Indian Stock 
 
 | Information | Candidate Providers / Mechanisms | Status | Notes / Verification Requirements |
 |---|---|:---:|---|
-| RBI Monetary Policy & Notifications | Reserve Bank of India (RBI) Press Releases & Circulars | **PLANNED / TO BE VERIFIED** | Interest rate decisions, liquidity announcements, and banking regulatory changes. |
-| SEBI Regulatory Circulars | SEBI notifications & enforcement orders | **PLANNED / TO BE VERIFIED** | Market structure changes, derivative rules, circuit limit modifications. |
-| Union Ministry / Government Releases | Press Information Bureau (PIB) India feeds | **PLANNED / TO BE VERIFIED** | Sector subsidies, export/import duties, PLI scheme announcements. |
+| RBI Monetary Policy & Notifications | Reserve Bank of India (RBI) Press Releases & Circulars (`https://rbi.org.in/pressreleases_rss.xml`) | **VERIFIED (Day 29)** | Verified live XML ingestion via `RBIEventProvider`. Parses press releases, Monetary Policy Committee (MPC) decisions, and repo rate levels. Timezone normalized to `Asia/Kolkata` (IST). |
+| SEBI Regulatory Circulars | SEBI notifications, master circulars & enforcement orders (`https://www.sebi.gov.in/sebirss.xml`) | **VERIFIED (Day 29)** | Verified live XML ingestion via `SEBIEventProvider`. Parses circulars and orders, normalizes SEBI custom timestamps, and targets equity market sectors. |
+| Union Budget & Government Releases | Union Budget (`https://www.indiabudget.gov.in/`) & Press Information Bureau (PIB) | **PLANNED / TO BE VERIFIED** | Union Budget site verified accessible; annual budget speech and finance bill documents are seasonal. PIB RSS endpoints undergo periodic URL scheme shifts; structured government parser planned for Phase 10 expansion. |
 
 ---
 
@@ -68,9 +68,10 @@ This document catalogs the candidate data sources required for the Indian Stock 
 
 | Information | Candidate Providers / Mechanisms | Status | Notes / Verification Requirements |
 |---|---|:---:|---|
-| Currency (USD/INR, EUR/INR) | Central bank feeds, Forex market APIs | **PLANNED / TO BE VERIFIED** | Essential for IT, Pharma (exporters) and Oil/Commodity (importers). |
-| Commodities (Brent Crude, Gold, Natural Gas) | Multi-Commodity Exchange (MCX), global commodity APIs | **PLANNED / TO BE VERIFIED** | Direct cost input for aviation, paint, oil marketing, and fertilizer sectors. |
-| US & Asian Markets (S&P 500, Nasdaq, Nikkei, GIFT Nifty) | Global market APIs, GIFT City IFSC data | **PLANNED / TO BE VERIFIED** | Overnight sentiment indicator for domestic morning opening sessions. |
+| Currency (USD/INR) | Yahoo Finance (`INR=X`) via `ExternalMarketProvider` | **VERIFIED (Day 29)** | Verified daily close exchange rate observations and daily percentage returns. Stored as distinct time-series measurements (`INR/USD`). |
+| Commodities (Brent Crude) | Yahoo Finance (`BZ=F`) via `ExternalMarketProvider` | **VERIFIED (Day 29)** | Verified daily settlement price observations and daily percentage returns (`USD/barrel`). Direct input for petroleum, aviation, and chemicals. |
+| US Markets (S&P 500) | Yahoo Finance (`^GSPC`) via `ExternalMarketProvider` | **VERIFIED (Day 29)** | Verified daily closing level observations (`points`). Overnight sentiment benchmark for morning domestic opening sessions. |
+| Asian Markets & GIFT Nifty | Global market APIs, GIFT City IFSC data | **PLANNED / TO BE VERIFIED** | To be evaluated in live trading pipeline (Phase 14). |
 
 ---
 

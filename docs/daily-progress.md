@@ -2789,3 +2789,96 @@ Executed `scripts/verify_day28.py` covering all core Day 28 invariants:
 - Sentiment is an auxiliary textual feature representing linguistic tone; it is NOT integrated into the XGBoost/LightGBM prediction engine today.
 - No LLM integration (Gemma 3 12B) or Laya AI integration is performed today; both remain scheduled for their planned future roadmap phases.
 - Next scheduled scope: Phase 10: Regulatory & Global Events (macroeconomic, RBI, governmental, and geopolitical event ingestion).
+
+---
+
+## Day 29 - Phase 10: Macroeconomic, Regulatory & External Events Ingestion Foundation
+
+### Goal
+Establish the macroeconomic, regulatory, and external-events ingestion foundation under Phase 10 (`app/events/`):
+1. Ingest official central bank announcements from the Reserve Bank of India (RBI: press releases, MPC decisions, repo rate updates).
+2. Ingest official market regulator circulars and orders from the Securities and Exchange Board of India (SEBI).
+3. Ingest continuous external market variables (Brent crude oil, USD/INR exchange rate, S&P 500) while cleanly distinguishing continuous time-series measurements from discrete policy announcements.
+4. Define canonical, immutable schemas (`MacroEvent`, `StructuredEventValue`, `ExternalMarketObservation`) enforcing 4-timestamp isolation (`published_at`, `announced_at`, `effective_at`, `ingested_at`) and deterministic 16-hex SHA-256 IDs.
+5. Implement multi-tier event deduplication (`deduplicate_events`).
+6. Implement strict point-in-time session filtering (`filter_events_point_in_time`) to eliminate look-ahead leakage across market decision cutoffs while preserving future legal effective dates.
+7. Support 100% offline, deterministic automated testing via dependency injection.
+8. Execute live verification against real RBI, SEBI, and market feeds.
+
+### Work Completed
+1. **Canonical Event Schemas (`app/events/schemas.py`):**
+   - Implemented `EventCategory` enum (`MONETARY_POLICY`, `REGULATORY`, `GOVERNMENT`, `MACRO_INDICATOR`, `EXTERNAL_MARKET`, `OTHER`).
+   - Implemented `StructuredEventValue` frozen dataclass validating finite numeric measurements, units, prior values, and delta changes.
+   - Implemented `MacroEvent` frozen dataclass capturing:
+     - Title, category, event type, source organization, URL, summary, affected sectors/symbols.
+     - Four distinct timezone-aware timestamps: `published_at`, `announced_at`, `effective_at`, and `ingested_at`.
+     - Deterministic 16-character SHA-256 `event_id`.
+     - Primary timestamp property (`primary_timestamp`) for rigorous temporal availability checks.
+     - Lossless `.to_dict()` serialization.
+   - Implemented `ExternalMarketObservation` frozen dataclass capturing continuous time-series measurements with `.to_event()` bridge adapter.
+2. **Event Provider Adapters (`app/events/providers/`):**
+   - `BaseEventProvider(ABC)`: Uniform provider interface.
+   - `RBIEventProvider`: Ingests official RBI press releases (`https://rbi.org.in/pressreleases_rss.xml`), parses XML with stdlib `xml.etree.ElementTree`, normalizes timestamps to `Asia/Kolkata` IST, classifies monetary policy vs. regulatory items, and extracts structured repo rate values.
+   - `SEBIEventProvider`: Ingests official SEBI circulars and orders (`https://www.sebi.gov.in/sebirss.xml`), robustly handles SEBI custom date formats (`16 Oct, 2026 +0530`), and targets equity market sectors.
+   - `ExternalMarketProvider`: Ingests continuous macro variables (Brent Crude `BZ=F`, USD/INR `INR=X`, S&P 500 `^GSPC`), calculates daily percentage returns, and normalizes into `ExternalMarketObservation` records.
+   - All providers support dependency injection of custom fetchers/downloaders for 100% offline test determinism.
+3. **Cleaning, Deduplication, and Point-in-Time Filtering (`app/events/cleaner.py`):**
+   - `deduplicate_events()`: Multi-tier deduplication covering exact event IDs, exact URLs, and matching source+title records within configurable windows (default 72h).
+   - `filter_events_point_in_time()`: Enforces $primary\_timestamp \le as\_of\_time$ and $ingested\_at \le as\_of\_time$, strictly preventing look-ahead leakage across market decision cutoffs while preserving future effective dates.
+4. **Package Exports & Entry Point:**
+   - Exported all schemas, providers, and cleaner functions in `app/events/__init__.py`.
+   - Updated `main.py` verifying Day 29 readiness.
+
+### Real-Data Verification Findings (`scripts/verify_day29.py`)
+Executed `scripts/verify_day29.py` against live official feeds:
+- **RBI Live Ingestion:** Successfully fetched live press releases from `https://rbi.org.in/pressreleases_rss.xml` (e.g. State Government Securities auction, Balance of Payments release, Forex risk FAQs).
+- **SEBI Live Ingestion:** Successfully fetched live circulars and enforcement orders from `https://www.sebi.gov.in/sebirss.xml`.
+- **External Market Series:** Ingested daily measurements for USD/INR (95.04), S&P 500 (7,744.13), and Brent Crude ($105.73/barrel).
+- **Deduplication:** Successfully verified multi-source event deduplication and canonical JSON payload serialization.
+- **Point-in-Time Temporal Isolation:** Verified that establishing a 48h pre-cutoff timestamp strictly eliminated 100% of post-cutoff records with zero look-ahead leakage.
+- **Exit Code:** 0.
+
+### Tests
+- Created `tests/test_macro_events.py` with 21 comprehensive unit tests:
+  1. `test_structured_event_value_valid`: validates structured measurement construction, unit validation, change calculation, and `.to_dict()`.
+  2. `test_structured_event_value_rejects_invalid_numbers`: validates rejection of non-numeric, NaN, or blank unit inputs.
+  3. `test_macro_event_valid_construction`: validates complete `MacroEvent` construction, timezone localization, and serialization.
+  4. `test_macro_event_rejects_missing_temporal_anchors`: validates requirement of at least one temporal anchor.
+  5. `test_macro_event_rejects_naive_timestamps`: validates strict rejection of naive datetimes without timezone info.
+  6. `test_macro_event_rejects_invalid_url`: validates URL scheme and netloc parsing.
+  7. `test_macro_event_stable_deterministic_id`: validates deterministic collision-resistant SHA-256 hashing.
+  8. `test_external_market_observation_valid_construction`: validates time-series observation schema and `.to_event()` adapter.
+  9. `test_external_market_observation_rejects_negative_or_nan_prices`: validates positive finite price constraints.
+  10. `test_deduplicate_events_identical_ids_and_urls`: validates exact duplicate ID and URL elimination.
+  11. `test_deduplicate_events_syndicated_titles_within_window`: validates fuzzy title+source deduplication within time window.
+  12. `test_deduplicate_events_empty_input`: validates graceful empty list handling.
+  13. `test_filter_events_point_in_time_exact_cutoff_and_exclusion`: validates inclusion at exact cutoff and exclusion of future-published or future-ingested records.
+  14. `test_filter_events_point_in_time_preserves_effective_dates`: validates that future effective dates (`effective_at`) remain unmutated.
+  15. `test_filter_events_point_in_time_lookback_window`: validates lookback window duration filtering.
+  16. `test_rbi_provider_parses_sample_xml`: validates RBI XML parsing, monetary policy classification, and repo rate extraction.
+  17. `test_rbi_provider_handles_malformed_xml`: validates `EventProviderError` on broken XML syntax.
+  18. `test_rbi_provider_handles_empty_response`: validates graceful empty list return on blank payload.
+  19. `test_sebi_provider_parses_sample_xml`: validates SEBI XML parsing, master circular classification, and custom date parsing.
+  20. `test_sebi_provider_handles_malformed_xml`: validates `EventProviderError` on broken XML syntax.
+  21. `test_external_market_provider_offline_mock`: validates offline deterministic external market observation ingestion and event mapping.
+- **Full Test Suite Results:**
+  - Previous baseline: 362 passed
+  - New total: **383 passed in 6.99s** (21 new tests, 0 failures, 0 regressions across 27 test modules).
+  - 100% offline and deterministic; zero external network dependencies in unit tests.
+
+### Review
+- **Ponytail / Senior Dev Mode:** Reused existing standard library XML parsing (`xml.etree.ElementTree`) and URL retrieval (`urllib.request`); reused `yfinance` for external market measurements; zero new external packages added; distinct modeling of continuous time-series vs. discrete announcements; zero look-ahead bias; strict non-causal representation.
+
+### Documentation
+- Updated `README.md` to Day 29 status with 383 passing tests.
+- Updated `docs/architecture.md` with Section 4.24 detailing Macroeconomic, Regulatory & External Events Ingestion Engine.
+- Updated `docs/data-sources.md` marking Section 6 (RBI & SEBI) and Section 7 (USD/INR, Brent Crude, S&P 500) as VERIFIED (Day 29).
+- Updated `docs/decisions.md` with ADR 57.
+- Updated `docs/roadmap.md` marking Phase 10 / Day 29 foundation complete.
+- Updated `docs/daily-progress.md` with Day 29 development log.
+
+### Known Limitations & Next Steps
+- Day 29 implements the event ingestion and point-in-time filtering foundation. Contextual impact mapping, cross-sectional event joins, and feature matrix integration will be designed in subsequent Phase 10 milestones.
+- Union Budget announcements (`https://www.indiabudget.gov.in/`) are annual/seasonal; structured PDF/speech document parsing will be addressed during budget release windows. PIB RSS feeds undergo periodic scheme shifts; adapter planned for dedicated ministerial API endpoints.
+- No LLM integration (Gemma 3 12B) or Laya AI integration is performed today; both remain scheduled for their planned future roadmap phases (Phase 11+).
+- Next scheduled scope: Phase 10 continuation (contextual impact mapping and cross-sectional event feature extraction).
