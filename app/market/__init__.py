@@ -51,6 +51,20 @@ from app.market.returns import (
     calculate_standard_deviation,
     compute_market_returns,
 )
+from app.market.benchmark import (
+    BROAD_MARKET_BENCHMARK,
+    BANKING_BENCHMARK,
+    IT_BENCHMARK,
+    SECTOR_BENCHMARK_MAP,
+    MarketBreadthObservation,
+    RelativePerformanceFeature,
+    align_benchmark_series,
+    compute_covariance,
+    compute_market_breadth,
+    compute_multi_symbol_breadth_series,
+    compute_relative_performance,
+    get_sector_benchmark,
+)
 from app.market.visualizer import (
     generate_market_charts,
     plot_closing_prices,
@@ -103,6 +117,18 @@ __all__ = [
     "plot_closing_prices",
     "plot_daily_returns",
     "generate_market_charts",
+    "BROAD_MARKET_BENCHMARK",
+    "BANKING_BENCHMARK",
+    "IT_BENCHMARK",
+    "SECTOR_BENCHMARK_MAP",
+    "MarketBreadthObservation",
+    "RelativePerformanceFeature",
+    "align_benchmark_series",
+    "compute_covariance",
+    "compute_market_breadth",
+    "compute_multi_symbol_breadth_series",
+    "compute_relative_performance",
+    "get_sector_benchmark",
 ]
 
 

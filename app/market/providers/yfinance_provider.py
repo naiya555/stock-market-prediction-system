@@ -16,6 +16,32 @@ from app.market.providers.base import BaseMarketDataProvider
 logger = get_logger(__name__)
 
 
+# Standard Indian market benchmark index mapping for Yahoo Finance
+INDEX_SYMBOL_MAP: dict[str, str] = {
+    "NIFTY": "^NSEI",
+    "NIFTY50": "^NSEI",
+    "NIFTY_50": "^NSEI",
+    "^NSEI": "^NSEI",
+    "BANKNIFTY": "^NSEBANK",
+    "NIFTYBANK": "^NSEBANK",
+    "NIFTY_BANK": "^NSEBANK",
+    "^NSEBANK": "^NSEBANK",
+    "NIFTYIT": "^CNXIT",
+    "CNXIT": "^CNXIT",
+    "NIFTY_IT": "^CNXIT",
+    "^CNXIT": "^CNXIT",
+    "SENSEX": "^BSESN",
+    "^BSESN": "^BSESN",
+    "NIFTY500": "^CRSLDX",
+    "CRSLDX": "^CRSLDX",
+    "NIFTY_500": "^CRSLDX",
+    "^CRSLDX": "^CRSLDX",
+    "NIFTYMIDCAP50": "^NSEMDCP50",
+    "NSEMDCP50": "^NSEMDCP50",
+    "^NSEMDCP50": "^NSEMDCP50",
+}
+
+
 class YFinanceProvider(BaseMarketDataProvider):
     """Historical market data provider backed by Yahoo Finance."""
 
@@ -37,10 +63,16 @@ class YFinanceProvider(BaseMarketDataProvider):
 
         Returns:
             Tuple of (base_symbol, query_ticker)
-            e.g., ('BHARTIARTL', 'BHARTIARTL.NS')
+            e.g., ('BHARTIARTL', 'BHARTIARTL.NS') or ('^NSEI', '^NSEI')
         """
         clean = symbol.strip().upper()
-        if clean.endswith(".NS") or clean.endswith(".BO"):
+        if clean in INDEX_SYMBOL_MAP:
+            base = clean
+            query_ticker = INDEX_SYMBOL_MAP[clean]
+        elif clean.startswith("^"):
+            base = clean
+            query_ticker = clean
+        elif clean.endswith(".NS") or clean.endswith(".BO"):
             base = clean.rsplit(".", 1)[0]
             query_ticker = clean
         else:

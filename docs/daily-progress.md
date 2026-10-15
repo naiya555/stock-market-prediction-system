@@ -2537,6 +2537,89 @@ Executed `scripts/verify_day25.py` against live market data:
 - Model probabilities remain uncalibrated raw scores; calibration is reserved for a future phase.
 - Next scheduled scope: Phase 8 (NIFTY & Sector Context: ingesting benchmark indices, relative performance, and market breadth).
 
+---
+
+## Day 26 - NIFTY Benchmark & Sector Context Engine
+
+### Goal
+Implement Phase 8: NIFTY & Sector Context foundation:
+1. Ingest Indian benchmark indices (NIFTY 50 `^NSEI`, NIFTY Bank `^NSEBANK`, NIFTY IT `^CNXIT`, and sectoral indices) via market data provider with dedicated index symbol resolution.
+2. Establish point-in-time session alignment across equities and benchmarks (`align_benchmark_series`), strictly preventing look-ahead bias and tolerating trading calendar/holiday discrepancies.
+3. Compute point-in-time relative performance features (`compute_relative_performance`): daily excess return (alpha), relative strength ratio, 5d and 20d relative strength momentum, 20-session rolling beta, and 20-session rolling correlation with sample degrees of freedom ($ddof=1$) and zero-variance guards.
+4. Implement cross-sectional market breadth calculation (`compute_market_breadth` and `compute_multi_symbol_breadth_series`): advances, declines, unchanged counts, advance-decline ratio, breadth thrust, net advances, and 20-day SMA breadth participation percentage.
+5. Provide comprehensive automated unit tests (deterministic, mock-based) and execute real-market verification.
+
+### Work Completed
+1. **Provider Index Symbol Resolution (`app/market/providers/yfinance_provider.py`):**
+   - Implemented `INDEX_SYMBOL_MAP` supporting standard Indian indices and friendly aliases: `NIFTY`, `NIFTY50`, `BANKNIFTY`, `NIFTYBANK`, `NIFTYIT`, `CNXIT`, `SENSEX`, `NIFTY500`, `NIFTYMIDCAP50`.
+   - Updated `_resolve_symbols` to treat symbols starting with `^` or mapped index aliases as pure index tickers, preventing unwanted exchange suffixes (`.NS` / `.BO`) from causing HTTP 404 errors.
+2. **Benchmark & Context Engine Implementation (`app/market/benchmark.py`):**
+   - Defined `SECTOR_BENCHMARK_MAP` and `get_sector_benchmark()` resolving sector aliases (`BANKING`, `FINANCIAL_SERVICES`, `IT`, `TECH`) to canonical tickers (`^NSEBANK`, `^CNXIT`) with safe fallback to `^NSEI`.
+   - Created `RelativePerformanceFeature` dataclass with `.to_dict()` serialization.
+   - Created `MarketBreadthObservation` dataclass with `.to_dict()` serialization.
+   - Implemented `compute_covariance()` using sample degrees of freedom ($ddof=1$) with length and NaN validation.
+   - Implemented `align_benchmark_series()` with strict point-in-time calendar date matching ($bar.timestamp.date()$) and zero look-ahead bias.
+   - Implemented `compute_relative_performance()` calculating:
+     - Daily excess return (alpha): $R_{stock} - R_{bench}$.
+     - Relative strength ratio: $Close_{stock} / Close_{bench}$.
+     - 5d and 20d relative strength momentum: $(RS_t / RS_{t-w}) - 1.0$.
+     - 20-session rolling beta: $\beta = Cov(R_s, R_b) / Var(R_b)$ with zero benchmark variance guard ($Var(R_b) < 1e-12 \implies None$).
+     - 20-session rolling correlation: $\rho = Cov(R_s, R_b) / (\sigma_s \sigma_b)$ clamped to $[-1.0, 1.0]$.
+   - Implemented `compute_market_breadth()` and `compute_multi_symbol_breadth_series()` calculating advances, declines, unchanged, advance/decline ratio (safe against zero declines), breadth thrust, net advances, and 20-day SMA breadth participation percentage.
+3. **Module Exports & Application Entry Point:**
+   - Exported all new benchmark components in `app/market/__init__.py`.
+   - Updated `main.py` verifying Day 26 readiness.
+
+### Real-Data Verification Findings (BHARTIARTL.NS & ^NSEI)
+Executed `scripts/verify_day26.py` against live market data:
+- **Symbol Resolution:** Verified pure index tickers (`^NSEI`, `^NSEBANK`) and aliases (`NIFTY`, `BANKNIFTY`) resolve without `.NS` suffix.
+- **Historical Ingestion:** Fetched 61 daily sessions for Bharti Airtel and NIFTY 50 from 2026-07-18 to 2026-10-16.
+- **Session Alignment:** 61/61 pairs matched strictly on identical calendar dates.
+- **Relative Performance:**
+  - On 2026-10-14: Bharti Airtel Close ₹1,794.60, NIFTY 50 Close ₹22,622.70.
+  - Alpha: $-0.22\%$, RS Ratio: $0.0793$, RS Momentum 5d: $-2.23\%$.
+  - 20-session Rolling Beta: **0.898** (defensive/moderate beta characteristic for large-cap telecom).
+  - 20-session Rolling Correlation: **0.537** (positive, statistically bounded co-movement with broad market).
+- **Cross-Sectional Market Breadth:**
+  - Evaluated representative basket across 61 sessions: Bharti Airtel, Reliance, TCS, HDFC Bank.
+  - Latest snapshot (2026-10-14): Total: 4, Advances: 2, Declines: 2, Unchanged: 0, ADR: 1.0, Thrust: 0.5, % Above 20-day SMA: 25.0%.
+- **Invariant Audit:** Zero lookahead bias, zero division-by-zero errors, zero floating point overflows.
+
+### Tests
+- Created `tests/test_benchmark_context.py` with 13 comprehensive unit tests:
+  1. `test_provider_resolves_index_tickers`: verifies resolution of index tickers and friendly aliases without `.NS`.
+  2. `test_provider_preserves_equity_symbols`: verifies regular equity tickers append `.NS` as expected.
+  3. `test_sector_benchmark_resolution`: verifies sector mapping to NIFTY Bank, NIFTY IT, and NIFTY 50 fallback.
+  4. `test_compute_covariance_synthetic`: verifies mathematical covariance accuracy against known linear slope ($y=2x \implies Cov=5.0$).
+  5. `test_compute_covariance_guards`: verifies NaN handling, length mismatch, and small sample guards.
+  6. `test_align_benchmark_series_matching_dates`: verifies session date pairing.
+  7. `test_align_benchmark_series_handles_calendar_gaps`: verifies calendar gaps and holidays pair safely with None.
+  8. `test_compute_relative_performance_empty`: verifies empty input handling.
+  9. `test_compute_relative_performance_synthetic_beta_and_alpha`: verifies beta and correlation against known synthetic alternating series ($\beta=2.0, \rho=1.0$).
+  10. `test_zero_variance_guard`: verifies zero-variance benchmark series safely return None for beta and correlation without division-by-zero errors.
+  11. `test_compute_market_breadth_snapshot`: verifies advance, decline, unchanged, ADR, thrust, and SMA participation.
+  12. `test_compute_market_breadth_zero_declines_guard`: verifies ADR evaluates to None when zero declines occur.
+  13. `test_compute_multi_symbol_breadth_series`: verifies multi-symbol time-series breadth accumulation.
+- **Full Test Suite Results:**
+  - Previous baseline: 314 passed
+  - New total: **327 passed in 12.08s** (13 new tests, 0 failures, 0 regressions across 24 test modules).
+  - Deterministic fixtures and mocks; zero external network dependencies in unit tests.
+
+### Review
+- **Ponytail / Senior Dev Mode:** Reused existing `calculate_daily_returns`, `calculate_standard_deviation`, and `calculate_sma`. Reused `MarketOHLCV` schema. Built with standard library `math`, `dataclasses`, and `datetime` only. Zero third-party packages added.
+
+### Documentation
+- Updated `README.md` to Day 26 status with 327 passing tests.
+- Updated `docs/architecture.md` with Section 4.21 detailing Benchmark & Sector Context Engine.
+- Updated `docs/decisions.md` with ADR 54.
+- Updated `docs/roadmap.md` with Phase 8 / Day 26 completion details.
+- Updated `docs/daily-progress.md` with Day 26 development log.
+
+### Known Limitations & Next Steps
+- Benchmark and sector context features are computed at the market data layer; integration into the canonical training feature matrix (`app/training/feature_matrix.py`) and prediction pipeline will follow in the model refinement roadmap.
+- Next scheduled scope: Phase 9 (News & Financial Sentiment: financial news retrieval, deduplication, and FinBERT sentiment scoring).
+
+
 
 
 

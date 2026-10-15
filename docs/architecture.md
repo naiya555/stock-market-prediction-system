@@ -782,6 +782,48 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   - Just as predictions are protected from retroactive revision, realized outcomes in the `actuals` table are write-once and permanently immutable.
   - Native SQLite triggers (`trg_prevent_actual_update`, `trg_prevent_actual_delete`) enforce this constraint directly at the database engine level.
 
+### 4.21. Benchmark & Sector Context Engine (`app/market/benchmark.py`)
+- **Architectural Overview (Phase 8 / Day 26):**
+  ```text
+  Raw Equities OHLCV + Benchmark OHLCV (^NSEI, ^NSEBANK, ^CNXIT)
+              │
+              ▼
+  1. Symbol Resolution (YFinanceProvider._resolve_symbols)
+        ├── Direct Index Tickers: ^NSEI, ^NSEBANK, ^CNXIT, ^BSESN, ^CRSLDX (no .NS appended)
+        └── Friendly Alias Mapping: NIFTY/NIFTY50 -> ^NSEI, BANKNIFTY -> ^NSEBANK, NIFTYIT -> ^CNXIT
+              │
+              ▼
+  2. Point-in-Time Temporal Alignment (align_benchmark_series)
+        ├── Match session date strictly on calendar trading day: bar.timestamp.date()
+        ├── Missing benchmark sessions paired safely with None (no bar dropping or forward shift)
+        └── Zero look-ahead bias: future benchmark sessions are completely inaccessible at t
+              │
+              ▼
+  3. Relative Performance & Risk Metrics (compute_relative_performance)
+        ├── Daily Relative Return (Alpha): R_stock,t - R_bench,t
+        ├── Relative Strength Ratio: Close_stock,t / Close_bench,t
+        ├── Relative Strength Momentum: (RS_t / RS_{t-w}) - 1 for w ∈ {5, 20} sessions
+        ├── Rolling Beta (20d): Cov(R_s, R_b) / Var(R_b) with sample ddof=1
+        │       └── Zero-variance guard: Var(R_b) < 1e-12 => None
+        └── Rolling Correlation (20d): Cov(R_s, R_b) / (Std(R_s) * Std(R_b))
+                └── Clamped strictly to [-1.0, 1.0]
+              │
+              ▼
+  4. Cross-Sectional Market Breadth Engine (compute_market_breadth & compute_multi_symbol_breadth_series)
+        ├── Advances: Count(R_t > 0)
+        ├── Declines: Count(R_t < 0)
+        ├── Unchanged: Count(R_t == 0)
+        ├── Advance/Decline Ratio (ADR): Advances / Declines (None if Declines == 0)
+        ├── Breadth Thrust: Advances / Total Active Stocks
+        ├── Net Advances: Advances - Declines
+        └── 20-Day SMA Breadth Participation: Fraction of universe with Close_t > SMA20_t
+  ```
+- **Temporal Invariants & Data Integrity:**
+  - **Zero Look-Ahead Invariant:** Relative performance features for trading session $t$ strictly consume prices and returns timestamped $\le t$. Benchmark bars from $t+1$ or later are never referenced.
+  - **Calendar Discrepancy Tolerance:** When market holidays or trading halts cause one series to have an observation while the other is missing, unpaired observations evaluate gracefully to `None` without distorting the surrounding time series.
+  - **Zero-Division & Low-Variance Guards:** When volatility collapses or series exhibit zero variance, rolling beta and correlation evaluate to `None`, avoiding floating-point exceptions or spurious infinities.
+
+
 
 
 

@@ -14,9 +14,9 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 | **4** | **First ML Model** | Baseline XGBoost model setup with walk-forward temporal validation. | Complete (Day 15-21) |
 | **5** | **Prediction Engine** | Point-in-time quantitative forecasting service. | Complete (Day 22-23) |
 | **6** | **Prediction History & Database** | Relational schema and immutable storage for predictions. | Complete (Day 24) |
-| **7** | **Verification & Accuracy** | Outcome recording, MAE/RMSE calculation, and accuracy tracking. | **Current Phase (Day 25 Foundation Complete)** |
-| **8** | **NIFTY & Sector Context** | Broader market indicators, benchmark relative strength, and sector mapping. | Future (Next Phase) |
-| **9** | **News & Financial Sentiment** | Financial news ingestion and FinBERT sentiment extraction pipeline. | Future |
+| **7** | **Verification & Accuracy** | Outcome recording, MAE/RMSE calculation, and accuracy tracking. | Complete (Day 25) |
+| **8** | **NIFTY & Sector Context** | Broader market indicators, benchmark relative strength, and sector mapping. | **Complete (Day 26)** |
+| **9** | **News & Financial Sentiment** | Financial news ingestion and FinBERT sentiment extraction pipeline. | Future (Next Phase) |
 | **10** | **Regulatory & Global Events** | Macroeconomic, RBI, governmental, and geopolitical event parser. | Future |
 | **11** | **LLM Integration** | Dual-role LLM setup: contextual entity extraction and independent forecasting. | Future |
 | **12** | **ML + LLM Combination** | Ensemble layer combining numerical ML and LLM predictions transparently. | Future |
@@ -69,9 +69,12 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 - Prediction evaluation service (`PredictionEvaluator` in `app/history/evaluator.py`): isolate evaluation denominator strictly to verified predictions ($N_{verified}$), exclude pending and ineligible predictions from error metrics, report symmetrical class metrics (UP/DOWN precision, recall, F1) and confusion matrix breakdown, zero division safety for insufficient samples, without fabricating target prices or calibrated probabilities (Day 25 complete).
 - Compute continuous prediction error metrics (MAE, RMSE, direction magnitude correlation) when magnitude models are introduced in later phases.
 
-### Phase 8: NIFTY & Sector Context
-- Ingest NIFTY 50, NIFTY Bank, NIFTY IT, and relevant sector indices.
-- Calculate relative performance and market breadth features.
+### Phase 8: NIFTY & Sector Context (Complete - Day 26)
+- Ingest NIFTY 50 (`^NSEI`), NIFTY Bank (`^NSEBANK`), NIFTY IT (`^CNXIT`), and relevant sector indices via provider index symbol mapping.
+- Calculate point-in-time relative performance: daily relative return / alpha ($R_{stock} - R_{bench}$), relative strength ratio ($Close_{stock} / Close_{bench}$), and 5d/20d relative strength momentum.
+- Compute 20-session rolling beta ($\beta_{20} = Cov(R_s, R_b) / Var(R_b)$) and 20-session rolling correlation ($\rho_{20} = Cov(R_s, R_b) / (\sigma_s \sigma_b)$) with zero-variance safeguards.
+- Cross-sectional market breadth calculation: advances, declines, unchanged counts, advance-decline ratio, breadth thrust, net advances, and 20-day SMA breadth participation percentage across equity universes.
+- Strict session alignment preventing look-ahead bias and handling calendar discrepancies.
 
 ### Phase 9: News & Financial Sentiment
 - Implement financial news retrieval and deduplication.

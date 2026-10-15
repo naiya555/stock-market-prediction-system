@@ -853,6 +853,47 @@ This document formalizes the architectural decisions made on Day 1. All future i
   - Guarantees an unassailable, leak-free evaluation methodology for Indian equity predictions.
   - Ensures full reproducibility and mathematical correctness with zero external ORM dependencies.
 
+---
+
+## ADR 54: Benchmark Ingestion, Relative Performance Features, and Market Breadth Engine
+- **Status:** Accepted
+- **Context:**
+  - Phase 8 requires providing benchmark and sector context (NIFTY 50, NIFTY Bank, NIFTY IT, etc.) to evaluate stock performance relative to the broader market and sectoral movements.
+  - Indian equity indices in Yahoo Finance use distinct symbol conventions (`^NSEI`, `^NSEBANK`, `^CNXIT`, `^CRSLDX`, `^BSESN`) that fail with HTTP 404 errors if standard equity exchange suffixes (`.NS`, `.BO`) are appended.
+  - Measuring market context introduces temporal and mathematical risks:
+    1. Look-ahead bias: Using future benchmark returns or misaligning calendar sessions between stocks and benchmarks.
+    2. Calendar discrepancies: Stock sessions missing from index series (e.g. trading halts) or holiday differences creating unaligned observations.
+    3. Mathematical edge cases: Zero variance in benchmark or stock returns causing division-by-zero errors in rolling beta ($Cov/Var$) and rolling correlation ($Cov/(\sigma_s \sigma_b)$).
+    4. Market breadth aggregation: Cross-sectional advance/decline metrics distorting if inactive or missing stocks are treated as active decliners, or if zero declines cause division-by-zero in advance-decline ratios.
+- **Decision:**
+  1. **Provider Index Symbol Resolution (`app/market/providers/yfinance_provider.py`):**
+     - Maintain an explicit `INDEX_SYMBOL_MAP` resolving friendly aliases (`NIFTY`, `NIFTY50`, `BANKNIFTY`, `NIFTYBANK`, `NIFTYIT`, `CNXIT`, `SENSEX`, etc.) to canonical Yahoo Finance index tickers (`^NSEI`, `^NSEBANK`, `^CNXIT`, `^BSESN`).
+     - Tickers starting with `^` are treated as pure indices and are exempted from appending `.NS` or `.BO` suffixes.
+  2. **Point-in-Time Temporal Alignment (`align_benchmark_series` in `app/market/benchmark.py`):**
+     - Match each stock session strictly to the benchmark session sharing the exact calendar date (`bar.timestamp.date()`).
+     - If benchmark data is missing on a date, pair with `None` without dropping or corrupting the stock session.
+     - Strictly enforce zero look-ahead bias: future benchmark observations ($> t$) are never accessible at time $t$.
+  3. **Relative Performance Mathematics & Zero-Variance Safeguards (`compute_relative_performance`):**
+     - Relative Return (Alpha): $R_{rel, t} = R_{stock, t} - R_{bench, t}$. Evaluates to `None` if either return is missing.
+     - Relative Strength Ratio: $RS_t = Close_{stock, t} / Close_{bench, t}$ for $Close_{bench, t} > 0$.
+     - Relative Strength Momentum: $RS_t / RS_{t-w} - 1.0$ at 5-session and 20-session windows.
+     - Rolling Beta ($\beta_{20}$): $Cov(R_s, R_b) / Var(R_b)$ with sample degrees of freedom ($ddof=1$). Guarded against zero benchmark variance ($Var(R_b) < 1e-12 \implies None$).
+     - Rolling Correlation ($\rho_{20}$): $Cov(R_s, R_b) / (\sigma_s \sigma_b)$ with $ddof=1$. Guarded against zero variance in either series. Strictly clamped to $[-1.0, 1.0]$ to guard against numerical rounding errors.
+     - Minimum history guard: requires $\ge 10$ valid paired return sessions within the 20-session rolling window; otherwise evaluates safely to `None`.
+  4. **Cross-Sectional Market Breadth Engine (`compute_market_breadth` & `compute_multi_symbol_breadth_series`):**
+     - Partition active stocks into Advances ($R_t > 0$), Declines ($R_t < 0$), and Unchanged ($R_t == 0$).
+     - Advance/Decline Ratio (ADR): $Advances / Declines$ safely evaluates to `None` when $Declines == 0$ (prevents `ZeroDivisionError`).
+     - Breadth Thrust: $Advances / Total$.
+     - Net Advances: $Advances - Declines$.
+     - Moving Average Breadth Participation: evaluates fraction of constituents trading above their 20-day SMA ($Close_t > SMA_{20, t}$).
+  5. **Minimalism & Standard Library Mathematics:**
+     - Reuse `calculate_daily_returns`, `calculate_standard_deviation`, and `calculate_sma` from existing codebase.
+     - Zero new external dependencies. Standard library `math`, `dataclasses`, and `datetime` only.
+- **Consequences:**
+  - Provides a robust, leak-free benchmark context and sector relative performance engine for Indian equities.
+  - Enables rich macro/sector context features for downstream prediction models without data leakage or fragility.
+
+
 
 
 

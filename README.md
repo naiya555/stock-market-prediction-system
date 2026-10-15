@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 25: Prediction Outcome Verification & Evaluation Foundation<br/>
+> **Status:** Ongoing Project — Day 26: NIFTY Benchmark & Sector Context Engine<br/>
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -43,7 +43,7 @@ When fully developed, the end-user workflow will operate as follows:
 - **`app/api/`**: FastAPI application endpoints and route handlers (planned).
 - **`app/core/`**: Centralized configuration (`config.py`), logging foundation (`logging_config.py`), and canonical schema contracts (`schemas.py`).
 - **`app/database/`**: Relational database persistence (SQLite schema, WAL mode, foreign keys, immutability triggers, and PredictionRepository).
-- **`app/market/`**: Market data acquisition, cleaning, technical feature engineering (returns, volatility, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features), trend engine (swing points, market structure, trend classification), market breadth, pipeline orchestration, and visualization.
+- **`app/market/`**: Market data acquisition, cleaning, technical feature engineering (returns, volatility, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features), trend engine (swing points, market structure, trend classification), market breadth and benchmark relative performance (`benchmark.py`), pipeline orchestration, and visualization.
 - **`app/news/`**: Financial news ingestion, deduplication, and entity linking.
 - **`app/nlp/`**: FinBERT sentiment scoring and textual analysis.
 - **`app/prediction/`**: Target formulation (`target.py`), directional prediction service (`service.py`), and inference contract (`contract.py`).
@@ -52,11 +52,11 @@ When fully developed, the end-user workflow will operate as follows:
 
 ---
 
-## 4. Current Status: Day 25 (Prediction Outcome Verification & Evaluation Foundation)
+## 4. Current Status: Day 26 (NIFTY Benchmark & Sector Context Engine)
 
-Day 25 implements Phase 7: Verification & Accuracy foundation (`app/history/`). It establishes an automated outcome verification service (`OutcomeVerifier`) and prediction evaluation service (`PredictionEvaluator`) connecting saved predictions with realized market outcomes in the SQLite `actuals` table.
+Day 26 implements Phase 8: NIFTY & Sector Context (`app/market/benchmark.py`). It establishes historical index ingestion (`^NSEI`, `^NSEBANK`, `^CNXIT`), point-in-time session alignment across equities and benchmarks, relative performance features (daily excess return/alpha, relative strength ratio, 5d/20d relative strength momentum), rolling 20-session beta and correlation with zero-variance safety, and cross-sectional market breadth calculation (advances, declines, unchanged, advance-decline ratio, breadth thrust, net advances, and 20-day SMA breadth participation percentage).
 
-Crucially, immutability is enforced across both predictions and actual outcomes via native database triggers (`trg_prevent_prediction_update`, `trg_prevent_prediction_delete`, `trg_prevent_actual_update`, `trg_prevent_actual_delete`). Verification respects trading calendars, weekends, and holidays, identifies pending future sessions without forward leakage, records data provenance (`source`, `recorded_at`), and calculates directional accuracy strictly over eligible, verified predictions ($N_{verified}$) as the sole denominator. All Day 23 uncalibrated probability and unsupported expected movement boundaries are rigorously preserved.
+Crucially, zero look-ahead bias is strictly maintained: benchmark sessions are aligned strictly to matching calendar dates ($bar.timestamp.date()$), and market breadth evaluates constituent return and moving average states without referencing future sessions. All Day 23 uncalibrated probability and unsupported expected movement boundaries are rigorously preserved.
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.
@@ -210,7 +210,14 @@ Crucially, immutability is enforced across both predictions and actual outcomes 
   - Evaluation service (`PredictionEvaluator` in `app/history/evaluator.py`) isolating directional accuracy strictly to completed, verified sessions ($N_{verified}$) as the denominator, excluding pending/ineligible sessions from error metrics.
   - Symmetrical class metrics: UP and DOWN precision, recall, F1, and confusion matrix breakdown ($TP, FP, TN, FN$).
   - Full machine-readable serialization (`.to_dict()`) and formatted evaluation summary rendering (`.format_summary()`).
-- 314 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, XGBoost direction classifier, LightGBM direction classifier, baseline comparison suite, walk-forward cross-validation engine, model error analysis, feature usefulness audit, prediction service engine, structured prediction output, visualizer, SQLite prediction database, and outcome verification/evaluation.
+- NIFTY Benchmark & Sector Context Engine (`app/market/benchmark.py` - Day 26 complete):
+  - Historical index ticker resolution in `YFinanceProvider._resolve_symbols` supporting pure indices (`^NSEI`, `^NSEBANK`, `^CNXIT`, `^BSESN`, `^CRSLDX`) and alias mappings (`NIFTY`, `BANKNIFTY`, `NIFTYIT`).
+  - Sector benchmark mapping (`SECTOR_BENCHMARK_MAP` and `get_sector_benchmark`).
+  - Strict point-in-time temporal alignment (`align_benchmark_series`) matching session dates ($bar.timestamp.date()$) without look-ahead bias and tolerating calendar/holiday discrepancies.
+  - Relative performance features (`compute_relative_performance`): daily excess return (alpha), relative strength ratio, 5d and 20d relative strength momentum.
+  - 20-session rolling beta and correlation with sample degrees of freedom ($ddof=1$) and zero-variance guards ($Var(R_b) < 1e-12 \implies None$).
+  - Cross-sectional market breadth calculation (`compute_market_breadth` & `compute_multi_symbol_breadth_series`): advances, declines, unchanged, advance-decline ratio, breadth thrust, net advances, and 20-day SMA breadth participation percentage.
+- 327 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, XGBoost direction classifier, LightGBM direction classifier, baseline comparison suite, walk-forward cross-validation engine, model error analysis, feature usefulness audit, prediction service engine, structured prediction output, visualizer, SQLite prediction database, outcome verification/evaluation, and benchmark context engine.
 
 ---
 
