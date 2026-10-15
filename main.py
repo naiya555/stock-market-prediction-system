@@ -46,6 +46,7 @@ def main() -> int:
     print("Day 27 financial news ingestion foundation ready")
     print("Day 28 FinBERT financial sentiment scoring foundation ready")
     print("Day 29 macro and regulatory event ingestion foundation ready")
+    print("Day 30 trading session alignment & event impact analysis ready")
     print(f"Python runtime: {sys.version.split()[0]}")
     print(f"Environment: {settings.environment}")
     print(f"Project root: {Path(__file__).resolve().parent}")

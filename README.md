@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 29: Macroeconomic, Regulatory & External Events Ingestion Foundation<br/>
+> **Status:** Ongoing Project — Day 30: Event Impact Analysis & Trading Session Alignment<br/>
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -43,7 +43,7 @@ When fully developed, the end-user workflow will operate as follows:
 - **`app/api/`**: FastAPI application endpoints and route handlers (planned).
 - **`app/core/`**: Centralized configuration (`config.py`), logging foundation (`logging_config.py`), and canonical schema contracts (`schemas.py`).
 - **`app/database/`**: Relational database persistence (SQLite schema, WAL mode, foreign keys, immutability triggers, and PredictionRepository).
-- **`app/events/`**: Macroeconomic, regulatory, and external market event ingestion (`providers/`, `schemas.py`, and `cleaner.py`).
+- **`app/events/`**: Macroeconomic, regulatory, and external market event ingestion, session alignment, and impact analysis (`providers/`, `schemas.py`, `cleaner.py`, `calendar.py`, `aligner.py`, `impact.py`).
 - **`app/market/`**: Market data acquisition, cleaning, technical feature engineering (returns, volatility, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features), trend engine (swing points, market structure, trend classification), market breadth and benchmark relative performance (`benchmark.py`), pipeline orchestration, and visualization.
 - **`app/news/`**: Financial news ingestion (`providers/base.py`, `providers/rss_provider.py`), typed article schemas (`schemas.py`), deduplication, point-in-time filtering (`cleaner.py`), and FinBERT sentiment scoring foundation (`sentiment.py`).
 - **`app/nlp/`**: FinBERT sentiment scoring foundation and textual analysis (`app/nlp/__init__.py`).
@@ -53,11 +53,13 @@ When fully developed, the end-user workflow will operate as follows:
 
 ---
 
-## 4. Current Status: Day 29 (Macroeconomic, Regulatory & External Events Ingestion Foundation)
+## 4. Current Status: Day 30 (Event Impact Analysis & Trading Session Alignment)
 
-Day 29 establishes Phase 10: Macroeconomic, Regulatory & External Events Ingestion Foundation (`app/events/`). It introduces primary-source adapters for the Reserve Bank of India (RBI: press releases, MPC monetary policy decisions, repo rate updates) and Securities and Exchange Board of India (SEBI: circulars, master circulars, and enforcement orders), alongside continuous external market observations (Brent crude oil, USD/INR exchange rate, S&P 500).
+Day 30 completes Phase 10: Regulatory & Global Events (`app/events/`). It establishes deterministic Indian equity trading calendar contracts, session alignment for macroeconomic and regulatory announcements, and empirical event-impact measurement across historical market sessions.
 
-Crucially, the architecture strictly isolates continuous time-series market variables (`ExternalMarketObservation`) from discrete regulatory announcements (`MacroEvent`). It enforces 4-timestamp isolation (`published_at`, `announced_at`, `effective_at`, `ingested_at`), multi-tier event deduplication (`deduplicate_events`), and point-in-time filtering (`filter_events_point_in_time`) that strictly eliminates future-published and future-ingested records while preserving future legal effective dates. Macro events represent contextual observations without asserting deterministic stock price movement predictions.
+The system deterministically routes announcements into `PRE_MARKET`, `IN_SESSION`, or `POST_MARKET` phases. Crucially, events published after market close (> 15:30 IST) or on non-trading days (weekends/holidays) are strictly aligned to the next trading day, preventing information leakage across session close boundaries. Date-only regulatory notices (e.g. SEBI circulars lacking time-of-day) are conservatively aligned to the next session to eliminate unverified same-session lookahead.
+
+Empirical event impact is measured via same-day returns, multi-session forward returns (1d, 3d, 5d), pre- and post-event realized volatilities (5 sessions, ddof=1), and benchmark relative excess returns against NIFTY 50 (`^NSEI`). Incomplete outcome windows safely return `None` (`INCOMPLETE_OUTCOME_WINDOW`) without fabricating future prices, multi-event deduplication prevents double-counting, and all outputs enforce mandatory non-causal disclosures.
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.
@@ -241,7 +243,14 @@ Crucially, the architecture strictly isolates continuous time-series market vari
   - Multi-tier syndicated event deduplication (`deduplicate_events` in `cleaner.py`): removes exact IDs, duplicate URLs, and matching source+title records within configurable windows.
   - Strict point-in-time session filtering (`filter_events_point_in_time`): enforces $primary\_timestamp \le as\_of\_time$ and $ingested\_at \le as\_of\_time$, eliminating look-ahead leakage across market decision cutoffs while preserving future legal effective dates.
   - Non-causal representation: macro events and external market variables represent contextual observations without asserting causal stock price direction rules.
-- 383 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, XGBoost direction classifier, LightGBM direction classifier, baseline comparison suite, walk-forward cross-validation engine, model error analysis, feature usefulness audit, prediction service engine, structured prediction output, visualizer, SQLite prediction database, outcome verification/evaluation, benchmark context engine, financial news ingestion foundation, FinBERT financial sentiment scoring foundation, and macroeconomic/regulatory event ingestion foundation.
+- Trading Session Alignment & Empirical Event Impact Analysis (`app/events/` - Day 30 complete):
+  - Indian equity trading calendar contracts (`BaseTradingCalendar`, `MarketDataTradingCalendar`, `ExchangeTradingCalendar`).
+  - Session alignment engine (`EventSessionAligner`) mapping announcements to `PRE_MARKET` (< 09:15 IST), `IN_SESSION` (09:15-15:30 IST), and `POST_MARKET` (> 15:30 IST).
+  - Anti-leakage boundary enforcement: post-close events and non-trading days (weekends/holidays) strictly route to the next trading day.
+  - Date-only precision guard: conservative next-session alignment for regulatory notices (SEBI) lacking time-of-day.
+  - Empirical event impact analyzer (`EventImpactAnalyzer`): calculates same-day return, 1d/3d/5d forward returns, pre/post realized volatility (5 sessions, ddof=1), and benchmark excess returns (^NSEI).
+  - Incomplete outcome safeguards (`INCOMPLETE_OUTCOME_WINDOW` returning `None` without price fabrication), multi-event deduplication, and mandatory non-causal disclosures.
+- 399 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, XGBoost direction classifier, LightGBM direction classifier, baseline comparison suite, walk-forward cross-validation engine, model error analysis, feature usefulness audit, prediction service engine, structured prediction output, visualizer, SQLite prediction database, outcome verification/evaluation, benchmark context engine, financial news ingestion foundation, FinBERT financial sentiment scoring foundation, macroeconomic/regulatory event ingestion foundation, and trading session alignment & event impact analysis.
 
 ---
 

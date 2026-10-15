@@ -178,11 +178,13 @@ class RBIEventProvider(BaseEventProvider):
                 if end_date is not None and published_at > end_date:
                     continue
 
-            # Classify event
+            # Classify event with word-boundary checks for abbreviations
             full_text = f"{raw_title} {cleaned_summary or ''}".lower()
-            is_monetary = any(
-                k in full_text
-                for k in ("monetary policy", "mpc resolution", "repo rate", "reverse repo", "policy rate", "crr", "slr")
+            is_monetary = bool(
+                re.search(
+                    r"\b(?:monetary policy|mpc resolution|repo rate|reverse repo|policy rate|crr|slr)\b",
+                    full_text,
+                )
             )
 
             if is_monetary:
@@ -216,9 +218,6 @@ class RBIEventProvider(BaseEventProvider):
             except Exception as e:
                 logger.debug("Skipping unparseable RBI event '%s': %s", raw_title, e)
 
-            if len(events) >= limit:
-                break
-
-        # Sort descending by primary timestamp
+        # Sort descending by primary timestamp and apply limit after chronological ordering
         events.sort(key=lambda e: e.primary_timestamp, reverse=True)
-        return events
+        return events[:limit]

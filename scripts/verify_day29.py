@@ -112,27 +112,78 @@ def main() -> int:
     print(f"  Unique Canonical Events Retained:   {dedup_result.summary.unique_count}")
     print(f"  Duplicate Events Removed:           {dedup_result.summary.duplicates_removed}")
 
-    # Inspect sample serialized JSON
-    sample_ev = dedup_result.events[0]
-    print("\n  Sample Serialized MacroEvent JSON Payload:")
-    print(json.dumps(sample_ev.to_dict(), indent=2))
+    # Inspect sample serialized JSON safely
+    if dedup_result.events:
+        sample_ev = dedup_result.events[0]
+        print("\n  Sample Serialized MacroEvent JSON Payload:")
+        print(json.dumps(sample_ev.to_dict(), indent=2))
+    else:
+        print("\n  [WARNING] No events available to serialize sample payload.")
 
     # --- 5. Point-in-Time Temporal Isolation Audit ---
     print("\n--- 5. Point-in-Time Temporal Isolation Guard ---")
-    # Simulate a market decision cutoff 48 hours in the past
-    decision_cutoff = now_ist - timedelta(hours=48)
-    eligible_events = filter_events_point_in_time(
+    # Part A: Test live events against a past cutoff. Since they were ingested just now at now_ist,
+    # 100% of live events must be filtered out when decision_cutoff < now_ist.
+    past_cutoff = now_ist - timedelta(hours=48)
+    filtered_live = filter_events_point_in_time(
         dedup_result.events,
-        as_of_time=decision_cutoff,
+        as_of_time=past_cutoff,
     )
-    print(f"  Simulated Decision Cutoff: {decision_cutoff.strftime('%Y-%m-%d %H:%M:%S IST')}")
-    print(f"  Eligible Pre-Cutoff Events: {len(eligible_events)} / {len(dedup_result.events)}")
+    print(f"  Past Cutoff: {past_cutoff.strftime('%Y-%m-%d %H:%M:%S IST')}")
+    print(f"  Live Events Retained Before Past Cutoff: {len(filtered_live)} (Expected 0 due to ingested_at = now)")
+    assert len(filtered_live) == 0, "Future-ingested live records leaked into past decision cutoff!"
 
-    # Verify no eligible event has primary_timestamp or ingested_at after cutoff
-    for ev in eligible_events:
-        assert ev.primary_timestamp <= decision_cutoff, f"Leakage breach: {ev.primary_timestamp} > {decision_cutoff}"
-        assert ev.ingested_at <= decision_cutoff, f"Leakage breach: {ev.ingested_at} > {decision_cutoff}"
-    print("  [SUCCESS] Zero look-ahead bias verified: 100% of post-cutoff records strictly eliminated.")
+    # Part B: Rigorous PIT test with known pre-cutoff, exact boundary, and post-cutoff events
+    t_cutoff = now_ist - timedelta(days=2)
+    ev_past = MacroEvent(
+        title="Historical MPC Repo Rate Hold",
+        category=EventCategory.MONETARY_POLICY,
+        event_type="rate_decision",
+        source_org="Reserve Bank of India",
+        published_at=t_cutoff - timedelta(hours=2),
+        ingested_at=t_cutoff - timedelta(hours=1),
+        effective_at=t_cutoff + timedelta(days=5),  # Future effective date
+    )
+    ev_boundary = MacroEvent(
+        title="Boundary SEBI Circular on Margin Trading",
+        category=EventCategory.REGULATORY,
+        event_type="circular",
+        source_org="Securities and Exchange Board of India",
+        published_at=t_cutoff,
+        ingested_at=t_cutoff,
+    )
+    ev_future_pub = MacroEvent(
+        title="Future Government Fiscal Update",
+        category=EventCategory.GOVERNMENT,
+        event_type="fiscal_release",
+        source_org="Ministry of Finance",
+        published_at=t_cutoff + timedelta(hours=1),
+        ingested_at=t_cutoff - timedelta(hours=1),  # Ingested early, but future publication
+    )
+    ev_future_ingest = MacroEvent(
+        title="Belatedly Ingested Macro Indicator",
+        category=EventCategory.MACRO_INDICATOR,
+        event_type="cpi_inflation",
+        source_org="MoSPI",
+        published_at=t_cutoff - timedelta(hours=5),
+        ingested_at=t_cutoff + timedelta(hours=1),  # Published in past, but ingested after cutoff
+    )
+
+    test_pool = [ev_past, ev_boundary, ev_future_pub, ev_future_ingest]
+    pit_results = filter_events_point_in_time(test_pool, as_of_time=t_cutoff)
+
+    print(f"  Synthetic Boundary Test: Input = {len(test_pool)}, Eligible Output = {len(pit_results)}")
+    assert len(pit_results) == 2, f"Expected exactly 2 eligible events, got {len(pit_results)}"
+    eligible_ids = {e.event_id for e in pit_results}
+    assert ev_past.event_id in eligible_ids, "Historical event with future effective date was incorrectly dropped!"
+    assert ev_boundary.event_id in eligible_ids, "Exact cutoff boundary event was incorrectly dropped!"
+    assert ev_future_pub.event_id not in eligible_ids, "Future-published event leaked through filter!"
+    assert ev_future_ingest.event_id not in eligible_ids, "Future-ingested event leaked through filter!"
+
+    for ev in pit_results:
+        assert ev.primary_timestamp <= t_cutoff, f"Leakage breach: {ev.primary_timestamp} > {t_cutoff}"
+        assert ev.ingested_at <= t_cutoff, f"Leakage breach: {ev.ingested_at} > {t_cutoff}"
+    print("  [SUCCESS] Point-in-time isolation verified: past and boundary retained, future pub/ingest eliminated.")
 
     print("\n" + "=" * 80)
     print("DAY 29 VERIFICATION COMPLETE: ALL MACRO & REGULATORY INVARIANTS SATISFIED")

@@ -2882,3 +2882,93 @@ Executed `scripts/verify_day29.py` against live official feeds:
 - Union Budget announcements (`https://www.indiabudget.gov.in/`) are annual/seasonal; structured PDF/speech document parsing will be addressed during budget release windows. PIB RSS feeds undergo periodic scheme shifts; adapter planned for dedicated ministerial API endpoints.
 - No LLM integration (Gemma 3 12B) or Laya AI integration is performed today; both remain scheduled for their planned future roadmap phases (Phase 11+).
 - Next scheduled scope: Phase 10 continuation (contextual impact mapping and cross-sectional event feature extraction).
+
+---
+
+## Day 30 - Event Impact Analysis & Trading Session Alignment (Phase 10 Complete)
+
+### Goal
+Implement the foundational event-impact analysis layer that aligns macroeconomic and regulatory events and external-market observations with Indian equity trading sessions:
+1. Review, verify, and resolve unresolved CodeRabbit findings on Day 29 code.
+2. Establish deterministic Indian equity trading calendar abstractions (`BaseTradingCalendar`, `MarketDataTradingCalendar`, `ExchangeTradingCalendar`).
+3. Implement `EventSessionAligner` mapping events to trading sessions across pre-market (< 09:15 IST), in-session (09:15-15:30 IST), post-market (> 15:30 IST -> T+1), weekends, exchange holidays, and date-only precision notices.
+4. Implement `EventImpactAnalyzer` computing same-day return, 1d/3d/5d forward returns, pre- and post-event realized volatilities (5-session rolling sample stdev), and benchmark excess returns (^NSEI).
+5. Enforce strict anti-leakage safeguards: incomplete outcome windows return `None` (`INCOMPLETE_OUTCOME_WINDOW`); multi-event deduplication prevents double-counting; mandatory non-causal disclosures enforced.
+6. Verify offline with deterministic unit tests and live/historical verification script.
+
+### Assessment and Resolution of Day 29 CodeRabbit Findings
+Prior to starting Day 30 feature code, all CodeRabbit findings on Day 29 were systematically inspected and verified:
+1. **External Market Provider Exclusive End-Date:** Confirmed that `yf.download` uses an exclusive `end` date parameter, dropping the final session on `end_date`. Fixed by adding `+ timedelta(days=1)` matching `yfinance_provider.py`.
+2. **Historical Ingestion Timestamps:** Confirmed that `ExternalMarketProvider.fetch_observations` hardcoded `ingested_at = now_ist`, preventing point-in-time backtesting. Added optional `ingested_at: Optional[datetime] = None` parameter defaulting to current IST time.
+3. **Primary Timestamp Conflation with Effective Date:** Confirmed that `MacroEvent.primary_timestamp` fell back to `effective_at`, conflating legal effective dates with public information availability. Fixed precedence strictly to `published_at -> announced_at -> ingested_at`. `effective_at` is preserved strictly as the legal/operational date.
+4. **RBI Provider Classification & Truncation Before Sorting:** Confirmed that `if len(events) >= limit: break` inside the XML parsing loop truncated before sorting by primary timestamp. Fixed by sorting descending by timestamp and then slicing `[:limit]`. Replaced raw substring search with word-boundary regex (`\b(?:crr|slr)\b`) to prevent false positives inside words like 'occurrence' or 'referral'.
+5. **SEBI Date-Only Precision & Sort-Before-Limit:** Fixed sort-before-limit. Enhanced `_parse_sebi_date` to return `(datetime, precision)` and record `time_precision="date_only"` in `raw_metadata` when feeds omit time-of-day.
+6. **Day 29 Verification Script Hardening:** Guarded `sample_ev = dedup_result.events[0]` against empty lists. Replaced vacuous live point-in-time checks with comprehensive pre-cutoff, exact boundary, future-published, and future-ingested synthetic boundary tests.
+7. **Regression Tests Added:** Added 4 new regression tests to `tests/test_macro_events.py` verifying all fixes.
+
+### Work Completed (Day 30)
+1. **Indian Equity Trading Calendar Abstractions (`app/events/calendar.py`):**
+   - Implemented `BaseTradingCalendar(ABC)` defining `is_trading_day`, `get_next_trading_day`, `get_previous_trading_day`, `get_trading_days`, and `get_session_times`.
+   - Implemented `MarketDataTradingCalendar`: extracts valid trading dates directly from observed `MarketOHLCV` bars, eliminating holiday guesswork.
+   - Implemented `ExchangeTradingCalendar`: injectable calendar supporting custom holiday sets, weekend rules, and special sessions (e.g. Diwali Muhurat trading).
+2. **Trading Session Alignment Engine (`app/events/aligner.py`):**
+   - Implemented `EventSessionAligner` mapping events into canonical `AlignedEventSession` records.
+   - Categorizes events into `PRE_MARKET`, `IN_SESSION`, and `POST_MARKET`.
+   - Enforces zero look-ahead: events published after 15:30:00 IST on trading day $T$ are strictly routed to session $T+1$ as `POST_MARKET` information.
+   - Maps non-trading days (weekends & holidays) to the next active trading session.
+   - Date-only precision guard: conservatively aligns date-only regulatory circulars (e.g. SEBI notices lacking time-of-day) to the next trading day when `conservative_date_only=True`.
+3. **Empirical Event Impact Analysis Layer (`app/events/impact.py`):**
+   - Implemented `EventImpactAnalyzer` computing:
+     - Same-day reaction return: $(Close_T / Close_{T-1}) - 1.0$.
+     - Multi-session forward returns: 1-session, 3-session, and 5-session forward returns from the event session close.
+     - Realized volatility: 5-session rolling sample standard deviation ($ddof=1$ via `calculate_standard_deviation`) pre-event ($[T-5 \dots T-1]$) and post-event ($[T+1 \dots T+5]$).
+     - Benchmark relative alpha: excess forward return $R_{stock, 1d} - R_{bench, 1d}$ against broad market (`^NSEI`).
+   - Incomplete outcome guard: sessions where $T+k$ exceeds the latest available historical bar return `None` with status `INCOMPLETE_OUTCOME_WINDOW` (zero price fabrication).
+   - Insufficient history guard: sessions with fewer than 5 prior bars return `None` for pre-volatility with explicit diagnostic status.
+   - Multi-event deduplication & summary: `analyze_events` deduplicates events by `event_id` and computes `AggregateImpactSummary` (sample size, valid counts, mean/median/stdev returns, non-causal disclaimer).
+4. **Package Exports & Entry Point Update:**
+   - Exported all new calendar, aligner, and impact classes in `app/events/__init__.py`.
+   - Updated `main.py` confirming Day 30 readiness.
+
+### Real-Data & Synthetic Verification (`scripts/verify_day30.py`)
+Executed `scripts/verify_day30.py`:
+- **Part 1 (Alignment Matrix):** Verified that pre-market, in-session, post-market, exchange holiday, weekend, and date-only SEBI events aligned deterministically to their respective trading sessions.
+- **Part 2 (Actual Historical Market Data):** Downloaded 62 real bars for `^NSEI` and `RELIANCE.NS`, built a `MarketDataTradingCalendar`, aligned an event to session 2026-09-23, and measured actual same-day return (+0.61%), forward 1d return (-2.31%), 3d return (-4.04%), 5d return (-4.89%), pre-event volatility (0.0118), post-event volatility (0.0141), benchmark return (-1.64%), and excess alpha (-0.67%) with status `MEASURED`.
+- **Part 3 (Anti-Leakage Safeguard):** Verified that an event on the latest available session returned `status="INCOMPLETE_OUTCOME_WINDOW"` and `forward_return_1d=None`.
+- **Part 4 (Deduplication & Disclosures):** Verified that 3 events with an exact duplicate were deduplicated to 2 eligible events, and the mandatory `NON_CAUSAL_DISCLAIMER` was present on the summary.
+- **Exit Code:** 0.
+
+### Tests
+- Created `tests/test_event_impact.py` with 12 comprehensive unit tests:
+  1. `test_market_data_trading_calendar`: verifies calendar extraction from bars, next/previous trading day navigation, and holiday skipping.
+  2. `test_exchange_trading_calendar_holidays_and_special`: verifies weekend rules, exchange holidays, and special Muhurat sessions.
+  3. `test_align_event_pre_market`: verifies pre-market events (< 09:15 IST) align to session $T$ with open/close eligibility.
+  4. `test_align_event_in_session`: verifies in-session events (11:30 IST) align to session $T$ with blocked open eligibility.
+  5. `test_align_event_post_market_does_not_leak_into_same_day`: verifies post-close events (> 15:30 IST) map to session $T+1$.
+  6. `test_align_event_weekend_and_holiday`: verifies weekend and holiday events route to the next active trading session.
+  7. `test_align_event_date_only_conservative`: verifies conservative next-session routing for date-only regulatory notices.
+  8. `test_align_event_timezone_and_boundary_conditions`: verifies UTC to IST conversion and exact 09:15:00 / 15:30:00 / 15:30:01 boundaries.
+  9. `test_impact_analyzer_full_windows`: verifies mathematical correctness of same-day, 1d/3d/5d returns, 5d pre/post volatility, and benchmark excess return.
+  10. `test_impact_analyzer_incomplete_future_window`: verifies `INCOMPLETE_OUTCOME_WINDOW` on latest session without future price fabrication.
+  11. `test_impact_analyzer_insufficient_history`: verifies graceful handling of fewer than 5 prior sessions.
+  12. `test_impact_analyzer_deduplication_and_aggregates`: verifies multi-event deduplication and aggregate statistics calculation.
+- Added 4 regression tests to `tests/test_macro_events.py` for Day 29 CodeRabbit fixes.
+- **Full Test Suite Results:**
+  - Previous baseline: 383 passed across 27 test modules.
+  - New total: **399 passed in 8.27s** (16 new tests, 0 failures, 0 regressions across 28 test modules).
+  - 100% offline and deterministic; zero external network calls in unit tests.
+
+### Review
+- **Ponytail / Senior Dev Mode:** Reused existing `calculate_standard_deviation` from `app.market.returns`; reused `YFinanceProvider` and `clean_market_data`; standard library `zoneinfo` and `datetime` only; zero new dependencies added; strict non-causal representation; zero look-ahead bias across session close and uncompleted windows.
+
+### Documentation
+- Updated `README.md` to Day 30 status with 399 passing tests.
+- Updated `docs/architecture.md` with Section 4.25 detailing Trading Session Alignment & Event Impact Analysis.
+- Updated `docs/decisions.md` with ADR 58.
+- Updated `docs/roadmap.md` marking Phase 10 (Day 29 & Day 30) complete and highlighting Phase 11 as the next objective.
+- Updated `docs/daily-progress.md` with Day 30 development log.
+
+### Known Limitations & Next Steps
+- Day 30 completes Phase 10 (Regulatory & Global Events). All events and external observations are ingested, deduplicated, point-in-time filtered, session-aligned, and descriptively evaluated for returns and volatility.
+- Predictive integration: Macro events and sentiment are descriptive contextual observations; they are not integrated into the numerical model feature matrix to preserve ML feature purity.
+- Next scheduled milestone: Phase 11: LLM Integration (Role A: structured entity & context extraction; Role B: qualitative reasoning & risk identification).

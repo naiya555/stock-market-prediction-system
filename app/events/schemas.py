@@ -253,14 +253,15 @@ class MacroEvent:
         Precedence:
         1. published_at: When the notification became publicly readable.
         2. announced_at: When the official oral or broadcast announcement was made.
-        3. effective_at: When the regulation took effect.
+        3. ingested_at: Conservative fallback when publication time is unknown.
+
+        Note: effective_at is preserved strictly as the legal/operational effective date
+        and is never conflated with information publication availability.
         """
         if self.published_at is not None:
             return self.published_at
         if self.announced_at is not None:
             return self.announced_at
-        if self.effective_at is not None:
-            return self.effective_at
         return self.ingested_at
 
     def to_dict(self) -> Dict[str, Any]:

@@ -17,8 +17,8 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 | **7** | **Verification & Accuracy** | Outcome recording, MAE/RMSE calculation, and accuracy tracking. | Complete (Day 25) |
 | **8** | **NIFTY & Sector Context** | Broader market indicators, benchmark relative strength, and sector mapping. | Complete (Day 26) |
 | **9** | **News & Financial Sentiment** | Financial news ingestion and FinBERT sentiment extraction pipeline. | Complete (Day 27-28) |
-| **10** | **Regulatory & Global Events** | Macroeconomic, RBI, governmental, and geopolitical event parser. | **Current Phase (Day 29 Foundation Complete)** |
-| **11** | **LLM Integration** | Dual-role LLM setup: contextual entity extraction and independent forecasting. | Future (Next Phase) |
+| **10** | **Regulatory & Global Events** | Macroeconomic, RBI, governmental, event parser & session impact. | **Complete (Day 29-30)** |
+| **11** | **LLM Integration** | Dual-role LLM setup: contextual entity extraction and independent forecasting. | **Current Phase (Next Objective)** |
 | **12** | **ML + LLM Combination** | Ensemble layer combining numerical ML and LLM predictions transparently. | Future |
 | **13** | **Web Application** | Interactive FastAPI endpoints and user-facing presentation dashboard. | Future |
 | **14** | **Live Data Pipeline** | Point-in-time current price, breadth, and market session intake. | Future |
@@ -92,7 +92,7 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Canonical `ArticleSentimentResult` schema capturing article ID, headline, sentiment label, winning confidence score, class probability distribution, model provenance, and execution timestamp (`scored_at`).
   - Strict non-causal disclosure: sentiment classification is text tone representation, not a directional stock price prediction.
 
-### Phase 10: Regulatory & Global Events (Current - Day 29 Foundation Complete)
+### Phase 10: Regulatory & Global Events (Complete - Day 29 & Day 30)
 - Macroeconomic, regulatory, and external events ingestion foundation (`app/events/` - Day 29 complete):
   - Canonical immutable schema `MacroEvent` with four distinct timezone-aware timestamps (`published_at`, `announced_at`, `effective_at`, `ingested_at`), deterministic SHA-256 `event_id`, and `StructuredEventValue`.
   - Canonical `ExternalMarketObservation` schema representing continuous macro variables (Brent Crude, USD/INR, S&P 500) as distinct time-series observations.
@@ -103,9 +103,14 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Multi-tier event deduplication engine (`deduplicate_events` in `cleaner.py`): removes exact IDs, duplicate URLs, and matching source+title records within configurable time windows.
   - Strict point-in-time session filtering (`filter_events_point_in_time`): eliminates look-ahead leakage across market decision cutoffs while preserving future legal effective dates.
   - Non-causal representation: macro events and external market observations represent contextual information without asserting causal stock price direction rules.
-- Contextual impact mapping and cross-sectional event features (upcoming Phase 10 task).
+- Trading session alignment & empirical event impact analysis (`app/events/` - Day 30 complete):
+  - Indian equity trading calendar abstractions (`BaseTradingCalendar`): `MarketDataTradingCalendar` anchored directly to realized price bars, and injectable `ExchangeTradingCalendar` supporting configurable weekends, holidays, and Muhurat sessions.
+  - Session alignment engine (`EventSessionAligner` in `aligner.py`): deterministically categorizes events into `PRE_MARKET` (< 09:15 IST), `IN_SESSION` (09:15-15:30 IST), and `POST_MARKET` (> 15:30 IST), routing post-market and non-trading day announcements strictly to the next trading day to eliminate look-ahead leakage across session close.
+  - Date-only precision guard: conservatively aligns date-only regulatory circulars (e.g. SEBI notices lacking time-of-day) to the next trading day.
+  - Empirical event impact analyzer (`EventImpactAnalyzer` in `impact.py`): computes same-day returns, 1d/3d/5d forward returns, pre- and post-event realized volatilities (5-session rolling sample stdev), and benchmark excess returns (^NSEI).
+  - Anti-leakage safeguards: uncompleted future sessions safely return `None` with status `INCOMPLETE_OUTCOME_WINDOW`; multi-event deduplication eliminates double-counting; mandatory non-causal disclosures enforced on all outputs.
 
-### Phase 11: LLM Integration
+### Phase 11: LLM Integration (Current Objective)
 - Deploy LLM for structured context extraction (Role A).
 - Implement independent LLM direct forecast (Role B) with input attribution and risk identification.
 

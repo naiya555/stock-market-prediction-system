@@ -570,3 +570,149 @@ def test_external_market_provider_offline_mock() -> None:
     events = provider.fetch_events(limit=5)
     assert len(events) == 4
     assert all(e.category == EventCategory.EXTERNAL_MARKET for e in events)
+
+
+def test_primary_timestamp_does_not_conflate_effective_at() -> None:
+    """Verify that effective_at is never conflated with information availability."""
+    ingested_time = datetime(2026, 10, 14, 10, 0, tzinfo=IST)
+    pub_time = datetime(2026, 10, 14, 11, 0, tzinfo=IST)
+    ann_time = datetime(2026, 10, 14, 10, 30, tzinfo=IST)
+    eff_time = datetime(2026, 10, 20, 0, 0, tzinfo=IST)  # Future legal effective date
+
+    # Case 1: published_at present
+    ev1 = MacroEvent(
+        title="Event With Publication and Effective",
+        category=EventCategory.REGULATORY,
+        event_type="circular",
+        source_org="SEBI",
+        ingested_at=ingested_time,
+        published_at=pub_time,
+        effective_at=eff_time,
+    )
+    assert ev1.primary_timestamp == pub_time
+    assert ev1.effective_at == eff_time
+
+    # Case 2: Only announced_at and effective_at present
+    ev2 = MacroEvent(
+        title="Event With Announcement and Effective",
+        category=EventCategory.MONETARY_POLICY,
+        event_type="policy",
+        source_org="RBI",
+        ingested_at=ingested_time,
+        announced_at=ann_time,
+        effective_at=eff_time,
+    )
+    assert ev2.primary_timestamp == ann_time
+    assert ev2.effective_at == eff_time
+
+    # Case 3: Only effective_at present (no published_at, no announced_at)
+    # primary_timestamp must fall back to ingested_at, NEVER future effective_at
+    ev3 = MacroEvent(
+        title="Event With Only Effective Date",
+        category=EventCategory.REGULATORY,
+        event_type="guideline",
+        source_org="SEBI",
+        ingested_at=ingested_time,
+        effective_at=eff_time,
+    )
+    assert ev3.primary_timestamp == ingested_time
+    assert ev3.primary_timestamp != eff_time
+    assert ev3.effective_at == eff_time
+
+
+def test_rbi_provider_sort_before_limit_and_word_boundaries() -> None:
+    """Verify RBI provider sorts chronologically before limiting and doesn't trigger false positive substrings."""
+    # Feed with older item first, newer item second, and a title with substring 'occurrence' and 'referral'
+    xml_data = """<?xml version="1.0" encoding="utf-8"?>
+    <rss version="2.0">
+      <channel>
+        <title>Reserve Bank of India - Press Releases</title>
+        <item>
+          <title>Occurrence of Operational Audit and Referral Process</title>
+          <link>https://rbi.org.in/pr1.html</link>
+          <pubDate>Wed, 14 Oct 2026 10:00:00</pubDate>
+          <description>General operational review.</description>
+        </item>
+        <item>
+          <title>Monetary Policy Committee Resolution: Policy Repo Rate Remains at 6.50%</title>
+          <link>https://rbi.org.in/pr2.html</link>
+          <pubDate>Thu, 15 Oct 2026 14:00:00</pubDate>
+          <description>Repo rate maintained by MPC resolution.</description>
+        </item>
+      </channel>
+    </rss>
+    """
+    provider = RBIEventProvider(fetcher=lambda url: xml_data)
+    # Limit to 1: Must return the NEWEST item (Oct 15), not the first item in the feed (Oct 14)
+    events = provider.fetch_events(limit=1)
+    assert len(events) == 1
+    assert "Monetary Policy Committee" in events[0].title
+    assert events[0].category == EventCategory.MONETARY_POLICY
+
+    # Fetch all items to verify word-boundary classification
+    all_events = provider.fetch_events(limit=10)
+    assert len(all_events) == 2
+    # The 'Occurrence ... Referral' item must NOT be classified as monetary_policy (no false positive on 'crr' or 'slr')
+    non_monetary_event = next(e for e in all_events if "Occurrence" in e.title)
+    assert non_monetary_event.category == EventCategory.REGULATORY
+    assert non_monetary_event.event_type == "press_release"
+
+
+def test_sebi_provider_parsing_and_precision() -> None:
+    """Verify SEBI provider XML parsing, custom date format, date_only precision tracking, and sort-before-limit."""
+    xml_data = """<?xml version="1.0" encoding="utf-8"?>
+    <rss version="2.0">
+      <channel>
+        <title>SEBI Press Releases and Circulars</title>
+        <item>
+          <title>Circular on Framework for Margin Trading Facility</title>
+          <link>https://sebi.gov.in/circ1.html</link>
+          <pubDate>14 Oct, 2026 +0530</pubDate>
+          <description>Circular guidelines for brokers.</description>
+        </item>
+        <item>
+          <title>Master Circular for Mutual Funds</title>
+          <link>https://sebi.gov.in/circ2.html</link>
+          <pubDate>16 Oct, 2026 +0530</pubDate>
+          <description>Master circular compilation.</description>
+        </item>
+      </channel>
+    </rss>
+    """
+    provider = SEBIEventProvider(fetcher=lambda url: xml_data)
+    # Limit to 1: Must return the NEWEST item (Oct 16 Master Circular), not the first item (Oct 14)
+    events = provider.fetch_events(limit=1)
+    assert len(events) == 1
+    assert events[0].event_type == "master_circular"
+    assert events[0].published_at.date() == datetime(2026, 10, 16).date()
+    assert events[0].raw_metadata.get("time_precision") == "date_only"
+
+
+def test_external_market_provider_zero_return_and_custom_ingested_at() -> None:
+    """Verify zero return is preserved as 0.0 and custom ingested_at timestamp is supported."""
+    dt1 = datetime(2026, 10, 14, 18, 0, tzinfo=IST)
+    dt2 = datetime(2026, 10, 15, 18, 0, tzinfo=IST)
+    custom_ingest = datetime(2026, 10, 15, 20, 0, tzinfo=IST)
+
+    # Identical prices on both days -> 0.0% return
+    mock_data = {
+        "BZ=F": [
+            {"timestamp": dt1, "open": 100.0, "high": 101.0, "low": 99.0, "close": 100.0},
+            {"timestamp": dt2, "open": 100.0, "high": 101.0, "low": 99.0, "close": 100.0},
+        ],
+    }
+
+    provider = ExternalMarketProvider(downloader=lambda ticker, s, e: mock_data.get(ticker, []))
+    observations = provider.fetch_observations(
+        series_ids=["BRENT_CRUDE"],
+        ingested_at=custom_ingest,
+    )
+    assert len(observations) == 2
+    # Check that day 2 has explicit 0.0 daily return, not None
+    day2_obs = next(o for o in observations if o.timestamp == dt2)
+    assert day2_obs.daily_return == 0.0
+    assert day2_obs.ingested_at == custom_ingest
+
+    # Check event translation
+    ev = day2_obs.to_event()
+    assert ev.structured_value.change == 0.0

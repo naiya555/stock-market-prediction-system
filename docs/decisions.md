@@ -1016,3 +1016,41 @@ This document formalizes the architectural decisions made on Day 1. All future i
 - **Consequences:**
   - Establishes a clean, extensible, auditable event ingestion architecture.
   - Guarantees zero look-ahead bias and maintains temporal integrity across all macro and regulatory feeds.
+
+---
+
+## ADR 58: Trading Session Alignment, Injectable Exchange Calendars, and Non-Causal Event Impact Analysis
+- **Status:** Accepted
+- **Context:**
+  - In Phase 10 (Day 30), the system connects macroeconomic and regulatory events (RBI, SEBI, external market series) with Indian equity market sessions to measure post-event market reaction, returns, and volatility.
+  - Aligning discrete events with market sessions introduces serious temporal leakage and statistical distortion risks:
+    1. Temporal look-ahead on post-close announcements: An event published at 17:30 IST on Monday must not be treated as available for Monday's closing prediction; it can only inform Tuesday's session.
+    2. Date-only precision in regulatory feeds: SEBI circulars publish only calendar dates (e.g. '16 Oct 2026') without time-of-day. Assuming midnight (00:00:00 IST) makes an event look available before market open, risking look-ahead if uploaded post-market.
+    3. Calendar discrepancies & holiday assumptions: Assuming every weekday is a trading day corrupts multi-session forward return windows and misaligns holiday announcements.
+    4. Future session fabrication: Calculating forward returns for incomplete or future sessions (e.g. an event occurring on the latest known session) fabricates unobserved market data.
+    5. Causal over-interpretation: Claiming that macro announcements cause observed price reactions or inferring directional bullish/bearish biases without statistical controls.
+- **Decision:**
+  1. **Indian Equity Trading Calendar Contract (`BaseTradingCalendar` in `app/events/calendar.py`):**
+     - Define `BaseTradingCalendar(ABC)` establishing a standard contract for trading day validation, next/previous trading day resolution, and session market hours (09:15:00 to 15:30:00 IST).
+     - Implement `MarketDataTradingCalendar`: extracts valid trading dates directly from observed `MarketOHLCV` bars. Eliminates guesswork regarding unscheduled exchange closures, mourning days, or weather halts.
+     - Implement `ExchangeTradingCalendar`: lightweight, injectable calendar supporting custom holiday sets, weekend rules, and special sessions (e.g. Diwali Muhurat trading).
+  2. **Trading Session Alignment Engine (`EventSessionAligner` in `app/events/aligner.py`):**
+     - Normalize primary event availability timestamps to `Asia/Kolkata` (IST) without mutating original event records.
+     - Pre-Market (< 09:15:00 IST on trading day): Associated with session $T$ as `PRE_MARKET`. Eligible for opening auction and closing predictions.
+     - In-Session (09:15:00 to 15:30:00 IST on trading day): Associated with session $T$ as `IN_SESSION`. Blocked for market open ($t$); eligible for market close ($t$).
+     - Post-Market (> 15:30:00 IST on trading day): Strictly blocked from session $T$'s closing prediction. Aligned to the immediately following active session $T+1$ as `POST_MARKET`.
+     - Non-Trading Days (Weekends & Holidays): Mapped to the next active trading session $T_{next}$ as `PRE_MARKET`.
+     - Date-Only Precision Guard: Events with date-only precision (e.g. SEBI circulars) are conservatively aligned to the next trading day when `conservative_date_only=True`, eliminating unverified same-session look-ahead.
+  3. **Empirical Event Impact Analyzer (`EventImpactAnalyzer` in `app/events/impact.py`):**
+     - Same-day reaction: $(Close_T / Close_{T-1}) - 1.0$.
+     - Multi-session forward returns: 1-session ($(Close_{T+1} / Close_T) - 1.0$), 3-session, and 5-session forward returns.
+     - Incomplete Outcome Safeguard: If session $T+k$ exceeds the latest available historical bar, forward return returns `None` with status `INCOMPLETE_OUTCOME_WINDOW`. No future prices are ever fabricated.
+     - Realized Volatility: Computes rolling sample standard deviation ($ddof=1$) of daily returns over 5 sessions pre-event ($[T-5 \dots T-1]$) and 5 sessions post-event ($[T+1 \dots T+5]$). Returns `None` with explicit diagnostic status if insufficient historical bars precede or follow the event.
+     - Benchmark Relative Alpha: Computes excess return $R_{stock, 1d} - R_{bench, 1d}$ against broad market benchmark (`^NSEI`).
+  4. **Multi-Event Deduplication & Aggregation:**
+     - Enforces deduplication by `event_id` prior to computing aggregate statistics to prevent syndicated or duplicated notices from distorting sample sizes or mean returns.
+     - Produces `AggregateImpactSummary` detailing sample size, valid outcome counts, mean, median, and standard deviation of returns.
+     - Preserves mandatory `NON_CAUSAL_DISCLAIMER`: measurements represent descriptive historical co-movements and realized dispersion; they do NOT assert causality or directional trading signals.
+- **Consequences:**
+  - Establishes a mathematically sound, leak-free session alignment and event-impact analysis layer.
+  - Guarantees zero forward look-ahead leakage across market close boundaries and uncompleted outcome windows.

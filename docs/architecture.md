@@ -972,3 +972,57 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   - **Separation of Time-Series from Discrete Announcements:** Continuous external market measurements (Brent crude, USD/INR, S&P 500) are modeled distinctly as `ExternalMarketObservation` time-series records and are not conflated with discrete regulatory notices or central bank policy decisions.
 - **Strict Non-Causal Disclosure:**
   - Macroeconomic, central bank, and regulatory events provide contextual market observations; they do NOT have fixed directional or causal effects on individual stock price movements. No automated trading rules or causal price movements are inferred from macro events.
+
+### 4.25. Trading Session Alignment & Empirical Event Impact Analysis (`app/events/aligner.py`, `app/events/calendar.py`, `app/events/impact.py`)
+- **Architectural Overview (Phase 10 / Day 30):**
+  ```text
+  MacroEvent / ExternalMarketObservation (Normalized from Official Feeds)
+              │
+              ▼
+  1. Indian Equity Trading Calendar (BaseTradingCalendar):
+        ├── MarketDataTradingCalendar: Derives official sessions directly from realized MarketOHLCV bars
+        │     └── Eliminates guesswork regarding unscheduled holidays, mourning days, or weather halts
+        └── ExchangeTradingCalendar: Configurable exchange calendar supporting weekends, holidays, and Muhurat sessions
+              │
+              ▼
+  2. Trading Session Alignment Engine (EventSessionAligner in aligner.py):
+        ├── Pre-Market (< 09:15 IST on trading day):
+        │     - session_date = T, session_phase = PRE_MARKET
+        │     - Eligible for market open auction (t) and closing prediction (t)
+        ├── In-Session (09:15 to 15:30 IST on trading day):
+        │     - session_date = T, session_phase = IN_SESSION
+        │     - Blocked for session open (t); eligible for session close (t)
+        ├── Post-Market (> 15:30 IST on trading day):
+        │     - Must NEVER leak into session T's closing prediction
+        │     - session_date = T+1 (next trading day), session_phase = POST_MARKET
+        │     - Eligible for session T+1 open and close
+        ├── Non-Trading Days (Weekends & Holidays):
+        │     - Mapped to next active trading day T_next as PRE_MARKET
+        └── Date-Only Precision Guard (SEBI Circulars lacking time-of-day):
+              - Conservatively aligned to T+1 to eliminate unverified same-session closing look-ahead
+              │
+              ▼
+  3. Empirical Market Impact Analyzer (EventImpactAnalyzer in impact.py):
+        ├── Aligned Reaction Session T: Measures session open, session close, and same-day return (Close_T / Close_{T-1} - 1)
+        ├── Multi-Session Forward Returns:
+        │     - 1-session forward return: Close_{T+1} / Close_T - 1
+        │     - 3-session forward return: Close_{T+3} / Close_T - 1
+        │     - 5-session forward return: Close_{T+5} / Close_T - 1
+        │     - Guard: If T+k > latest available bar, returns None with status INCOMPLETE_OUTCOME_WINDOW
+        ├── Realized Volatility Windows (5 sessions, ddof=1 via calculate_standard_deviation):
+        │     - Pre-event volatility: rolling stdev of daily returns across [T-5 ... T-1]
+        │     - Post-event volatility: rolling stdev of daily returns across [T+1 ... T+5]
+        │     - Guard: Insufficient prior/post sessions return None with explicit diagnostic reason
+        ├── Benchmark Relative Performance:
+        │     - Excess return / Alpha: R_{stock, 1d} - R_{bench, 1d} (e.g. against NIFTY 50 ^NSEI)
+        └── Multi-Event Aggregate Summary (AggregateImpactSummary):
+              - Deduplicates event IDs to prevent multi-counting identical or syndicated notices
+              - Computes sample size, valid outcome counts, mean/median/stdev forward returns
+              - Mandates NON_CAUSAL_DISCLAIMER on all summaries
+  ```
+- **Temporal Invariants & Look-Ahead Safeguards:**
+  - **Zero Look-Ahead on Post-Close Announcements:** An event published at 17:30 IST on Monday cannot be consumed by a model predicting Monday's close. The aligner strictly routes it to Tuesday's session as pre-session information.
+  - **Zero Fabrication of Incomplete Sessions:** Outcomes for sessions that have not completed return `None` with `INCOMPLETE_OUTCOME_WINDOW`. No synthetic forward prices are ever assumed.
+  - **Preservation of Original Provenance:** Alignment derives session associations without mutating or overwriting original event timestamps (`published_at`, `announced_at`, `effective_at`, `ingested_at`).
+- **Non-Causal Representation:**
+  - Event impact measurements describe historical co-movements and realized dispersion; they do NOT assert that an event caused a price movement or that an event category implies a bullish/bearish bias.

@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 import email.utils
 import html
 import re
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 import urllib.request
 import xml.etree.ElementTree as ET
 from zoneinfo import ZoneInfo
@@ -33,23 +33,28 @@ def _strip_html(text: str) -> str:
     return " ".join(clean.split())
 
 
-def _parse_sebi_date(date_str: str) -> datetime:
+def _parse_sebi_date(date_str: str) -> Tuple[datetime, str]:
     """Parse SEBI publication timestamp and localize to Asia/Kolkata (IST).
 
     Supports formats like '16 Oct, 2026 +0530' or standard RFC 2822.
+
+    Returns:
+        Tuple of (localized_datetime, precision_type), where precision_type is
+        'time' if hour/minute are present, or 'date_only' if midnight was assumed.
     """
     clean_date = date_str.strip()
 
-    # Try standard email.utils parser first
+    # Try standard email.utils parser first (typically contains explicit time)
     try:
         dt = email.utils.parsedate_to_datetime(clean_date)
-        if dt.tzinfo is None:
-            return dt.replace(tzinfo=IST)
-        return dt.astimezone(IST)
+        localized = dt.replace(tzinfo=IST) if dt.tzinfo is None else dt.astimezone(IST)
+        has_explicit_time = bool(re.search(r"\d{1,2}:\d{2}", clean_date))
+        precision = "time" if has_explicit_time else "date_only"
+        return localized, precision
     except Exception:
         pass
 
-    # Try SEBI custom format: '%d %b, %Y %z' or '%d %b, %Y'
+    # Try SEBI custom format: '%d %b, %Y %z' or '%d %b, %Y' (typically date-only)
     for fmt in (
         "%d %b, %Y %z",
         "%d %B, %Y %z",
@@ -59,9 +64,8 @@ def _parse_sebi_date(date_str: str) -> datetime:
     ):
         try:
             parsed = datetime.strptime(clean_date, fmt)
-            if parsed.tzinfo is None:
-                return parsed.replace(tzinfo=IST)
-            return parsed.astimezone(IST)
+            localized = parsed.replace(tzinfo=IST) if parsed.tzinfo is None else parsed.astimezone(IST)
+            return localized, "date_only"
         except ValueError:
             continue
 
@@ -159,11 +163,12 @@ class SEBIEventProvider(BaseEventProvider):
             raw_desc = desc_node.text if desc_node is not None and desc_node.text else ""
             cleaned_summary = _strip_html(raw_desc) if raw_desc else None
 
-            # Parse publication date
+            # Parse publication date with precision tracking
             published_at = None
+            time_precision = "unknown"
             if pub_date_node is not None and pub_date_node.text:
                 try:
-                    published_at = _parse_sebi_date(pub_date_node.text)
+                    published_at, time_precision = _parse_sebi_date(pub_date_node.text)
                 except Exception as e:
                     logger.debug("Failed to parse SEBI pubDate '%s': %s", pub_date_node.text, e)
                     published_at = None
@@ -200,13 +205,12 @@ class SEBIEventProvider(BaseEventProvider):
                     summary=cleaned_summary,
                     provider=self.name,
                     is_verified=True,
+                    raw_metadata={"time_precision": time_precision},
                 )
                 events.append(ev)
             except Exception as e:
                 logger.debug("Skipping unparseable SEBI event '%s': %s", raw_title, e)
 
-            if len(events) >= limit:
-                break
-
+        # Sort descending by primary timestamp and apply limit after full ordering
         events.sort(key=lambda e: e.primary_timestamp, reverse=True)
-        return events
+        return events[:limit]

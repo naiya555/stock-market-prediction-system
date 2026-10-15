@@ -6,7 +6,7 @@ Maintains strict separation between continuous market time-series observations
 and discrete regulatory/policy announcements.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import math
 from typing import Any, Callable, Dict, List, Optional, Sequence
 from zoneinfo import ZoneInfo
@@ -69,11 +69,14 @@ class ExternalMarketProvider(BaseEventProvider):
         import yfinance as yf
 
         try:
-            # yfinance end_date is exclusive, so query through end_date
+            # In yfinance, the 'end' date parameter is exclusive.
+            # Adding 1 day ensures the requested end_date session is included.
+            fetch_start = start_date.strftime("%Y-%m-%d")
+            fetch_end = (end_date + timedelta(days=1)).strftime("%Y-%m-%d")
             df = yf.download(
                 ticker,
-                start=start_date.strftime("%Y-%m-%d"),
-                end=end_date.strftime("%Y-%m-%d"),
+                start=fetch_start,
+                end=fetch_end,
                 interval="1d",
                 auto_adjust=False,
                 progress=False,
@@ -111,6 +114,7 @@ class ExternalMarketProvider(BaseEventProvider):
         series_ids: Optional[Sequence[str]] = None,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
+        ingested_at: Optional[datetime] = None,
     ) -> List[ExternalMarketObservation]:
         """Fetch structured time-series measurements for requested external macro variables.
 
@@ -119,6 +123,8 @@ class ExternalMarketProvider(BaseEventProvider):
                         If None, fetches all supported external series.
             start_date: Start datetime.
             end_date: End datetime.
+            ingested_at: Optional explicit acquisition timestamp for backtesting/PIT integrity.
+                         Defaults to current time in IST.
 
         Returns:
             List of ExternalMarketObservation records sorted chronologically.
@@ -127,6 +133,7 @@ class ExternalMarketProvider(BaseEventProvider):
         now_ist = datetime.now(timezone.utc).astimezone(IST)
         start = start_date or (now_ist.replace(hour=0, minute=0, second=0, microsecond=0))
         end = end_date or now_ist
+        acq_time = ingested_at or now_ist
 
         observations: List[ExternalMarketObservation] = []
 
@@ -149,7 +156,7 @@ class ExternalMarketProvider(BaseEventProvider):
             prev_close: Optional[float] = None
             for bar in sorted(raw_bars, key=lambda b: b["timestamp"]):
                 close_px = float(bar["close"])
-                daily_ret = None
+                daily_ret: Optional[float] = None
                 if prev_close is not None and prev_close > 0.0:
                     daily_ret = round((close_px / prev_close) - 1.0, 6)
                 prev_close = close_px
@@ -157,7 +164,7 @@ class ExternalMarketProvider(BaseEventProvider):
                 obs = ExternalMarketObservation(
                     series_id=sid,
                     timestamp=bar["timestamp"],
-                    ingested_at=now_ist,
+                    ingested_at=acq_time,
                     close=close_px,
                     open=float(bar.get("open", close_px)),
                     high=float(bar.get("high", close_px)),
@@ -176,8 +183,13 @@ class ExternalMarketProvider(BaseEventProvider):
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
         limit: int = 50,
+        ingested_at: Optional[datetime] = None,
     ) -> List[MacroEvent]:
         """Fetch observations and map into canonical MacroEvent records for unified pipeline consumption."""
-        observations = self.fetch_observations(start_date=start_date, end_date=end_date)
+        observations = self.fetch_observations(
+            start_date=start_date,
+            end_date=end_date,
+            ingested_at=ingested_at,
+        )
         events = [obs.to_event() for obs in observations]
         return events[:limit]
