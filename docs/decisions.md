@@ -828,22 +828,23 @@ This document formalizes the architectural decisions made on Day 1. All future i
      - Realized percentage return is computed as $R = Close_{t+1} / Close_t - 1.0$.
      - Realized direction adheres to the project's Day 15 target policy: $R > 0.0 \implies \text{"UP"}$, $R \le 0.0 \implies \text{"DOWN"}$ (zero return is grouped into DOWN).
   2. **Pending Session Detection & Zero Look-Ahead Leakage:**
-     - If session $t$ is the latest bar in the market data and session $t+1$ has not yet closed, verification status is marked `PENDING`.
-     - Zero outcome is recorded to the database for pending predictions, eliminating any forward leakage.
+     - A prediction is identified as `PENDING` when the target trading session $t+1$ following reference session $t$ has not yet occurred or closed in the available market data (`ref_idx + 1 >= len(bars)`).
+     - No outcome record is written to the `actuals` table for pending predictions. The `actuals` table stores exclusively verified, completed market outcomes.
+     - Because SQLite engine triggers prohibit subsequent UPDATE operations on `actuals`, writing premature placeholder rows would permanently block recording the true outcome later. Leaving pending predictions unrecorded in `actuals` preserves write-once immutability, eliminates forward leakage, and maintains temporal integrity.
   3. **Write-Once Immutability & Conflict Rejection for `actuals` Table (`app/database/`):**
      - Add `trg_prevent_actual_update` and `trg_prevent_actual_delete` triggers to the SQLite engine, prohibiting any UPDATE or DELETE on `actuals`.
      - In `PredictionRepository.save_actual()`, repeated verification of identical outcomes is idempotent (returns existing record).
      - Conflicting actual records for an existing prediction_id are strictly rejected with a `ValueError`, ensuring tamper-proof historical integrity.
      - Data provenance is captured via `source` (e.g. 'yfinance') and `recorded_at` ISO timestamps.
   4. **Strict Evaluation Denominator Isolation (`app/history/evaluator.py`):**
-     - Total predictions ($N_{total}$) are partitioned into:
-       - Ineligible / Failed ($N_{ineligible}$): Predictions with non-SUCCESS status or missing direction.
-       - Pending ($N_{pending}$): Eligible predictions whose target session has not completed.
-       - Unverifiable / Data Unavailable ($N_{unverifiable}$): Missing or invalid market data.
-       - Verified ($N_{verified}$): Completed predictions with realized outcomes recorded in `actuals`.
-     - Directional accuracy is computed strictly as:
+     - Total predictions ($N_{total}$) in the database are partitioned into:
+       - Ineligible predictions ($N_{ineligible}$): Predictions with non-SUCCESS operational status or missing directional labels.
+       - Eligible predictions ($N_{eligible} = N_{verified} + N_{pending}$):
+         - Verified predictions ($N_{verified}$): Eligible predictions with realized market outcomes persisted in `actuals`.
+         - Pending predictions ($N_{pending}$): Eligible predictions lacking an outcome record in `actuals` (awaiting target session completion or unrecorded outcome).
+     - Directional accuracy is computed strictly over completed, verified sessions:
        $$\text{Directional Accuracy} = \frac{N_{correct}}{N_{verified}}$$
-     - Pending, ineligible, and unverifiable predictions are strictly excluded from the evaluation denominator.
+     - Pending predictions ($N_{pending}$) and ineligible predictions ($N_{ineligible}$) are strictly excluded from the evaluation denominator. They are never counted as errors or treated as incorrect forecasts.
      - If $N_{verified} == 0$, accuracy safely evaluates to `None` with zero-division safety.
   5. **Symmetrical Class Metrics & Transparency:**
      - Report confusion matrix ($TP, FP, TN, FN$) and symmetrical precision, recall, and F1 scores for both UP and DOWN directions.

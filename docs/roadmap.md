@@ -8,14 +8,14 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 
 | Phase | Title | Description | Target Scope |
 |:---:|---|---|:---:|
-| **1** | **Project Foundation** | Project skeleton, architecture, environment, and validation. | **Current Phase (Day 1)** |
-| **2** | **Historical Market Data** | Reliable historical OHLCV data pipeline for Indian equities. | Future |
-| **3** | **Technical Feature Engine** | Mathematical computation of indicators, returns, and volatility. | Future |
-| **4** | **First ML Model** | Baseline XGBoost model setup with walk-forward temporal validation. | Future |
+| **1** | **Project Foundation** | Project skeleton, architecture, environment, and validation. | Complete (Day 1-2) |
+| **2** | **Historical Market Data** | Reliable historical OHLCV data pipeline for Indian equities. | Complete (Day 3-4) |
+| **3** | **Technical Feature Engine** | Mathematical computation of indicators, returns, and volatility. | Complete (Day 5-14) |
+| **4** | **First ML Model** | Baseline XGBoost model setup with walk-forward temporal validation. | Complete (Day 15-21) |
 | **5** | **Prediction Engine** | Point-in-time quantitative forecasting service. | Complete (Day 22-23) |
-| **6** | **Prediction History & Database** | Relational schema and immutable storage for predictions. | **Current Phase (Day 24)** |
-| **7** | **Verification & Accuracy** | Outcome recording, MAE/RMSE calculation, and accuracy tracking. | Future |
-| **8** | **NIFTY & Sector Context** | Broader market indicators, benchmark relative strength, and sector mapping. | Future |
+| **6** | **Prediction History & Database** | Relational schema and immutable storage for predictions. | Complete (Day 24) |
+| **7** | **Verification & Accuracy** | Outcome recording, MAE/RMSE calculation, and accuracy tracking. | **Current Phase (Day 25 Foundation Complete)** |
+| **8** | **NIFTY & Sector Context** | Broader market indicators, benchmark relative strength, and sector mapping. | Future (Next Phase) |
 | **9** | **News & Financial Sentiment** | Financial news ingestion and FinBERT sentiment extraction pipeline. | Future |
 | **10** | **Regulatory & Global Events** | Macroeconomic, RBI, governmental, and geopolitical event parser. | Future |
 | **11** | **LLM Integration** | Dual-role LLM setup: contextual entity extraction and independent forecasting. | Future |
@@ -29,7 +29,7 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 
 ## Detailed Phase Descriptions
 
-### Phase 1: Project Foundation (Current)
+### Phase 1: Project Foundation
 - Establish workspace structure, virtual environment, and dependency baselines.
 - Document system architecture, decision records, and data source protocols.
 - Configure version control guidelines and basic foundation test suites.
@@ -59,7 +59,7 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 - Build the core prediction service orchestrating feature assembly and model inference (`PredictionService` in `app/prediction/service.py`, typed `PredictionRequest` and `PredictionResult` contracts, zero silent retraining, strict inference isolation) (Day 22 complete).
 - Structured prediction output & transparency layer: generate validated directional forecast (`UP` / `DOWN`), class probabilities explicitly marked uncalibrated (`is_probability_calibrated=False`), input data quality auditing, explicit expected movement boundaries (`expected_movement=None`, `expected_movement_status="UNSUPPORTED"` for direction classifiers), full JSON serialization via `.to_dict()`, and text audit formatting via `.format_summary()` without fabricating target prices or uncalibrated confidence scores (Day 23 complete).
 
-### Phase 6: Prediction History & Database (Current)
+### Phase 6: Prediction History & Database
 - Design SQLite database schema (predictions, stocks, actuals, model_versions) with WAL mode, foreign key constraints, and performance indexes (Day 24 complete).
 - Implement immutable prediction persistence: predictions cannot be edited after creation via SQLite engine triggers (`trg_prevent_prediction_update`, `trg_prevent_prediction_delete`) and strongly-typed `PredictionRepository` (Day 24 complete).
 
