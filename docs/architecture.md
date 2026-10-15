@@ -729,6 +729,60 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   - Strongly typed data access methods: `save_prediction()`, `get_prediction()`, `list_predictions()`, `count_predictions()`, `upsert_stock()`, `get_stocks()`, and `register_model_version()`.
   - Zero third-party ORM dependencies (Python stdlib `sqlite3` only), adhering to Ponytail minimalism principles.
 
+### 4.20. Outcome Verification & Evaluation Architecture (`app/history/`)
+- **Architectural Overview (Phase 7 / Day 25):**
+  ```text
+  Persisted Predictions (predictions table)
+              │
+              ▼
+  OutcomeVerifier.verify_prediction(prediction_id, market_bars)
+              ├── 1. Temporal Alignment & Session Identification:
+              │       Locate reference session t = as_of_date
+              │       Identify realized target session t+1
+              ├── 2. Calendar Gap & Boundary Resolution:
+              │       Natural skip across weekends and NSE holidays
+              │       Detect if session t+1 is pending (has not closed yet) -> status PENDING
+              ├── 3. Canonical Direction & Return Formulation:
+              │       Return = Close(t+1) / Close(t) - 1.0
+              │       Direction = UP if Return > 0 else DOWN (zero return = DOWN policy)
+              ├── 4. Relational Persistence & Provenance Tracking:
+              │       Save to actuals table idempotently via PredictionRepository.save_actual()
+              │       Preserve data provenance (source='yfinance', recorded_at timestamp)
+              │       Reject conflicting outcomes; prevent duplicate records
+              └── 5. Immutability Enforcement on Actuals:
+                      trg_prevent_actual_update: abort direct UPDATE statements
+                      trg_prevent_actual_delete: abort direct DELETE statements
+              │
+              ▼
+  PredictionEvaluator.evaluate(symbol=None, model_name=None)
+              ├── 1. Denominator Isolation:
+              │       Total Predictions = All saved records
+              │       Eligible Predictions = SUCCESS status with valid predicted_direction
+              │       Pending Predictions = Target session t+1 not yet completed
+              │       Verified Predictions = Eligible predictions with realized actual outcomes (N_verified)
+              │       Directional Accuracy = N_correct / N_verified (Pending EXCLUDED from denominator)
+              ├── 2. Symmetrical Class Evaluation:
+              │       UP & DOWN Precision, Recall, F1 scores
+              │       Confusion Matrix: TP, FP, TN, FN
+              └── 3. Safe Reporting & Anti-Fabrication:
+                      Zero-division safety (None on N_verified == 0)
+                      Zero fabricated price magnitude / target returns
+                      Uncalibrated raw model probabilities explicitly disclosed
+  ```
+- **Verification Rule Matrix:**
+  | Scenario | Condition | Verification Status | Action |
+  |---|---|---|---|
+  | Completed Session | $t+1$ bar exists and closed | `VERIFIED` | Compute return & direction; save to `actuals`. |
+  | Repeated Run | Actual already recorded identically | `ALREADY_VERIFIED` | Idempotent return of existing record without re-writing. |
+  | Conflicting Actual | Incoming data contradicts recorded actual | `CONFLICT` / `ValueError` | Loud rejection; original actual preserved unmutated. |
+  | Future / Unclosed | Session $t$ is latest bar; $t+1$ not closed | `PENDING` | Log pending status; zero write to `actuals`; zero leakage. |
+  | Missing / Incomplete | Provider data missing or non-positive price | `DATA_UNAVAILABLE` | Graceful diagnostic record; skipped safely. |
+  | Ineligible Forecast | Prediction status != SUCCESS | `INELIGIBLE` | Excluded from verification and accuracy evaluation. |
+- **Immutability of Realized Outcomes:**
+  - Just as predictions are protected from retroactive revision, realized outcomes in the `actuals` table are write-once and permanently immutable.
+  - Native SQLite triggers (`trg_prevent_actual_update`, `trg_prevent_actual_delete`) enforce this constraint directly at the database engine level.
+
+
 
 
 

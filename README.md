@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 24: Prediction Database & Immutable Persistence<br/>
+> **Status:** Ongoing Project — Day 25: Prediction Outcome Verification & Evaluation Foundation<br/>
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -48,15 +48,15 @@ When fully developed, the end-user workflow will operate as follows:
 - **`app/nlp/`**: FinBERT sentiment scoring and textual analysis.
 - **`app/prediction/`**: Target formulation (`target.py`), directional prediction service (`service.py`), and inference contract (`contract.py`).
 - **`app/training/`**: Walk-forward validation, dataset splits without temporal leakage, baseline benchmark comparison suite, XGBoost and LightGBM models, model error analysis, feature usefulness audit, and controlled retraining.
-- **`app/history/`**: Prediction audit logs, performance evaluation, and accuracy tracking.
+- **`app/history/`**: Prediction audit logs, outcome verification engine (`verifier.py`), evaluation service (`evaluator.py`), and accuracy tracking.
 
 ---
 
-## 4. Current Status: Day 24 (Prediction Database & Immutable Persistence)
+## 4. Current Status: Day 25 (Prediction Outcome Verification & Evaluation Foundation)
 
-Day 24 implements Phase 6: Prediction History & Database foundation (`app/database/`). It establishes an SQLite relational schema with WAL mode and foreign key enforcement, defines canonical tables (`stocks`, `model_versions`, `predictions`, and `actuals`), and provides strongly-typed immutable persistence for `PredictionResult` objects via `PredictionRepository`.
+Day 25 implements Phase 7: Verification & Accuracy foundation (`app/history/`). It establishes an automated outcome verification service (`OutcomeVerifier`) and prediction evaluation service (`PredictionEvaluator`) connecting saved predictions with realized market outcomes in the SQLite `actuals` table.
 
-Crucially, immutability is enforced at the SQLite engine level using native database triggers (`trg_prevent_prediction_update` and `trg_prevent_prediction_delete`), strictly aborting any attempt to alter or delete past predictions. All Day 23 transparency semantics are preserved without alteration (`is_probability_calibrated=False`, `probability_calibration="uncalibrated"`, `expected_movement=None`, `expected_movement_status="UNSUPPORTED"`). Additionally, full lossless JSON payloads are preserved alongside indexed columns, and `PredictionService` supports optional seamless repository integration.
+Crucially, immutability is enforced across both predictions and actual outcomes via native database triggers (`trg_prevent_prediction_update`, `trg_prevent_prediction_delete`, `trg_prevent_actual_update`, `trg_prevent_actual_delete`). Verification respects trading calendars, weekends, and holidays, identifies pending future sessions without forward leakage, records data provenance (`source`, `recorded_at`), and calculates directional accuracy strictly over eligible, verified predictions ($N_{verified}$) as the sole denominator. All Day 23 uncalibrated probability and unsupported expected movement boundaries are rigorously preserved.
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.
@@ -201,7 +201,16 @@ Crucially, immutability is enforced at the SQLite engine level using native data
   - Strongly-typed `PredictionRepository` providing `save_prediction()`, `get_prediction()`, `list_predictions()`, `count_predictions()`, `upsert_stock()`, and `register_model_version()`.
   - Retention of Day 23 transparency semantics: uncalibrated probabilities, unsupported expected movement, and dual indexed + lossless JSON storage.
   - Seamless optional repository persistence integrated directly into `PredictionService.predict(..., persist=True)`.
-- 299 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, XGBoost direction classifier, LightGBM direction classifier, baseline comparison suite, walk-forward cross-validation engine, model error analysis, feature usefulness audit, prediction service engine, structured prediction output, visualizer, and SQLite prediction database.
+- Prediction Outcome Verification & Evaluation Foundation (`app/history/` - Day 25 complete):
+  - Canonical outcome verification engine (`OutcomeVerifier` in `app/history/verifier.py`) aligning prediction sessions with realized market sessions ($t+1$) across weekends and holidays.
+  - Verification statuses: `VERIFIED`, `ALREADY_VERIFIED`, `PENDING`, `INELIGIBLE`, `DATA_UNAVAILABLE`, `CONFLICT`.
+  - Target formulation adherence: $R = Close_{t+1}/Close_t - 1.0$; $R > 0 \implies UP$, $R \le 0 \implies DOWN$.
+  - Engine-level write-once immutability triggers on realized outcomes (`trg_prevent_actual_update`, `trg_prevent_actual_delete`).
+  - Idempotent repeated verification and strict rejection of conflicting outcome records.
+  - Evaluation service (`PredictionEvaluator` in `app/history/evaluator.py`) isolating directional accuracy strictly to completed, verified sessions ($N_{verified}$) as the denominator, excluding pending/ineligible sessions from error metrics.
+  - Symmetrical class metrics: UP and DOWN precision, recall, F1, and confusion matrix breakdown ($TP, FP, TN, FN$).
+  - Full machine-readable serialization (`.to_dict()`) and formatted evaluation summary rendering (`.format_summary()`).
+- 314 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, XGBoost direction classifier, LightGBM direction classifier, baseline comparison suite, walk-forward cross-validation engine, model error analysis, feature usefulness audit, prediction service engine, structured prediction output, visualizer, SQLite prediction database, and outcome verification/evaluation.
 
 ---
 

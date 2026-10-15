@@ -2433,6 +2433,111 @@ Executed `scripts/verify_day24.py` using live market data for `BHARTIARTL.NS`:
 - Predictions are logged immutably, but realized market outcomes are not yet ingested or compared against past forecasts.
 - Next scheduled scope: Implement Phase 7 (Verification & Accuracy — market outcome recording into `actuals` table, direction precision/recall evaluation, and error calculation).
 
+---
+
+## Day 25 - Prediction Outcome Verification & Evaluation Foundation
+
+### Goal
+Implement the foundation for verifying saved stock-direction predictions against actual market outcomes and evaluating whether predicted directions were correct (Phase 7: Verification & Accuracy):
+1. Review existing database schema and reuse `actuals` table.
+2. Define outcome verification rules: trading calendars, holidays, pending future sessions, zero forward leakage, and immutable prediction preservation.
+3. Persist actual outcomes to SQLite `actuals` table idempotently with data provenance and engine-level triggers preventing mutation or deletion.
+4. Implement prediction evaluation service reporting total, eligible, pending, verified, correct, incorrect, directional accuracy (strictly on verified predictions as denominator), confusion matrix, and symmetrical class metrics.
+5. Provide comprehensive automated unit tests (deterministic, mock-based) and execute real-market verification.
+
+### Work Completed
+1. **Schema & Repository Enhancements (`app/database/schema.py`, `app/database/repository.py`):**
+   - Extended `actuals` table with `reference_close REAL` and `source TEXT DEFAULT 'yfinance'`.
+   - Added SQLite engine triggers `trg_prevent_actual_update` and `trg_prevent_actual_delete` to enforce write-once immutability directly at the database engine level.
+   - Added automatic migration handling in `initialize_database()` for existing databases.
+   - Implemented `save_actual()` in `PredictionRepository` with strict idempotency for identical verification and `ValueError` rejection for conflicting outcomes.
+   - Implemented `get_actual()`, `list_actuals()`, `count_actuals()`, `get_prediction_with_actual()`, and `list_predictions_with_actuals()`.
+2. **Outcome Verification & Evaluation Contracts (`app/history/contract.py`):**
+   - Defined `VerificationStatus` enum (`VERIFIED`, `ALREADY_VERIFIED`, `PENDING`, `INELIGIBLE`, `DATA_UNAVAILABLE`, `CONFLICT`).
+   - Defined immutable `ActualOutcome` dataclass with boundary validation on prices and returns.
+   - Defined `VerificationRecord` dataclass detailing prediction reference price, actual outcome price, realized return, actual direction, and correctness.
+   - Defined `EvaluationMetrics` dataclass capturing denominator isolation ($N_{total}$, $N_{eligible}$, $N_{pending}$, $N_{verified}$), accuracy, confusion matrix ($TP, FP, TN, FN$), symmetrical class metrics (UP/DOWN precision, recall, F1), breakdowns by model and symbol, `.to_dict()` serialization, and `.format_summary()` rendering.
+3. **Outcome Verification Engine (`app/history/verifier.py`):**
+   - Implemented `OutcomeVerifier` with chronological session alignment.
+   - Matches prediction reference session ($t$) with target market session ($t+1$) across calendar gaps, weekends, and holidays.
+   - Evaluates canonical Day 15 target formulation: $R = Close_{t+1}/Close_t - 1.0$; $R > 0 \implies UP$, $R \le 0 \implies DOWN$.
+   - Accurately detects `PENDING` status when target session $t+1$ has not yet closed, preventing any forward leakage.
+   - Captures data provenance (`source` and ISO timestamps) and supports batch verification.
+4. **Prediction Evaluation Service (`app/history/evaluator.py`):**
+   - Implemented `PredictionEvaluator` with strict denominator correctness:
+     $$\text{Directional Accuracy} = \frac{N_{correct}}{N_{verified}}$$
+   - Excludes pending and ineligible predictions from error metrics and accuracy denominator.
+   - Symmetrical class metrics for UP and DOWN directions.
+   - Zero-division safety when $N_{verified} == 0$.
+   - Preserves explicit uncalibrated probability disclosures and anti-fabrication price target boundaries.
+5. **Package Exports & Entry Point:**
+   - Exported all contracts, verifier, and evaluator in `app/history/__init__.py`.
+   - Updated `main.py` verifying Day 25 readiness.
+
+### Real-Data Verification Findings (BHARTIARTL.NS)
+Executed `scripts/verify_day25.py` against live market data:
+- **Schema & Triggers:** Verified `actuals` table and `trg_prevent_actual_update`, `trg_prevent_actual_delete`.
+- **Historical Outcome Verification:**
+  - Prediction made as of Friday 2026-10-09 (Reference Close: ₹1,805.10).
+  - Target session resolved correctly to Monday 2026-10-12 (Target Close: ₹1,778.70), skipping the weekend naturally.
+  - Realized Return: $-1.4625\%$; Actual Direction: `DOWN`.
+  - Predicted Direction: `UP`; Outcome Correct: `False`.
+  - Verification Status: `VERIFIED`.
+  - Repeated verification: `ALREADY_VERIFIED` (idempotent).
+- **Pending Session Detection:**
+  - Prediction made as of latest available bar (2026-10-15).
+  - Target session $t+1$ has not yet occurred/closed.
+  - Verification Status: `PENDING` ("Target session following 2026-10-15 has not yet closed. Outcome is pending.").
+  - Zero write to `actuals`, zero leakage.
+- **Evaluation Metrics & Denominator Correctness:**
+  - Total Predictions: 2, Eligible: 2, Pending: 1, Verified: 1.
+  - Denominator strictly equals $N_{verified} = 1$ ($100\%$ completed sessions).
+  - Accuracy: $0.00\%$ ($0 / 1$).
+  - Pending session correctly excluded from denominator.
+- **Immutability & Conflict Rejection Audit:**
+  - Direct SQL UPDATE on `actuals`: rejected by trigger (`Actual outcomes are immutable: updates are strictly prohibited.`).
+  - Direct SQL DELETE on `actuals`: rejected by trigger (`Actual outcomes are immutable: deletions are strictly prohibited.`).
+  - Attempting to save conflicting actual outcome: rejected by repository with `ValueError`.
+- **Cleanup Guarantee:** Transient test database cleaned up safely in `try...finally`.
+
+### Tests
+- Created `tests/test_outcome_verification.py` with 15 comprehensive unit tests:
+  1. `test_actual_outcome_contract_validation`: verifies validation of prices, returns, and directions.
+  2. `test_save_actual_and_retrieve_from_repository`: verifies relational persistence and linking with predictions.
+  3. `test_save_actual_idempotency_repeated_verification`: verifies idempotent re-runs return existing ID without error.
+  4. `test_save_actual_conflicting_record_rejected`: verifies conflicting actual records raise `ValueError`.
+  5. `test_actuals_immutability_triggers`: verifies SQLite engine triggers block direct UPDATE and DELETE.
+  6. `test_verification_correct_and_incorrect_directional_outcomes`: verifies return computation and direction matching.
+  7. `test_verification_pending_target_session`: verifies pending status when session $t+1$ has not occurred.
+  8. `test_verification_weekend_and_market_holiday_handling`: verifies non-calendar session alignment across weekends and holidays.
+  9. `test_verification_missing_or_incomplete_market_data`: verifies `DATA_UNAVAILABLE` status on missing provider data.
+  10. `test_verification_ineligible_predictions`: verifies non-SUCCESS predictions evaluate to `INELIGIBLE`.
+  11. `test_verification_invalid_prices_handling`: verifies non-positive prices are flagged as `DATA_UNAVAILABLE`.
+  12. `test_evaluator_accuracy_and_denominator_correctness`: verifies accuracy denominator is strictly $N_{verified}$.
+  13. `test_evaluator_insufficient_samples_zero_division_safety`: verifies safe `None` when zero predictions are verified.
+  14. `test_evaluator_symmetrical_class_metrics_and_breakdowns`: verifies confusion matrix and precision/recall/F1.
+  15. `test_evaluator_preservation_of_immutable_prediction_records`: verifies evaluation never modifies prediction records.
+- **Full Test Suite Results:**
+  - Previous baseline: 299 passed
+  - New total: **314 passed in 11.66s** (15 new tests, 0 failures, 0 regressions across 23 test modules).
+  - Deterministic fixtures and mocks; zero external network dependencies in unit tests.
+
+### Review
+- **Ponytail / Senior Dev Mode:** Reused existing SQLite schema and repository; stdlib `sqlite3`, `dataclasses`, and `datetime` only. Immutability enforced via native triggers; zero external ORMs added.
+
+### Documentation
+- Updated `README.md` to Day 25 status with 314 passing tests.
+- Updated `docs/architecture.md` with Section 4.20 detailing Outcome Verification & Evaluation Architecture.
+- Updated `docs/decisions.md` with ADR 53.
+- Updated `docs/roadmap.md` with Phase 7 / Day 25 completion details.
+- Updated `docs/daily-progress.md` with Day 25 development log.
+
+### Known Limitations & Next Steps
+- Current evaluation measures binary directional accuracy, precision, recall, and F1. Continuous price magnitude errors (MAE, RMSE) are unsupported because current XGBoost and LightGBM models predict direction only.
+- Model probabilities remain uncalibrated raw scores; calibration is reserved for a future phase.
+- Next scheduled scope: Phase 8 (NIFTY & Sector Context: ingesting benchmark indices, relative performance, and market breadth).
+
+
 
 
 

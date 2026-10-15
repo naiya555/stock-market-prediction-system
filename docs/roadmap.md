@@ -63,9 +63,11 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 - Design SQLite database schema (predictions, stocks, actuals, model_versions) with WAL mode, foreign key constraints, and performance indexes (Day 24 complete).
 - Implement immutable prediction persistence: predictions cannot be edited after creation via SQLite engine triggers (`trg_prevent_prediction_update`, `trg_prevent_prediction_delete`) and strongly-typed `PredictionRepository` (Day 24 complete).
 
-### Phase 7: Verification & Accuracy
-- Ingest realized market outcomes.
-- Compute prediction error: Mean Absolute Error (MAE), Root Mean Squared Error (RMSE), and directional precision/recall.
+### Phase 7: Verification & Accuracy (Current)
+- Outcome verification engine (`OutcomeVerifier` in `app/history/verifier.py`): match persisted predictions with realized market sessions ($t+1$), respect trading calendar/holidays/pending sessions, compute canonical target direction/returns ($Close_{t+1}/Close_t - 1$, $R > 0 \implies UP$, $R \le 0 \implies DOWN$), data provenance tracking, and idempotent persistence into SQLite `actuals` table (Day 25 complete).
+- Actuals immutability & relational integrity: prevent duplicate or conflicting outcome records, SQLite engine triggers (`trg_prevent_actual_update`, `trg_prevent_actual_delete`) enforce write-once immutability, and atomic foreign-key linking to `predictions` (Day 25 complete).
+- Prediction evaluation service (`PredictionEvaluator` in `app/history/evaluator.py`): isolate evaluation denominator strictly to verified predictions ($N_{verified}$), exclude pending and ineligible predictions from error metrics, report symmetrical class metrics (UP/DOWN precision, recall, F1) and confusion matrix breakdown, zero division safety for insufficient samples, without fabricating target prices or calibrated probabilities (Day 25 complete).
+- Compute continuous prediction error metrics (MAE, RMSE, direction magnitude correlation) when magnitude models are introduced in later phases.
 
 ### Phase 8: NIFTY & Sector Context
 - Ingest NIFTY 50, NIFTY Bank, NIFTY IT, and relevant sector indices.

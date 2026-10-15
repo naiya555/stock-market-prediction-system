@@ -808,6 +808,51 @@ This document formalizes the architectural decisions made on Day 1. All future i
   - Zero performance regression or additional runtime dependencies.
   - Perfectly positions the system for Phase 7 (Verification & Accuracy: realized outcome recording and error metrics).
 
+---
+
+## ADR 53: Outcome Verification Rules, Immutability Enforcement on Actuals, and Evaluation Denominator Isolation
+- **Status:** Accepted
+- **Context:**
+  - In Phase 7 (Day 25), the project advances from logging immutable predictions to verifying those predictions against realized market outcomes and computing directional accuracy metrics.
+  - Comparing predictions with subsequent market results introduces several fundamental risks in automated financial systems:
+    1. Look-ahead bias & temporal confusion: Aligning a prediction generated at session $t$ with an incorrect market session, or verifying before session $t+1$ has closed.
+    2. Calendar mismatch: Assuming calendar-day periodicity (+1 day) instead of trading-day periodicity, which misaligns predictions over weekends and market holidays.
+    3. Evaluation denominator distortion: Calculating accuracy over all saved predictions rather than only completed, verified ones (e.g. counting pending future sessions or data errors as incorrect predictions).
+    4. Outcome tampering & duplicate corruption: Allowing realized market records to be overwritten, duplicated, or silently modified after being recorded.
+    5. Speculative metrics & calibration inflation: Fabricating continuous price target errors (MAE/RMSE) or describing raw gradient-boosting tree probabilities as calibrated probabilities when models only predict direction.
+- **Decision:**
+  1. **Canonical Outcome Alignment & Formulation (`app/history/verifier.py`):**
+     - Given a prediction made as of trading session $t$ (`latest_input_timestamp`), the reference price is $Close_t$.
+     - The target session is the strictly next chronological trading session $t+1$ available in the market data.
+     - Natural trading calendars are respected: weekends and NSE market holidays (e.g. Diwali, Holi) are resolved via chronological bar indexing.
+     - Realized percentage return is computed as $R = Close_{t+1} / Close_t - 1.0$.
+     - Realized direction adheres to the project's Day 15 target policy: $R > 0.0 \implies \text{"UP"}$, $R \le 0.0 \implies \text{"DOWN"}$ (zero return is grouped into DOWN).
+  2. **Pending Session Detection & Zero Look-Ahead Leakage:**
+     - If session $t$ is the latest bar in the market data and session $t+1$ has not yet closed, verification status is marked `PENDING`.
+     - Zero outcome is recorded to the database for pending predictions, eliminating any forward leakage.
+  3. **Write-Once Immutability & Conflict Rejection for `actuals` Table (`app/database/`):**
+     - Add `trg_prevent_actual_update` and `trg_prevent_actual_delete` triggers to the SQLite engine, prohibiting any UPDATE or DELETE on `actuals`.
+     - In `PredictionRepository.save_actual()`, repeated verification of identical outcomes is idempotent (returns existing record).
+     - Conflicting actual records for an existing prediction_id are strictly rejected with a `ValueError`, ensuring tamper-proof historical integrity.
+     - Data provenance is captured via `source` (e.g. 'yfinance') and `recorded_at` ISO timestamps.
+  4. **Strict Evaluation Denominator Isolation (`app/history/evaluator.py`):**
+     - Total predictions ($N_{total}$) are partitioned into:
+       - Ineligible / Failed ($N_{ineligible}$): Predictions with non-SUCCESS status or missing direction.
+       - Pending ($N_{pending}$): Eligible predictions whose target session has not completed.
+       - Unverifiable / Data Unavailable ($N_{unverifiable}$): Missing or invalid market data.
+       - Verified ($N_{verified}$): Completed predictions with realized outcomes recorded in `actuals`.
+     - Directional accuracy is computed strictly as:
+       $$\text{Directional Accuracy} = \frac{N_{correct}}{N_{verified}}$$
+     - Pending, ineligible, and unverifiable predictions are strictly excluded from the evaluation denominator.
+     - If $N_{verified} == 0$, accuracy safely evaluates to `None` with zero-division safety.
+  5. **Symmetrical Class Metrics & Transparency:**
+     - Report confusion matrix ($TP, FP, TN, FN$) and symmetrical precision, recall, and F1 scores for both UP and DOWN directions.
+     - Prohibit fabricating price targets or claiming calibrated probabilities; models remain uncalibrated binary direction classifiers.
+- **Consequences:**
+  - Guarantees an unassailable, leak-free evaluation methodology for Indian equity predictions.
+  - Ensures full reproducibility and mathematical correctness with zero external ORM dependencies.
+
+
 
 
 
