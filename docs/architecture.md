@@ -865,11 +865,56 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   - **Separation of Publication and Ingestion:** Publication timestamp (`published_at`) reflects when the story broke publicly. Ingestion timestamp (`ingested_at`) records when the system acquired the record. Both must precede the market decision cutoff $T_{cutoff}$ for the news item to enter any historical backtest or feature join.
   - **Non-Causal Representation:** The news ingestion layer strictly provides clean textual observations with provenance; it does not infer price directions, target price movements, or claim mechanical market causality.
 
-
-
-
-
-
-
-
-
+### 4.23. FinBERT Financial Sentiment Scoring Engine (`app/news/sentiment.py`)
+- **Architectural Overview (Phase 9 / Day 28):**
+  ```text
+  Cleaned & Point-in-Time Verified NewsArticle Records
+              │
+              ▼
+  1. Text Preparation & Boundary Truncation (prepare_article_text)
+        ├── Minimum Input Strategy: Non-empty headline is mandatory
+        ├── Optional Summary Inclusion: "Headline. Summary" if include_summary=True
+        ├── Length Control: Configurable character truncation (default max_length_chars=512)
+        └── Boundary Sanitization: Strips excessive whitespace, rejects blank/missing text
+              │
+              ▼
+  2. Sentiment Scoring Adapter Layer (BaseSentimentBackend)
+        ├── FinBERTBackend (Hugging Face Transformers + PyTorch):
+        │     ├── Lazy Initialization: Zero weights downloaded on package import
+        │     ├── Model Selection: ProsusAI/finbert (BertForSequenceClassification)
+        │     ├── Dynamic Label Mapping: Resolves id2label dynamically from model.config
+        │     │     └── ProsusAI/finbert mapping: {0: 'positive', 1: 'negative', 2: 'neutral'}
+        │     ├── Deterministic Inference Mode: model.eval(), torch.inference_mode()
+        │     └── Softmax Normalization: Probabilities bounded in [0, 1] and sum to ~1.0
+        └── MockSentimentBackend (Deterministic Test Double):
+              ├── 100% Offline execution: Zero external network or model weight downloads
+              └── Deterministic output mapping for reproducible test suites
+              │
+              ▼
+  3. High-Level Scoring Service (FinBERTSentimentScorer)
+        ├── Single Article Scoring: score_article(article)
+        ├── Batch Article Scoring: score_articles(articles) preserving input order
+        └── Error Quarantining & Anti-Fabrication Safeguards:
+              ├── Captures missing dependencies or inference exceptions gracefully
+              ├── Explicit ERROR status: status='ERROR', error_message='...'
+              └── Zero Fake Neutrals: sentiment_label=None, probabilities=None
+              │
+              ▼
+  4. Canonical Sentiment Output (ArticleSentimentResult)
+        ├── article_id: Original 16-hex deterministic SHA-256 hash
+        ├── headline: Cleaned headline evaluated
+        ├── sentiment_label: 'positive' | 'neutral' | 'negative' | None
+        ├── sentiment_score: Winning-class confidence score in [0.0, 1.0] | None
+        ├── probabilities: {'positive': P, 'neutral': P, 'negative': P} | None
+        ├── model_name: 'ProsusAI/finbert'
+        ├── model_version: Model revision or config hash
+        ├── scored_at: Timezone-aware execution timestamp (Asia/Kolkata)
+        ├── status: 'SUCCESS' | 'ERROR'
+        └── error_message: Diagnostic failure message on error | None
+  ```
+- **Temporal Invariants & Provenance Integrity:**
+  - **Temporal Isolation of Scoring:** `scored_at` records the exact execution moment of sentiment evaluation. It remains strictly distinct from the publication timestamp (`published_at`) and the ingestion timestamp (`ingested_at`).
+  - **Point-in-Time Compliance:** Sentiment scoring is performed strictly downstream of Day 27 point-in-time filtering (`filter_news_point_in_time`). Articles published or acquired after a market session cutoff $T_{cutoff}$ are never scored or passed to downstream feature models.
+- **Strict Boundary Disclosures:**
+  - **Sentiment is Classification, Not Forecast:** Article sentiment reflects the linguistic tone of the article text; it is strictly NOT a price forecast, price target, or directional trading recommendation.
+  - **Confidence is Not Market Prediction Probability:** Classifier confidence represents Softmax probability across text categories, NOT calibrated Bayesian confidence of market direction.

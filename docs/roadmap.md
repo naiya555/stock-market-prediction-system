@@ -16,8 +16,8 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 | **6** | **Prediction History & Database** | Relational schema and immutable storage for predictions. | Complete (Day 24) |
 | **7** | **Verification & Accuracy** | Outcome recording, MAE/RMSE calculation, and accuracy tracking. | Complete (Day 25) |
 | **8** | **NIFTY & Sector Context** | Broader market indicators, benchmark relative strength, and sector mapping. | Complete (Day 26) |
-| **9** | **News & Financial Sentiment** | Financial news ingestion and FinBERT sentiment extraction pipeline. | **Current Phase (Day 27 Foundation Complete)** |
-| **10** | **Regulatory & Global Events** | Macroeconomic, RBI, governmental, and geopolitical event parser. | Future (Next Phase) |
+| **9** | **News & Financial Sentiment** | Financial news ingestion and FinBERT sentiment extraction pipeline. | Complete (Day 27-28) |
+| **10** | **Regulatory & Global Events** | Macroeconomic, RBI, governmental, and geopolitical event parser. | **Next Phase (Phase 10)** |
 | **11** | **LLM Integration** | Dual-role LLM setup: contextual entity extraction and independent forecasting. | Future |
 | **12** | **ML + LLM Combination** | Ensemble layer combining numerical ML and LLM predictions transparently. | Future |
 | **13** | **Web Application** | Interactive FastAPI endpoints and user-facing presentation dashboard. | Future |
@@ -76,13 +76,21 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 - Cross-sectional market breadth calculation: advances, declines, unchanged counts, advance-decline ratio, breadth thrust, net advances, and 20-day SMA breadth participation percentage across equity universes.
 - Strict session alignment preventing look-ahead bias and handling calendar discrepancies.
 
-### Phase 9: News & Financial Sentiment (Current - Day 27 Foundation Complete)
-- Implement financial news retrieval and deduplication (`app/news/`):
+### Phase 9: News & Financial Sentiment (Complete - Day 27 & Day 28)
+- Implement financial news retrieval and deduplication (`app/news/` - Day 27 complete):
   - Extensible provider contract `BaseNewsProvider` and concrete `RSSNewsProvider` adapter for Indian market news.
   - Canonical immutable schema `NewsArticle` capturing headline, publisher source, timezone-aware publication time, distinct ingestion time, symbol associations, URL, summary, and deterministic `article_id`.
   - News deduplication engine (`deduplicate_news` in `cleaner.py`): removes exact article ID duplicates, duplicate URLs, and syndicated headlines within configurable time windows while preserving the earliest publication.
   - Strict point-in-time session filtering (`filter_news_point_in_time`): prevents temporal look-ahead leakage by excluding any news published or ingested after the decision cutoff timestamp.
-- Integrate FinBERT for domain-specific positive/neutral/negative sentiment scoring (upcoming Phase 9 task).
+- FinBERT domain-specific sentiment scoring foundation (`app/news/sentiment.py` - Day 28 complete):
+  - Model selection: `ProsusAI/finbert` (domain-adapted BERT fine-tuned on Financial PhraseBank, Apache 2.0 open-source license).
+  - Lazy model initialization: weights and tokenizers loaded strictly on demand, zero import overhead.
+  - Dynamic label mapping resolution from `model.config.id2label` (e.g. `{0: 'positive', 1: 'negative', 2: 'neutral'}`).
+  - Pluggable backend architecture: `BaseSentimentBackend` interface with `FinBERTBackend` and offline deterministic `MockSentimentBackend` for CI/unit tests.
+  - Strict error quarantining: inference failures recorded as `status="ERROR"` with `sentiment_label=None` and `probabilities=None` (zero fabricated false neutrals).
+  - Text preparation with headline validation and configurable character truncation (`prepare_article_text`).
+  - Canonical `ArticleSentimentResult` schema capturing article ID, headline, sentiment label, winning confidence score, class probability distribution, model provenance, and execution timestamp (`scored_at`).
+  - Strict non-causal disclosure: sentiment classification is text tone representation, not a directional stock price prediction.
 
 ### Phase 10: Regulatory & Global Events
 - Structured ingestion of RBI monetary policy, Union Budget announcements, SEBI circulars, and global indicators (crude oil, USD/INR, US markets).

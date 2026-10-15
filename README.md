@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 27: Financial News Ingestion Foundation<br/>
+> **Status:** Ongoing Project — Day 28: FinBERT Financial Sentiment Scoring Foundation<br/>
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -44,19 +44,19 @@ When fully developed, the end-user workflow will operate as follows:
 - **`app/core/`**: Centralized configuration (`config.py`), logging foundation (`logging_config.py`), and canonical schema contracts (`schemas.py`).
 - **`app/database/`**: Relational database persistence (SQLite schema, WAL mode, foreign keys, immutability triggers, and PredictionRepository).
 - **`app/market/`**: Market data acquisition, cleaning, technical feature engineering (returns, volatility, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features), trend engine (swing points, market structure, trend classification), market breadth and benchmark relative performance (`benchmark.py`), pipeline orchestration, and visualization.
-- **`app/news/`**: Financial news ingestion (`providers/base.py`, `providers/rss_provider.py`), typed article schemas (`schemas.py`), deduplication, and point-in-time filtering (`cleaner.py`).
-- **`app/nlp/`**: FinBERT sentiment scoring and textual analysis (planned).
+- **`app/news/`**: Financial news ingestion (`providers/base.py`, `providers/rss_provider.py`), typed article schemas (`schemas.py`), deduplication, point-in-time filtering (`cleaner.py`), and FinBERT sentiment scoring foundation (`sentiment.py`).
+- **`app/nlp/`**: FinBERT sentiment scoring foundation and textual analysis (`app/nlp/__init__.py`).
 - **`app/prediction/`**: Target formulation (`target.py`), directional prediction service (`service.py`), and inference contract (`contract.py`).
 - **`app/training/`**: Walk-forward validation, dataset splits without temporal leakage, baseline benchmark comparison suite, XGBoost and LightGBM models, model error analysis, feature usefulness audit, and controlled retraining.
 - **`app/history/`**: Prediction audit logs, outcome verification engine (`verifier.py`), evaluation service (`evaluator.py`), and accuracy tracking.
 
 ---
 
-## 4. Current Status: Day 27 (Financial News Ingestion Foundation)
+## 4. Current Status: Day 28 (FinBERT Financial Sentiment Scoring Foundation)
 
-Day 27 implements Phase 9: Financial News Ingestion Foundation (`app/news/`). It establishes an extensible news provider interface (`BaseNewsProvider`), concrete RSS adapter (`RSSNewsProvider`) normalizing Indian financial media feeds into canonical `NewsArticle` records, a multi-tier syndicated news deduplication engine (`deduplicate_news`), and strict point-in-time session filtering (`filter_news_point_in_time`).
+Day 28 completes Phase 9: Financial News Ingestion & FinBERT Sentiment Foundation (`app/news/` and `app/nlp/`). It introduces a domain-specific financial sentiment scoring architecture using `ProsusAI/finbert` (Apache 2.0 open-source license), fine-tuned on Financial PhraseBank.
 
-Crucially, publication timestamp (`published_at`) is strictly isolated from local ingestion timestamp (`ingested_at`), and zero look-ahead bias is guaranteed by eliminating any articles published or ingested after a given market decision cutoff. No LLM integration or FinBERT sentiment scoring is introduced prematurely. All Day 23 uncalibrated probability and unsupported expected movement boundaries are rigorously preserved.
+Crucially, lazy initialization guarantees zero model weights or transformer overhead are loaded during package imports or standard CLI operations. Pluggable scoring backends support live `FinBERTBackend` (Hugging Face Transformers + PyTorch) and deterministic `MockSentimentBackend`, enabling 100% offline, reproducible automated tests with zero weight downloads. Error quarantining guarantees that inference failures record an explicit `status="ERROR"` without silently fabricating false neutral classifications. All Day 27 point-in-time temporal boundaries are rigorously preserved, and text sentiment is explicitly documented as textual tone classification rather than a stock price forecast.
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.
@@ -223,7 +223,16 @@ Crucially, publication timestamp (`published_at`) is strictly isolated from loca
   - Multi-tier syndicated news deduplication engine (`deduplicate_news` in `cleaner.py`): removes exact ID duplicates, URL duplicates, and syndicated matching headlines across outlets within configurable time windows (default 48h) while preserving earliest publication provenance.
   - Strict point-in-time session filtering (`filter_news_point_in_time`): enforces $published\_at \le as\_of\_time$ and $ingested\_at \le as\_of\_time$, strictly preventing look-ahead leakage when joining news with historical trading sessions.
   - Non-causal representation: headlines are preserved as clean textual observations without mechanical causal inferences.
-- 342 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, XGBoost direction classifier, LightGBM direction classifier, baseline comparison suite, walk-forward cross-validation engine, model error analysis, feature usefulness audit, prediction service engine, structured prediction output, visualizer, SQLite prediction database, outcome verification/evaluation, benchmark context engine, and financial news ingestion foundation.
+- FinBERT Financial Sentiment Scoring Foundation (`app/news/sentiment.py` & `app/nlp/` - Day 28 complete):
+  - Domain-specific financial sentiment scoring using `ProsusAI/finbert` (Apache 2.0 open-source license).
+  - Lazy model initialization ensuring zero overhead or heavy dependencies are loaded during package imports or standard CLI operations.
+  - Dynamic `id2label` mapping resolution directly from model configuration, safely accommodating model output order variations.
+  - Pluggable backend architecture: concrete `FinBERTBackend` for PyTorch/Transformers inference and deterministic `MockSentimentBackend` enabling 100% offline unit testing without downloading model weights.
+  - Error quarantining & anti-fabrication: captures missing dependencies or inference exceptions into `status="ERROR"` with `sentiment_label=None` and `probabilities=None` (zero fake neutrals).
+  - Text preparation with headline validation and configurable character boundary truncation (`prepare_article_text`).
+  - Canonical immutable `ArticleSentimentResult` schema validating finite probabilities in $[0, 1]$ summing to $1.0 \pm 10^{-3}$, winning confidence score equality, and distinct `scored_at` execution timestamps.
+  - Strict capability disclosures: text sentiment is strictly classified linguistic tone, not a stock price forecast.
+- 362 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, XGBoost direction classifier, LightGBM direction classifier, baseline comparison suite, walk-forward cross-validation engine, model error analysis, feature usefulness audit, prediction service engine, structured prediction output, visualizer, SQLite prediction database, outcome verification/evaluation, benchmark context engine, financial news ingestion foundation, and FinBERT financial sentiment scoring foundation.
 
 ---
 

@@ -938,11 +938,42 @@ This document formalizes the architectural decisions made on Day 1. All future i
   - Establishes an auditable, leak-free news ingestion foundation for Indian equities.
   - Prepares the system cleanly for subsequent FinBERT sentiment scoring (Phase 9) and future LLM integration (Phase 11) without architectural churn.
 
+---
 
-
-
-
-
-
-
-
+## ADR 56: FinBERT Financial Sentiment Scoring Foundation, Lazy Inference Loading, and Error Quarantining
+- **Status:** Accepted
+- **Context:**
+  - In Phase 9 (Day 28), the system builds a domain-specific financial sentiment scoring foundation on top of the Day 27 financial news ingestion layer.
+  - Financial sentiment analysis introduces critical operational and architectural risks:
+    1. Import overhead & memory bloat: Loading heavy deep-learning frameworks (PyTorch, Transformers, BERT weights ~440MB) during basic package imports or lightweight CLI commands degrades startup time and system responsiveness.
+    2. Flaky test suites & network dependencies: Downloading transformer model weights during automated CI/unit tests introduces network flakiness, latency, and test brittleness.
+    3. Silent failure & false neutral fabrication: Catching inference errors or missing dependencies and silently defaulting to `"neutral"` sentiment fabricates synthetic data and distorts downstream market feature aggregations.
+    4. Label order assumptions: Hardcoding output logit indexes to `{0: 'negative', 1: 'neutral', 2: 'positive'}` when models differ (e.g., `ProsusAI/finbert` config specifies `{0: 'positive', 1: 'negative', 2: 'neutral'}`).
+    5. Causal over-interpretation: Conflating textual tone classification (positive/neutral/negative) with stock price direction forecasts or trading signals.
+- **Decision:**
+  1. **Model Selection & Architecture (`ProsusAI/finbert`):**
+     - Select `ProsusAI/finbert` (Araci, 2019), a domain-adapted BERT model fine-tuned on Financial PhraseBank.
+     - Architecture: Hugging Face `AutoTokenizer` and `AutoModelForSequenceClassification`.
+     - Licensing: Open-source Apache 2.0 license, allowing full local on-premise execution with zero API keys or recurring costs.
+  2. **Lazy Initialization & Pluggable Backend Architecture (`app/news/sentiment.py`):**
+     - Define `BaseSentimentBackend(ABC)` with `score_text(text: str) -> Dict[str, float]`.
+     - Implement `FinBERTBackend`: weights and tokenizers are loaded strictly on first invocation of `_ensure_loaded()`, completely avoiding overhead on package import.
+     - Implement `MockSentimentBackend`: lightweight, deterministic test double allowing 100% offline automated unit tests with zero network access and zero weight downloads.
+  3. **Dynamic Label Mapping Resolution:**
+     - `FinBERTBackend` dynamically resolves class labels from `model.config.id2label` rather than assuming fixed array indices.
+     - Maps raw labels to canonical lowercase keys (`positive`, `neutral`, `negative`).
+  4. **Strict Error Quarantining (Zero False Neutrals):**
+     - `FinBERTSentimentScorer` traps inference failures, missing dependencies, or malformed inputs into `ArticleSentimentResult(status='ERROR', error_message=...)`.
+     - In error states, `sentiment_label` and `probabilities` evaluate strictly to `None`. Under NO circumstances is an error silently converted into `"neutral"`.
+  5. **Text Preparation & Boundary Invariants (`prepare_article_text`):**
+     - Requires non-empty headline text.
+     - Truncates characters safely to `max_length_chars=512` to prevent memory blow-ups before tokenization.
+     - Preserves original immutable `NewsArticle` unchanged.
+  6. **Probability Normalization Invariants:**
+     - Validates that probabilities are finite, within $[0.0, 1.0]$, and sum to $1.0 \pm 10^{-3}$.
+     - Confirms that winning confidence score `sentiment_score` strictly equals `probabilities[sentiment_label]`.
+  7. **Non-Predictive Baseline Disclaimer:**
+     - Article sentiment scores classify text tone; they do NOT predict future stock price movements or provide financial advice.
+- **Consequences:**
+  - Establishes a robust, reproducible, and verifiable FinBERT sentiment foundation.
+  - Guarantees fast, offline unit testing and clean error quarantining.

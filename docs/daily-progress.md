@@ -2694,13 +2694,98 @@ Executed `scripts/verify_day27.py` against live financial news feeds:
 - Neither Gemma 3 12B nor Laya AI is introduced today; LLM reasoning and news entity classification remain scheduled for their designated future phases.
 - Next scheduled scope: FinBERT sentiment scoring foundation and financial news sentiment feature engineering.
 
+---
 
+## Day 28 - FinBERT Financial Sentiment Scoring Foundation
 
+### Goal
+Implement a maintainable FinBERT financial-news sentiment scoring foundation using the existing Day 27 news ingestion layer:
+1. Select a documented, domain-adapted financial sentiment model (`ProsusAI/finbert`) with clear licensing (Apache 2.0) and interface specifications.
+2. Implement lazy initialization to guarantee zero model weights or transformer overhead are loaded during package import or standard command execution.
+3. Build a typed, validated sentiment output schema (`ArticleSentimentResult`) capturing `article_id`, headline, sentiment label (`positive`, `neutral`, `negative`), winning confidence score, class probability distribution, model provenance, and scoring timestamp.
+4. Enforce strict error quarantining: missing dependencies or runtime inference errors record `status="ERROR"` with `sentiment_label=None` and `probabilities=None` (strictly prohibiting false neutral fabrication).
+5. Implement safe text preparation with headline validation and configurable character truncation (`prepare_article_text`).
+6. Guarantee point-in-time temporal integrity: preserve Day 27 point-in-time filtering invariants ($published\_at \le as\_of\_time$ and $ingested\_at \le as\_of\_time$), keeping scoring timestamp distinct from publication and ingestion timestamps.
+7. Support pluggable backends: concrete `FinBERTBackend` (Hugging Face Transformers + PyTorch) and deterministic `MockSentimentBackend` for 100% offline unit testing with zero weight downloads.
+8. Add comprehensive automated unit tests and an end-to-end verification script.
 
+### Work Completed
+1. **Canonical Sentiment Schema & Validation (`app/news/sentiment.py`):**
+   - Implemented `ArticleSentimentResult` frozen dataclass with validation checks:
+     - Enforces valid `status` in `{"SUCCESS", "ERROR"}`.
+     - On SUCCESS: `sentiment_label` must be one of `{"positive", "neutral", "negative"}`.
+     - Confirms probabilities are finite, lie in $[0.0, 1.0]$, and sum to $1.0 \pm 10^{-3}$.
+     - Confirms winning `sentiment_score` strictly equals `probabilities[sentiment_label]`.
+     - On ERROR: `sentiment_label` and `probabilities` evaluate strictly to `None`.
+     - Full `.to_dict()` lossless serialization.
+2. **Text Preparation & Boundary Controls (`prepare_article_text` in `app/news/sentiment.py`):**
+   - Requires non-empty cleaned headline string.
+   - Supports optional summary inclusion (`"Headline. Summary"`).
+   - Enforces configurable character boundary truncation (default `max_length_chars=512`) to prevent tokenizer memory blow-ups.
+3. **Pluggable Sentiment Scoring Backends (`app/news/sentiment.py`):**
+   - `BaseSentimentBackend(ABC)`: abstract interface with `score_text(text: str) -> Dict[str, float]`.
+   - `FinBERTBackend`: concrete adapter wrapping Hugging Face `BertForSequenceClassification` (`ProsusAI/finbert`).
+     - Lazy model loading: weights are loaded exclusively upon first inference via `_ensure_loaded()`.
+     - Dynamic `id2label` resolution: reads class order dynamically from `model.config.id2label` (`{0: 'positive', 1: 'negative', 2: 'neutral'}`) rather than hardcoding.
+     - Deterministic inference mode: uses `model.eval()` and `torch.inference_mode()`.
+     - Explicit dependency checks: raises informative `RuntimeError` if `torch` or `transformers` is not installed.
+   - `MockSentimentBackend`: deterministic test double for offline unit tests and CI environments, requiring zero network downloads or model weights.
+4. **Scoring Service (`FinBERTSentimentScorer` in `app/news/sentiment.py`):**
+   - Implemented `score_article(article)` and `score_articles(articles)` preserving exact input order.
+   - Implemented error quarantining: wraps inference or data errors into `ArticleSentimentResult(status="ERROR", error_message=...)`, never fabricating false neutrals.
+5. **Package Exports & Entry Point:**
+   - Exported all sentiment schemas, backends, and scorer in `app/news/__init__.py`.
+   - Created `app/nlp/__init__.py` providing clean alias re-exports.
+   - Updated `main.py` verifying Day 28 readiness.
 
+### Verification Script Findings (`scripts/verify_day28.py`)
+Executed `scripts/verify_day28.py` covering all core Day 28 invariants:
+- **Dependency Audit:** Accurately detected PyTorch and Transformers status in the current environment without crashing.
+- **Text Preparation:** Validated headline extraction and character boundary truncation on real news articles fetched for `BHARTIARTL`.
+- **Deterministic Inference:** Scored 5 news articles using deterministic mock engine; verified canonical JSON schema serialization and probability normalization ($\sum P_i = 1.000$).
+- **Anti-Fabrication & Error Quarantining:** Injected an inference failure; verified that the scorer returned `status="ERROR"` with `sentiment_label=None` and `probabilities=None` (zero fake neutrals).
+- **Point-in-Time Temporal Isolation:** Verified that articles published after market decision cutoff are strictly filtered out before scoring.
+- **Exit Code:** 0.
 
+### Tests
+- Created `tests/test_finbert_sentiment.py` with 20 comprehensive unit tests:
+  1. `test_article_sentiment_result_valid_construction`: verifies valid result construction, probability invariants, and `.to_dict()`.
+  2. `test_article_sentiment_result_negative_and_neutral`: verifies negative and neutral label validation.
+  3. `test_article_sentiment_result_rejects_invalid_probabilities_sum`: verifies rejection when probabilities do not sum to 1.0.
+  4. `test_article_sentiment_result_rejects_probabilities_outside_range`: verifies rejection of probabilities $< 0$ or $> 1$.
+  5. `test_article_sentiment_result_rejects_non_finite_probabilities`: verifies rejection of NaN or Inf probabilities.
+  6. `test_article_sentiment_result_error_state_requires_none_label`: verifies error state rejects non-None sentiment labels.
+  7. `test_prepare_article_text_headline_only`: verifies headline text extraction.
+  8. `test_prepare_article_text_with_summary`: verifies concatenation of headline and summary.
+  9. `test_prepare_article_text_truncation`: verifies character truncation at boundary.
+  10. `test_prepare_article_text_rejects_blank_headline`: verifies rejection of empty/whitespace headlines.
+  11. `test_mock_sentiment_backend_deterministic_mapping`: verifies deterministic classification of keyword-containing texts.
+  12. `test_mock_sentiment_backend_normalizes_probabilities`: verifies Softmax normalization on mock outputs.
+  13. `test_finbert_scorer_scores_article_successfully`: verifies single article scoring workflow.
+  14. `test_finbert_scorer_batch_scoring`: verifies batch article scoring preserving input order.
+  15. `test_finbert_scorer_quarantines_backend_error_without_fake_neutral`: verifies zero fake neutrals on backend exceptions.
+  16. `test_finbert_scorer_quarantines_empty_text_error`: verifies error quarantining on empty text.
+  17. `test_finbert_scorer_preserves_article_id_and_distinct_timestamps`: verifies distinct `scored_at` vs `published_at`/`ingested_at`.
+  18. `test_finbert_backend_raises_error_when_dependencies_missing`: verifies clean `RuntimeError` when `torch` or `transformers` is missing.
+  19. `test_finbert_backend_dynamic_id2label_mapping`: verifies dynamic resolution of label config.
+  20. `test_point_in_time_news_filtering_before_sentiment_scoring`: verifies zero look-ahead bias when filtering articles prior to scoring.
+- **Full Test Suite Results:**
+  - Previous baseline: 342 passed
+  - New total: **362 passed in 8.45s** (20 new tests, 0 failures, 0 regressions across 26 test modules).
+  - 100% offline and deterministic; zero model weight downloads in unit tests.
 
+### Review
+- **Ponytail / Senior Dev Mode:** Lazy initialization of transformer dependencies; pluggable backend abstraction enabling 100% offline testing without downloading 440MB model weights during test execution; zero third-party ORM or heavy dependencies added; zero fake neutral predictions on failure; strict schema and probability invariants.
 
+### Documentation
+- Updated `README.md` to Day 28 status with 362 passing tests.
+- Updated `docs/architecture.md` with Section 4.23 detailing FinBERT Financial Sentiment Scoring Engine.
+- Updated `docs/decisions.md` with ADR 56.
+- Updated `docs/roadmap.md` marking Phase 9 / Day 28 complete.
+- Updated `docs/daily-progress.md` with Day 28 development log.
 
-
-
+### Known Limitations & Next Steps
+- Day 28 establishes the sentiment scoring foundation and offline deterministic engine. Full GPU-accelerated local inference with `ProsusAI/finbert` requires installing `torch` and `transformers` and downloading the ~440MB model weights locally to Hugging Face cache (`~/.cache/huggingface/hub`).
+- Sentiment is an auxiliary textual feature representing linguistic tone; it is NOT integrated into the XGBoost/LightGBM prediction engine today.
+- No LLM integration (Gemma 3 12B) or Laya AI integration is performed today; both remain scheduled for their planned future roadmap phases.
+- Next scheduled scope: Phase 10: Regulatory & Global Events (macroeconomic, RBI, governmental, and geopolitical event ingestion).
