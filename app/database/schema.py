@@ -69,6 +69,8 @@ CREATE TABLE IF NOT EXISTS actuals (
     actual_label INTEGER,
     actual_return REAL,
     actual_close REAL,
+    reference_close REAL,
+    source TEXT DEFAULT 'yfinance',
     recorded_at TEXT NOT NULL,
     FOREIGN KEY (prediction_id) REFERENCES predictions(prediction_id) ON DELETE RESTRICT,
     FOREIGN KEY (symbol) REFERENCES stocks(symbol) ON DELETE RESTRICT
@@ -99,10 +101,29 @@ BEFORE DELETE ON predictions
 BEGIN
     SELECT RAISE(ABORT, 'Predictions are immutable: deletions are strictly prohibited.');
 END;
+
+CREATE TRIGGER IF NOT EXISTS trg_prevent_actual_update
+BEFORE UPDATE ON actuals
+BEGIN
+    SELECT RAISE(ABORT, 'Actual outcomes are immutable: updates are strictly prohibited.');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_prevent_actual_delete
+BEFORE DELETE ON actuals
+BEGIN
+    SELECT RAISE(ABORT, 'Actual outcomes are immutable: deletions are strictly prohibited.');
+END;
 """
 
 
 def initialize_database(conn: sqlite3.Connection) -> None:
     """Execute schema initialization and ensure all tables, indexes, and triggers exist."""
     conn.executescript(SCHEMA_SQL)
+    # Check if existing actuals table needs column migrations
+    cursor = conn.execute("PRAGMA table_info(actuals);")
+    cols = {row[1] if isinstance(row, tuple) else row["name"] for row in cursor.fetchall()}
+    if "reference_close" not in cols:
+        conn.execute("ALTER TABLE actuals ADD COLUMN reference_close REAL;")
+    if "source" not in cols:
+        conn.execute("ALTER TABLE actuals ADD COLUMN source TEXT DEFAULT 'yfinance';")
     conn.commit()
