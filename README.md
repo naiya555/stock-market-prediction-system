@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 32: Multi-Agent Ensemble & Synthesis Layer (Phase 12)<br/>
+> **Status:** Ongoing Project — Day 33: FastAPI REST API Foundation (Phase 13)<br/>
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -40,7 +40,7 @@ When fully developed, the end-user workflow will operate as follows:
 
 ## 3. Major Components
 
-- **`app/api/`**: FastAPI application endpoints and route handlers (planned).
+- **`app/api/`**: FastAPI REST API endpoints, Pydantic schemas, dependency injection, and exception handlers (`app/api/`).
 - **`app/core/`**: Centralized configuration (`config.py`), logging foundation (`logging_config.py`), and canonical schema contracts (`schemas.py`).
 - **`app/database/`**: Relational database persistence (SQLite schema, WAL mode, foreign keys, immutability triggers, and PredictionRepository).
 - **`app/events/`**: Macroeconomic, regulatory, and external market event ingestion, session alignment, and impact analysis (`providers/`, `schemas.py`, `cleaner.py`, `calendar.py`, `aligner.py`, `impact.py`).
@@ -54,11 +54,18 @@ When fully developed, the end-user workflow will operate as follows:
 
 ---
 
-## 4. Current Status: Day 32 (Multi-Agent Ensemble & Synthesis Layer)
+## 4. Current Status: Day 33 (FastAPI REST API Foundation)
 
-Day 32 completes Phase 12: ML + LLM Combination (`app/prediction/ensemble.py`). It establishes the multi-agent ensemble layer that synthesizes quantitative gradient-boosted ML forecasts (XGBoost / LightGBM) with qualitative contextual LLM reasoning (Gemma 3 12B) and financial sentiment features into an explainable directional forecast.
+Day 33 begins Phase 13: Web Application & API Layer (`app/api/`). It provides a tested FastAPI REST API foundation that connects existing prediction, ensemble, history, feedback, and event modules through clean, typed API contracts without duplicating business logic, fabricating unverified data, or leaking internal secrets.
 
-In strict adherence to ADR 05, the ensemble preserves standalone quantitative `PredictionResult` and qualitative `LLMReasoningResult` outputs in full within `EnsemblePredictionResult`. Probability combination uses an audited linear convex blend with configurable weights (default 70% ML / 30% LLM) without fabricating uncalibrated Bayesian certainty. Signal relationships are classified into `STRONG_AGREEMENT`, `AGREEMENT`, `DIVERGENCE` (conflicting signals flag), `PARTIAL`, `ML_ONLY`, or `LLM_ONLY`. Volatility-anchored expected price ranges are derived using 14-period ATR bounds, and a canonical adapter `.to_prediction_result()` enables immediate immutable SQLite persistence, outcome verification, and side-by-side evaluator benchmarking.
+The API exposes:
+- `GET /api/health`: Subsystem readiness diagnostics (database query ping, model storage accessibility, and LLM configuration) without disclosing secrets or executing slow inference.
+- `POST /api/predict`: Point-in-time directional inference executing standalone ML (XGBoost/LightGBM) or synthesized Multi-Agent Ensemble (ML + Gemma 3 12B), with optional immutable SQLite persistence.
+- `GET /api/history`: Bounded historical prediction audit trail with symbol/model filtering and linked verified actual market outcomes.
+- `POST /api/feedback`: Validated feedback intake with explicit HTTP 501 `deferred` status honoring ADR 10 prohibitions against automated retraining loops.
+- `GET /api/events`: Normalized macroeconomic and regulatory announcements aggregated and deduplicated across RBI and SEBI providers.
+
+All endpoints are validated through 20 automated offline unit tests and a 6-stage end-to-end verification script.
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.

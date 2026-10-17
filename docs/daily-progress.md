@@ -3124,3 +3124,89 @@ Executed `scripts/verify_day32.py`:
 - Day 32 completes Phase 12 (ML + LLM Combination).
 - REST API endpoints and web UI dashboards are not yet built (deferred to Phase 13 per roadmap).
 - Next scheduled milestone: Phase 13: Web Application (build FastAPI REST API endpoints and interactive web UI for stock search, prediction visualization, and audit history).
+
+---
+
+## Day 33: FastAPI Application Foundation
+
+### Objective
+Begin Phase 13: Web Application & API Layer by building a tested FastAPI REST API foundation that connects existing prediction, ensemble, history, feedback, and event modules through clean, typed API contracts without duplicating business logic, fabricating unverified data, or leaking internal secrets.
+
+### Implementation Summary
+1. **Application Factory (`app/api/app.py`):**
+   - Configured `create_app()` factory returning a configured FastAPI instance with `/docs` (OpenAPI) and `/redoc` documentation.
+   - Centralized exception handlers:
+     - `RequestValidationError`: formats Pydantic parameter/body validation errors into structured `ErrorResponse` with machine-readable `VALIDATION_ERROR` code and HTTP 422.
+     - `ValidationError`: maps domain errors into HTTP 400 `DOMAIN_VALIDATION_ERROR`.
+     - `HTTPException`: normalizes standard HTTP exceptions.
+     - Catch-all `Exception`: sanitizes internal unhandled errors to HTTP 500 without disclosing internal file paths, stack traces, or credentials.
+   - Root endpoint `GET /` providing service metadata, environment status, and OpenAPI documentation links.
+2. **Dependency Inversion Layer (`app/api/dependencies.py`):**
+   - Created injectable providers for `sqlite3.Connection`, `PredictionRepository`, `PredictionService`, `EnsembleService`, and `BaseEventProvider` list.
+   - Enables fast in-memory SQLite substitution and mock service injection in automated test suites without filesystem side effects.
+3. **Multi-Threaded SQLite Safety (`app/database/connection.py`):**
+   - Added `check_same_thread: bool = False` parameter to `create_connection`, enabling safe execution across FastAPI's worker thread pool while preserving WAL mode and busy timeout pragmas.
+4. **Typed Pydantic Schemas (`app/api/schemas.py`):**
+   - `PredictRequest`: enforces strict ticker validation, bounded lookback (35-3650 days), model whitelist (`xgboost`, `lightgbm`, `ensemble`), staleness thresholds, and custom weights.
+   - `PredictionResponse`: structures directional prediction, uncalibrated probabilities, data quality diagnostics, ensemble breakdown (agreement status, weights, ATR target range, factors, risks), and research disclaimer.
+   - `HistoryResponse`: paginated collection of historical predictions with bounded limit (1-500) and linked verified actual outcomes.
+   - `FeedbackRequest` & `FeedbackResponse`: structured feedback payload acknowledging explicit deferred persistence under ADR 10.
+   - `EventsResponse`: collection of normalized macroeconomic and regulatory announcements across providers.
+5. **REST API Route Modules (`app/api/routes/`):**
+   - `GET /api/health`: verifies SQLite database connectivity, model storage accessibility, and LLM configuration without triggering slow model inference or exposing secrets.
+   - `POST /api/predict`: dispatches to `PredictionService` for standalone ML or `EnsembleService` for multi-agent synthesis, persisting results to SQLite when requested.
+   - `GET /api/history`: queries persisted predictions with bounded pagination, ticker/model filtering, and automatically attached verified actual outcomes (`actuals` table).
+   - `POST /api/feedback`: validates feedback schema and returns explicit HTTP 501 Not Implemented with status `deferred` to respect ADR 10 prohibitions against automated retraining loops.
+   - `GET /api/events`: aggregates official announcements from `RBIEventProvider` and `SEBIEventProvider`, applies `deduplicate_events`, and supports category filtering.
+
+### Verification Results (`scripts/verify_day33.py`)
+Executed 6-stage empirical verification pipeline:
+- **Stage 1 (App Factory & OpenAPI):** PASS — Verified root endpoint `/` and dynamic generation of OpenAPI schema registering 6 routes (`/`, `/api/health`, `/api/predict`, `/api/history`, `/api/feedback`, `/api/events`).
+- **Stage 2 (Health & Non-Disclosure):** PASS — Verified database and model storage readiness; confirmed zero leakage of passwords, secrets, or absolute filesystem paths.
+- **Stage 3 (Prediction & Ensemble Inference):** PASS — Verified input validation rejection of whitespace symbols (HTTP 422), standalone ML inference ($P(UP)=0.68$), and multi-agent ensemble synthesis ($P(UP)=0.74$, `STRONG_AGREEMENT`, ATR target range $[2450.0 - 2550.0]$).
+- **Stage 4 (History Retrieval & Outcome Linkage):** PASS — Verified bounded history queries and confirmed automatic linkage of verified actual outcome ($+1.42\%$ return, close $2535.50$) to stored prediction records.
+- **Stage 5 (Feedback ADR 10 Deferral):** PASS — Verified HTTP 501 Not Implemented response with machine-readable `deferred` status and ADR 10 disclosure.
+- **Stage 6 (Events Monitoring & Deduplication):** PASS — Verified aggregation and deduplication of macroeconomic and regulatory announcements.
+
+### Tests
+- Created `tests/test_api.py` with 20 comprehensive unit tests:
+  1. `test_root_endpoint`: root metadata and links.
+  2. `test_health_endpoint_healthy`: operating health check.
+  3. `test_health_endpoint_db_failure`: degraded status on database failure.
+  4. `test_predict_validation_invalid_symbol`: rejection of empty/whitespace symbols.
+  5. `test_predict_validation_invalid_model`: rejection of unsupported models.
+  6. `test_predict_validation_insufficient_lookback`: rejection of lookback < 35.
+  7. `test_predict_standalone_ml_success`: standalone ML execution and persistence.
+  8. `test_predict_standalone_ml_failure_status`: non-fabrication of direction on insufficient data.
+  9. `test_predict_standalone_ml_service_exception`: sanitized 500 error response.
+  10. `test_predict_ensemble_success`: multi-agent ensemble breakdown mapping.
+  11. `test_predict_ensemble_custom_weights`: parameter forwarding of custom weights.
+  12. `test_predict_no_persist_option`: non-persistence when `persist=False`.
+  13. `test_history_empty`: empty history response.
+  14. `test_history_populated_and_filtering`: filtering by symbol, model, and pagination.
+  15. `test_history_with_verified_outcome`: linkage of verified actual outcome.
+  16. `test_feedback_deferred`: HTTP 501 response with ADR 10 disclosure.
+  17. `test_feedback_invalid_payload`: validation rejection of rating > 5.
+  18. `test_events_empty`: empty event set handling.
+  19. `test_events_populated_and_filtered`: multi-provider aggregation and category filtering.
+  20. `test_events_provider_error_resilience`: graceful degradation when a single provider fails.
+- **Full Test Suite Results:**
+  - Previous baseline: 455 passed across 30 test modules.
+  - New total: **475 passed in 11.78s** (20 new tests, 0 failures, 0 regressions across 31 test modules).
+  - 100% offline and deterministic; zero network dependency in unit tests.
+
+### Review
+- **Ponytail / Senior Dev Mode:** Reused existing `PredictionService`, `EnsembleService`, `PredictionRepository`, and event providers; thin handlers with zero duplicated business logic; added only essential dependencies (`fastapi`, `uvicorn`, `httpx`); safe multi-threaded SQLite configuration; zero fabricated data.
+
+### Documentation
+- Updated `README.md` to Day 33 status with 475 passing tests and Phase 13 description.
+- Updated `docs/architecture.md` with Section 4.28 detailing FastAPI REST API Foundation Layer.
+- Updated `docs/decisions.md` with ADR 61.
+- Updated `docs/roadmap.md` marking Day 33 complete in Phase 13.
+- Updated `docs/daily-progress.md` with Day 33 development log.
+
+### Known Limitations & Next Steps
+- Day 33 completes the REST API foundation.
+- Interactive Web UI dashboard (stock search, prediction visualization, and audit history) is planned for Day 34.
+- Direct user feedback persistence is intentionally deferred until formal auditing schemas and human-in-the-loop workflows are approved per ADR 10.
+- Next scheduled milestone: Day 34 — Interactive Web Application UI (HTML/CSS/JS frontend communicating with Day 33 REST endpoints).

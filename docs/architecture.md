@@ -1170,3 +1170,49 @@ Phase 12 implements the ensemble synthesis layer, bridging quantitative time-ser
   2. **Transparent, Audited Blending:** Probabilities are combined via an explicit linear convex combination ($W_{ML} \cdot P_{ML} + W_{LLM} \cdot P_{LLM}$) with normalized weights. Qualitative LLM stance is mapped to polarity $S_{LLM} \in [-1.0, 1.0]$ rather than fabricating false statistical confidence.
   3. **Explicit Divergence Surfacing:** When the quantitative model and qualitative LLM issue contradictory directional recommendations, the ensemble explicitly tags the result as `DIVERGENCE`, preventing blind averaging from hiding market regime conflict.
   4. **Persistence & Evaluation Parity:** Through `.to_prediction_result()`, ensemble outputs conform to the canonical `PredictionResult` schema, allowing identical immutable persistence, outcome verification, and side-by-side accuracy evaluation.
+
+---
+
+### 4.28 FastAPI REST API Foundation Layer (`app/api/` - Day 33)
+
+Phase 13 establishes the FastAPI REST API foundation connecting the prediction engine, multi-agent ensemble, SQLite persistence, and macroeconomic/regulatory event monitoring (ADR 02, ADR 61).
+
+```text
+                                  HTTP Clients / External Consumers
+                                                │
+                                                ▼
+                        ┌───────────────────────────────────────────────┐
+                        │             FastAPI Application               │
+                        │               (app/api/app.py)                │
+                        │  ├── OpenAPI & Swagger UI (/docs, /redoc)     │
+                        │  ├── RequestValidationError Handler           │
+                        │  ├── Domain ValidationError Handler           │
+                        │  └── Sanitized Unhandled Exception Handler    │
+                        └───────────────────────┬───────────────────────┘
+                                                │
+                 ┌──────────────────────────────┼──────────────────────────────┐
+                 │                              │                              │
+                 ▼                              ▼                              ▼
+    ┌────────────────────────┐    ┌───────────────────────────┐    ┌───────────────────────────┐
+    │     GET /api/health    │    │     POST /api/predict     │    │      GET /api/history     │
+    │ ├── DB ping (SELECT 1) │    │ ├── Pydantic validation   │    │ ├── Bounded pagination    │
+    │ ├── Models directory   │    │ ├── Standalone ML (XGB/LGB│    │ ├── Symbol/model filters  │
+    │ ├── LLM config check   │    │ ├── Multi-Agent Ensemble  │    │ └── Verified actual       │
+    │ └── Zero secrets leak  │    │ └── SQLite persistence    │    │     outcomes attached     │
+    └────────────────────────┘    └─────────────┬─────────────┘    └─────────────┬─────────────┘
+                                                │                                │
+                 ┌──────────────────────────────┴────────────────────────────────┘
+                 ▼
+    ┌────────────────────────┐    ┌───────────────────────────┐
+    │    POST /api/feedback  │    │      GET /api/events      │
+    │ ├── Schema validation  │    │ ├── Aggregate RBI & SEBI  │
+    │ ├── Explicit HTTP 501  │    │ ├── Deduplicate announcements
+    │ └── ADR 10 compliance  │    │ └── Point-in-time filters │
+    └────────────────────────┘    └───────────────────────────┘
+```
+
+- **Architectural Tenets:**
+  1. **Thin Handlers & Zero Business Logic Duplication:** HTTP route handlers perform exclusively request validation, response serialization, and status mapping. All domain modeling, feature assembly, ML inference, and ensemble blending remain in their respective domain packages (`app/prediction/`, `app/events/`, `app/database/`).
+  2. **Dependency Inversion via FastAPI Dependency Injection (`app/api/dependencies.py`):** Routes obtain database connections, repositories, and services via injectable providers. This enables 100% deterministic, offline automated unit and integration testing without disk modification or live daemon dependencies.
+  3. **Strict Non-Disclosure & Error Boundaries:** System errors and health checks never return local filesystem paths, database credentials, environment variables, or unhandled tracebacks. Internal logs capture diagnostic details while HTTP responses return structured, sanitized machine-readable error codes.
+  4. **Faithful Schema Alignment & No Fabricated Persistence:** In accordance with ADR 10 and ADR 11, routes that lack a production persistence schema (`POST /api/feedback`) return an explicit HTTP 501 Not Implemented status with machine-readable `deferred` indicators rather than faking persistence.

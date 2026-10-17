@@ -1120,6 +1120,36 @@ This document formalizes the architectural decisions made on Day 1. All future i
      - Seamlessly integrates with `PredictionRepository.save_prediction()`, `OutcomeVerifier.verify_prediction()`, and `PredictionEvaluator.evaluate()`, enabling continuous side-by-side accuracy comparisons between pure ML models and the ensemble.
   6. **Graceful Degradation:**
      - If the LLM daemon is offline or fails, the ensemble automatically falls back to 100% ML weighting with status `ML_ONLY` without throwing unhandled exceptions.
-- **Consequences:**
   - Establishes a mathematically rigorous, transparent, and auditable ensemble synthesis layer for Phase 12.
   - Preserves independent model accountability while delivering actionable, unified predictions with target ranges and risk identification.
+
+---
+
+## ADR 61: FastAPI REST API Foundation, Dependency Inversion, and Deferred Feedback Contract
+- **Status:** Accepted
+- **Context:**
+  - In Phase 13 (Day 33), the system begins exposing its capabilities through a REST API to serve prospective web consumers and operational audit workflows.
+  - Architectural requirements demand:
+    1. Reusing existing domain services (`PredictionService`, `EnsembleService`, `PredictionRepository`, `EventProvider`) without duplication of business logic or feature pipelines.
+    2. Zero disclosure of internal credentials, environment secrets, absolute local filesystem paths, or unhandled stack traces.
+    3. Strict type validation, explicit bounded pagination, and clear HTTP error responses.
+    4. Compliance with ADR 10 (prohibition against unsupervised or continuous feedback retraining loops): if a proposed route lacks an established database persistence contract, it must not fabricate fake success responses.
+- **Decision:**
+  1. **FastAPI Application Factory & Architecture (`app/api/app.py`):**
+     - Deploy standard application factory pattern (`create_app()`) exposing `/docs` (OpenAPI) and centralizing exception handlers for `RequestValidationError`, `ValidationError`, and generic `Exception`.
+  2. **Dependency Injection & Test Decoupling (`app/api/dependencies.py`):**
+     - Expose typed dependency providers (`get_db_connection`, `get_prediction_repository`, `get_prediction_service`, `get_ensemble_service`, `get_event_providers`).
+     - Enables seamless in-memory SQLite and mock service substitution in CI/offline test suites without monkey-patching.
+  3. **Multi-Threaded SQLite Safety:**
+     - Configure SQLite connections with `check_same_thread=False` to safely handle ASGI worker thread pools while preserving WAL mode and busy timeouts.
+  4. **Strict Non-Disclosure & Security Boundary:**
+     - Health route (`GET /api/health`) evaluates database connectivity, model storage access, and LLM configuration without running slow inference and without returning absolute disk paths or credentials.
+  5. **Explicit Deferred Contract for Feedback (`POST /api/feedback`):**
+     - The feedback payload is validated via Pydantic (`FeedbackRequest`).
+     - Because no feedback table exists in the schema and ADR 10 strictly prohibits continuous automated model retraining on feedback loops, the route returns HTTP 501 Not Implemented with status `deferred`. Under no circumstances are fake persistent success responses fabricated.
+  6. **Canonical Outcome Linkage in History (`GET /api/history`):**
+     - Bounded pagination (`limit` 1-500, `offset` >= 0) and optional `symbol`/`model_name` filtering.
+     - Automatically attaches linked verified actual outcomes (`actuals` table) to historical prediction records where available.
+- **Consequences:**
+  - Establishes a secure, modular, highly testable REST API layer for Phase 13.
+  - Fully honors all established safety constraints, data immutability, and ADR guidelines.
