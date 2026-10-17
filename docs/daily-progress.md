@@ -3297,6 +3297,14 @@ Systematically addressed all 7 findings identified in code review:
 6. **Consistent History Timestamps & Labels**: Updated history table header from `Prediction Time (UTC)` to `Prediction Time (IST)` in `app/api/static/index.html` to align with the IST output produced by `formatDateTimeIST`.
 7. **Roadmap & Architecture Alignment**: Reconciled `docs/roadmap.md` and `docs/architecture.md` Section 4.29 to reflect restricted CORS origin whitelisting, disabled credentials, and zero-fabrication guarantees.
 - Added regression tests in `tests/test_frontend.py` expanding test count to **485 passing tests**.
+8. **Evaluation Script Directional Accuracy Check**: Corrected `scripts/verify_day25.py` to compare calculated `directional_accuracy` against the expected value derived from `v_rec.is_correct`, catching any unexpected denominator discrepancies.
+9. **Market-Returns Performance Optimization**: In `app/market/returns.py` (`compute_market_returns`), eliminated redundant second pass of `calculate_rolling_volatility` by directly scaling `rolling_vols[w]` by $\sqrt{\text{trading\_days}}$ while preserving `None` warm-up values, validated by `test_compute_market_returns_annual_vol_scaling_reusing_raw` in `tests/test_returns.py` expanding test count to **486 passing tests**.
+10. **Market-Cleaner Hardening & ADR Alignment**:
+    - Replaced raw `assert` statements in `scripts/verify_cleaner.py` with explicit conditional checks providing diagnostic error reporting and non-zero exit status (`1`).
+    - Updated ADR 27 in `docs/decisions.md` to document duplicate price comparison using `math.isclose` with absolute tolerance `1e-5` while preserving volume criteria.
+    - Updated ADR 26 in `docs/decisions.md` to explicitly state that no price interpolation or synthetic bar creation is permitted.
+    - Strengthened `test_timestamp_and_timezone_normalization` in `tests/test_cleaning.py` asserting the normalized UTC bar has hour 5 and minute 30 (IST offset) and the naive bar has hour 0.
+    - Updated docstring of `clean_market_data` in `app/market/cleaner.py` documenting `ZoneInfoNotFoundError` for unknown target timezones.
 
 ### Known Limitations & Next Steps
 - Day 34 completes Phase 13: Web Application & API Layer.
