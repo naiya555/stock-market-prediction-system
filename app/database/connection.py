@@ -21,12 +21,14 @@ def get_default_db_path() -> Path:
 def create_connection(
     db_path: Optional[Union[str, Path]] = None,
     timeout: float = 10.0,
+    check_same_thread: bool = False,
 ) -> sqlite3.Connection:
     """Create and configure a SQLite connection.
 
     Args:
         db_path: Path to SQLite database file or ':memory:'. Defaults to settings.data_dir/predictions.db.
         timeout: Lock acquisition timeout in seconds.
+        check_same_thread: Whether to restrict connection to creating thread (default False).
 
     Returns:
         Configured sqlite3.Connection with foreign keys enabled, Row factory, and WAL mode.
@@ -40,7 +42,7 @@ def create_connection(
     if target_path != ":memory:":
         Path(target_path).parent.mkdir(parents=True, exist_ok=True)
 
-    conn = sqlite3.connect(target_path, timeout=timeout)
+    conn = sqlite3.connect(target_path, timeout=timeout, check_same_thread=check_same_thread)
     conn.row_factory = sqlite3.Row
 
     # Enforce SQLite performance and safety pragmas

@@ -134,9 +134,18 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Canonical adapter: `.to_prediction_result()` seamlessly enables immutable SQLite persistence (`PredictionRepository`), outcome verification (`OutcomeVerifier`), and comparative performance metrics (`PredictionEvaluator`).
   - Graceful degradation: handles LLM service failures or offline states by falling back to 100% ML weight without crashing.
 
-### Phase 13: Web Application
-- Build FastAPI REST API endpoints.
-- Develop interactive web UI for stock search, prediction visualization, and audit history.
+### Phase 13: Web Application & API Layer (Partially Complete - Day 33)
+- FastAPI REST API Foundation (`app/api/` - Day 33 complete):
+  - Application factory (`app/api/app.py`): central FastAPI instance with OpenAPI documentation (`/docs`, `/redoc`), structured error handlers, and non-disclosure sanitization.
+  - Dependency injection layer (`app/api/dependencies.py`): loosely coupled database connections, `PredictionRepository`, `PredictionService`, `EnsembleService`, and event providers for clean test overrides.
+  - Typed Pydantic request/response schemas (`app/api/schemas.py`): input bounds, parameter validations, and non-sensitive payload models.
+  - Health endpoint (`GET /api/health`): verifies SQLite connectivity, model storage accessibility, and LLM configuration without running slow inference or disclosing internal secrets.
+  - Prediction endpoint (`POST /api/predict`): accepts validated tickers and parameters, orchestrates standalone ML (XGBoost/LightGBM) or synthesized multi-agent ensemble (ML + Gemma 3 12B), and persists immutable records.
+  - History endpoint (`GET /api/history`): retrieves persisted predictions with bounded pagination, ticker/model filtering, and linked verified actual outcomes.
+  - Feedback endpoint (`POST /api/feedback`): validates feedback schema and explicitly defers persistence (HTTP 501) with ADR 10 disclosure against automated retraining loops.
+  - Events endpoint (`GET /api/events`): exposes normalized, deduplicated macroeconomic and regulatory announcements across RBI and SEBI providers.
+- Interactive Web UI (Day 34):
+  - Develop lightweight web UI for stock search, prediction visualization, and audit history.
 
 ### Phase 14: Live Data Pipeline
 - Connect near-real-time market data providers with strict timestamp preservation.
