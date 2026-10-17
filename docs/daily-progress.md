@@ -3306,6 +3306,63 @@ Systematically addressed all 7 findings identified in code review:
     - Strengthened `test_timestamp_and_timezone_normalization` in `tests/test_cleaning.py` asserting the normalized UTC bar has hour 5 and minute 30 (IST offset) and the naive bar has hour 0.
     - Updated docstring of `clean_market_data` in `app/market/cleaner.py` documenting `ZoneInfoNotFoundError` for unknown target timezones.
 
+### Code Review Remediation: CodeRabbit Deep Scan Findings (12 of 12 Remediated)
+Systematically remediated all 12 findings identified across CodeRabbit Deep Scan (`naiya555-stock-market-prediction-system-agent-findings.csv`):
+
+1. **Finding `a51c3c34-6b77-4c88-9a88-69640cb653f5` (Shell Argument Injection - `scripts/search_repo.sh`):**
+   - Replaced unsafe flattened unquoted argument strings with Bash arrays `EXTRA_ARGS=("$@")` and `"${EXTRA_ARGS[@]}"`.
+   - Forwarded arguments to ripgrep and grep safely with quoted array expansions, translating `--type` safely while preserving argument boundaries and excluding `.git`, `.venv`, and `__pycache__`.
+   - Added `tests/test_search_repo.py` verifying spaces, wildcards, option values, and no command injection.
+
+2. **Finding `9f11423b-6961-4960-854a-699db69ff89c` (DOM XSS / Unsafe Attribute - `app/api/static/js/app.js`):**
+   - Refactored `renderEventsGrid` to construct card elements safely using `document.createElement` (`h4`, `span`, `div`, `a`), populating untrusted titles and descriptions via `.textContent` property assignment.
+   - Enforced strict `URL` protocol validation (`isSafeHttpUrl`) permitting only `http:` and `https:` schemes, assigning verified URLs directly to the `a.href` property without HTML interpolation.
+   - Added regression test `test_event_renderer_xss_protection` in `tests/test_frontend.py`.
+
+3. **Finding `3b923d5b-eb3d-4516-8cc7-41a22c917f99` (Public API Information Disclosure - `app/api/routes/predict.py`):**
+   - Implemented `_sanitize_public_error_message(msg, model_name)` sanitizing internal filesystem paths, loader diagnostics, and raw exception messages in prediction error responses and 500 status codes.
+   - Retained full technical exception details in server-side logs via `logger.warning` / `logger.error` while exposing safe, stable user-facing status messages.
+   - Added regression tests `test_predict_error_sanitization_no_path_disclosure` and `test_predict_ensemble_service_exception_sanitized` in `tests/test_api.py`.
+
+4. **Finding `b459745a-1494-4d4a-99ba-df6160cd8324` (Log Injection - `app/prediction/ensemble.py`):**
+   - Wrapped user/external symbol in `predict_ensemble` with `sanitize_log_field()`, neutralizing CR, LF, and control characters.
+   - Added schema validators in `PredictRequest` and `SafeLogFormatter` in `app/core/logging_config.py`.
+
+5. **Finding `75169822-10b9-4c51-87d7-2c6daa5847a4` (Log Injection - `app/market/pipeline.py`):**
+   - Sanitized raw input symbol with `sanitize_log_field()` in pipeline orchestration logs.
+
+6. **Finding `97c82693-02c8-4cc3-8a37-9737ca5dc3c7` (Log Injection - `app/api/routes/feedback.py`):**
+   - Enforced strict regex validation on `FeedbackRequest.prediction_id` (`^[A-Za-z0-9_\-]{1,64}$`) and wrapped logged fields with `sanitize_log_field()`.
+
+7. **Finding `221fa173-c171-4128-b3f9-7e6de364fc2f` (Log Injection - `app/market/providers/yfinance_provider.py`):**
+   - Sanitized invalid publication date strings and symbols using `sanitize_log_field()`, preventing CRLF log entry forging.
+   - Added test suite in `tests/test_log_injection.py` with 17 unit tests verifying control-character neutralization and log line protection.
+
+8. **Finding `1ec5f892-7f69-4c52-80dd-1df78aab9991` (RSS ReDoS - `app/news/providers/rss_provider.py`):**
+   - Replaced unbounded regex `<[^>]+>` with a bounded linear $O(N)$ HTML tag stripper `_strip_html_tags(text, max_length=100_000)` and added `MAX_RSS_PAYLOAD_BYTES = 5_000_000` limit raising `NewsProviderError`.
+
+9. **Finding `11905224-342d-4afb-b670-04d4ddcc860a` (Macro Event HTML ReDoS - `app/events/providers/rbi_provider.py`):**
+   - Replaced regex HTML stripper in RBI and SEBI providers with linear $O(N)$ character scanner and bounded payload limits (`MAX_RBI_PAYLOAD_CHARS = 5_000_000`, `MAX_SEBI_PAYLOAD_CHARS = 5_000_000`).
+
+10. **Finding `08bc0d39-09ed-4451-842b-5e4369cfabe6` (RBI Repo Rate ReDoS - `app/events/providers/rbi_provider.py`):**
+    - Replaced catastrophic backtracking regex `repo\s+rate.*?(\d+\.\d+)\s*%` with a bounded linear scanner searching `repo rate` occurrences and extracting values within a safe 150-char window using `^[^\n%]{0,120}?(\d+\.\d+)`.
+    - Added adversarial tests in `tests/test_feed_redos_protection.py` (50,000 unmatched brackets, 30 repeated prefixes, oversized payloads).
+
+11. **Finding `e4c30701-5044-427f-a567-84177590c53a` (LLM Markdown-Fence ReDoS - `app/llm/service.py`):**
+    - Bounded LLM completions to `MAX_LLM_COMPLETION_CHARS = 100_000` raising `LLMParseError`.
+    - Replaced regex markdown fence stripping with deterministic line-based stripping and outer brace `{...}` indexing, preserving valid JSON while preventing catastrophic backtracking on unclosed fences.
+    - Added regression tests in `tests/test_llm_service.py`.
+
+12. **Finding `3bb2c072-3523-41f5-9f47-3a836cd17ce9` (Quadratic Trend Computation - `app/market/trend.py`):**
+    - Replaced $O(N^2)$ repeated scanning in `compute_rolling_trends` with an incremental single-pass $O(N)$ algorithm maintaining running confirmed pivots and structural labels.
+    - Added `compute_latest_trend(records)` for $O(N)$ point-in-time calculation of the latest bar only.
+    - Added `only_latest: bool = False` to `assemble_feature_matrix`, bypassing historical rolling trend computation during online inference in `app/prediction/service.py`.
+    - Added regression tests in `tests/test_trend.py` verifying 100% exact numerical and semantic equivalence between incremental trend computation and repeated naive historical analysis.
+
+- **Full Test Suite Results:**
+  - Expanded from 486 baseline tests to **521 passed tests in 10.29s** (35 new focused regression tests, 0 failures, 0 regressions across 35 test files).
+  - Verification scripts (`verify_trend.py`, `verify_feature_matrix.py`, `verify_pipeline.py`, `verify_day34.py`) all pass with exit code 0.
+
 ### Known Limitations & Next Steps
-- Day 34 completes Phase 13: Web Application & API Layer.
+- Day 34 code review remediation is complete with all 12 deep scan findings resolved and empirically tested.
 - Next scheduled milestone: Phase 14: Live Data Pipeline (connect near-real-time market data providers with strict timestamp preservation and market session state handling).

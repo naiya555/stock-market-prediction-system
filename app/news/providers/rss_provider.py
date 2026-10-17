@@ -15,12 +15,15 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from zoneinfo import ZoneInfo
 
-from app.core.logging_config import get_logger
+from app.core.logging_config import get_logger, sanitize_log_field
 from app.core.schemas import ValidationError
 from app.news.providers.base import BaseNewsProvider, NewsProviderError
 from app.news.schemas import NewsArticle
 
 logger = get_logger(__name__)
+
+# Maximum allowed RSS XML payload bytes (5 MB)
+MAX_RSS_PAYLOAD_BYTES = 5_000_000
 
 # Indian Market Target Timezone
 IST = ZoneInfo("Asia/Kolkata")
@@ -43,12 +46,23 @@ COMPANY_NAME_MAP: Dict[str, str] = {
 }
 
 
-def _strip_html_tags(text: str) -> str:
-    """Remove HTML markup and unescape HTML entities from summary text."""
+def _strip_html_tags(text: str, max_length: int = 100_000) -> str:
+    """Remove HTML markup and unescape HTML entities in linear O(N) time with bounded length."""
     if not text:
         return ""
-    clean = re.sub(r"<[^>]+>", " ", text)
-    clean = html.unescape(clean)
+    if len(text) > max_length:
+        text = text[:max_length]
+    out = []
+    in_tag = False
+    for ch in text:
+        if ch == "<":
+            in_tag = True
+            out.append(" ")
+        elif ch == ">":
+            in_tag = False
+        elif not in_tag:
+            out.append(ch)
+    clean = html.unescape("".join(out))
     return " ".join(clean.split())
 
 
@@ -138,6 +152,11 @@ class RSSNewsProvider(BaseNewsProvider):
             logger.warning("Empty XML bytes supplied to parse_rss_payload")
             return []
 
+        if len(xml_bytes) > MAX_RSS_PAYLOAD_BYTES:
+            raise NewsProviderError(
+                f"RSS payload exceeds maximum allowed size ({len(xml_bytes)} > {MAX_RSS_PAYLOAD_BYTES} bytes)"
+            )
+
         clean_symbol = symbol.strip().upper()
         if clean_symbol.endswith(".NS") or clean_symbol.endswith(".BO"):
             base_sym = clean_symbol.rsplit(".", 1)[0]
@@ -193,7 +212,7 @@ class RSSNewsProvider(BaseNewsProvider):
                         dt = dt.replace(tzinfo=timezone.utc)
                     published_dt = dt.astimezone(IST)
                 except Exception as exc:
-                    logger.debug("Failed RFC 2822 date parse for '%s': %s", raw_pub_date, exc)
+                    logger.debug("Failed RFC 2822 date parse for '%s': %s", sanitize_log_field(raw_pub_date), exc)
                     try:
                         # Fallback to ISO format
                         dt = datetime.fromisoformat(raw_pub_date)
@@ -204,7 +223,10 @@ class RSSNewsProvider(BaseNewsProvider):
                         published_dt = None
 
             if published_dt is None:
-                logger.warning("Skipping article with unparseable publication date: '%s'", raw_pub_date)
+                logger.warning(
+                    "Skipping article with unparseable publication date: '%s'",
+                    sanitize_log_field(raw_pub_date),
+                )
                 continue
 
             # Extract link / URL

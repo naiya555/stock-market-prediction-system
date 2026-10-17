@@ -382,6 +382,38 @@ class TestLLMService:
         with pytest.raises(LLMParseError, match="could not be parsed as valid JSON"):
             service.extract_context([art])
 
+    def test_oversized_completion_raises_parse_error(self) -> None:
+        """Verify LLM response exceeding MAX_LLM_COMPLETION_CHARS raises LLMParseError."""
+        oversized = "{" + " " * 110_000 + '"direction": "UP"}'
+        client = MockLLMClient(default_response=oversized)
+        service = LLMService(client=client)
+        art = NewsArticle(
+            headline="Headline",
+            source="Source",
+            published_at=datetime.now(timezone.utc),
+            ingested_at=datetime.now(timezone.utc),
+            symbols=("SBIN",),
+        )
+        with pytest.raises(LLMParseError, match="exceeds maximum allowed length"):
+            service.extract_context([art])
+
+    def test_extract_json_deterministic_fence_normalization(self) -> None:
+        """Verify deterministic linear parsing of unclosed fences, preamble, and whitespace runs."""
+        # 1. Unclosed fence with trailing whitespace
+        unclosed = "```json\n" + "   \n" + '{"entities": ["TCS"], "affected_sectors": ["IT"]}' + "\n   "
+        parsed = _extract_json_object(unclosed)
+        assert parsed["entities"] == ["TCS"]
+
+        # 2. Fence with leading preamble
+        with_preamble = "Here is the requested extraction:\n```json\n" + '{"entities": ["INFY"]}\n```\nHope this helps!'
+        parsed2 = _extract_json_object(with_preamble)
+        assert parsed2["entities"] == ["INFY"]
+
+        # 3. Plain text with long whitespace runs
+        long_whitespace = "   \n\n\t  " + '{"entities": ["RELIANCE"]}' + "   \n\n  "
+        parsed3 = _extract_json_object(long_whitespace)
+        assert parsed3["entities"] == ["RELIANCE"]
+
     def test_extract_context_non_dict_json_raises_parse_error(self) -> None:
         client = MockLLMClient(default_response='["item1", "item2"]')
         service = LLMService(client=client)

@@ -10,6 +10,7 @@ from fastapi import APIRouter, status
 from fastapi.responses import JSONResponse
 
 from app.api.schemas import FeedbackRequest, FeedbackResponse
+from app.core.logging_config import sanitize_log_field
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +32,8 @@ def submit_feedback(payload: FeedbackRequest) -> JSONResponse:
     """Validate feedback schema and return explicit deferred status."""
     logger.info(
         "Received feedback request for prediction_id=%s, feedback_type=%s",
-        payload.prediction_id,
-        payload.feedback_type,
+        sanitize_log_field(payload.prediction_id),
+        sanitize_log_field(payload.feedback_type),
     )
 
     response_payload = FeedbackResponse(

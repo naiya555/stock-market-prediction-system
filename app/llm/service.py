@@ -49,31 +49,34 @@ class LLMValidationError(LLMServiceError):
     pass
 
 
-def _extract_json_object(raw_text: str) -> Dict[str, Any]:
+MAX_LLM_COMPLETION_CHARS = 100_000
+
+
+def _extract_json_object(raw_text: str, max_chars: int = MAX_LLM_COMPLETION_CHARS) -> Dict[str, Any]:
     """Extract and parse a JSON object from raw model output.
 
     Handles leading/trailing whitespace, markdown code blocks (```json ... ```),
-    and rejects payloads that are not dictionaries.
+    and rejects payloads that are not dictionaries or exceed length bounds.
     """
     if not raw_text or not raw_text.strip():
         raise LLMParseError("LLM response is empty")
 
+    if len(raw_text) > max_chars:
+        raise LLMParseError(f"LLM response exceeds maximum allowed length ({len(raw_text)} > {max_chars})")
+
     cleaned = raw_text.strip()
 
-    # Strip markdown code blocks if the model wrapped the JSON
+    # Deterministic line-based markdown code block removal (linear time, zero regex backtracking)
     if cleaned.startswith("```"):
-        # Match ```json ... ``` or ``` ... ```
-        pattern = r"^```(?:json)?\s*\n?(.*?)\n?```$"
-        match = re.search(pattern, cleaned, re.DOTALL | re.IGNORECASE)
-        if match:
-            cleaned = match.group(1).strip()
-        else:
-            # Fallback: strip leading ```... and trailing ```
-            lines = cleaned.splitlines()
-            if len(lines) >= 2 and lines[0].startswith("```") and lines[-1].startswith("```"):
+        lines = cleaned.splitlines()
+        first_line = lines[0].strip()
+        if first_line.startswith("```"):
+            if len(lines) >= 2 and lines[-1].strip().startswith("```"):
                 cleaned = "\n".join(lines[1:-1]).strip()
+            else:
+                cleaned = "\n".join(lines[1:]).strip()
 
-    # Attempt to locate the outer JSON object if extra text surrounds it
+    # Locate the outer JSON object braces
     first_brace = cleaned.find("{")
     last_brace = cleaned.rfind("}")
     if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
@@ -82,7 +85,8 @@ def _extract_json_object(raw_text: str) -> Dict[str, Any]:
     try:
         data = json.loads(cleaned)
     except json.JSONDecodeError as e:
-        raise LLMParseError(f"Model output could not be parsed as valid JSON: {e}. Output was: {raw_text[:200]}") from e
+        snippet = raw_text[:200].replace("\r", "\\r").replace("\n", "\\n")
+        raise LLMParseError(f"Model output could not be parsed as valid JSON: {e}. Output snippet: {snippet}") from e
 
     if not isinstance(data, dict):
         raise LLMParseError(f"Expected JSON object (dict), but received {type(data).__name__}")

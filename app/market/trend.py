@@ -497,6 +497,31 @@ def analyze_market_trend(
     )
 
 
+def compute_latest_trend(
+    records: Sequence[MarketOHLCV],
+    swing_window: int = 2,
+    min_swings: int = 2,
+) -> Optional[str]:
+    """Compute point-in-time trend classification for the latest bar only.
+
+    Avoids evaluating intermediate bars when caller only needs the current regime.
+
+    Args:
+        records: Sequence of MarketOHLCV bars.
+        swing_window: Flanking window for pivot detection (default 2).
+        min_swings: Minimum swings required per type (default 2).
+
+    Returns:
+        Trend classification string ("UPTREND", "DOWNTREND", "SIDEWAYS", or None).
+    """
+    res = analyze_market_trend(
+        records=records,
+        swing_window=swing_window,
+        min_swings=min_swings,
+    )
+    return res.classification
+
+
 def compute_rolling_trends(
     records: Sequence[MarketOHLCV],
     swing_window: int = 2,
@@ -504,10 +529,11 @@ def compute_rolling_trends(
 ) -> List[Optional[str]]:
     """Compute point-in-time trend classifications for each bar in a chronological series.
 
-    Guarantees:
+    Uses an incremental O(N) single-pass algorithm guaranteeing:
         - Zero look-ahead leakage: For bar at index t, only data available at index t
           (confirmations <= t) is used.
         - Perfectly aligned 1:1 with input records.
+        - Numerical and semantic equivalence to repeated analyze_market_trend.
 
     Args:
         records: Sequence of MarketOHLCV bars.
@@ -518,6 +544,11 @@ def compute_rolling_trends(
         List of trend classification strings ("UPTREND", "DOWNTREND", "SIDEWAYS", or None),
         with length equal to len(records).
     """
+    if swing_window < 1:
+        raise ValueError(f"swing_window must be >= 1, got {swing_window}")
+    if min_swings < 1:
+        raise ValueError(f"min_swings must be >= 1, got {min_swings}")
+
     n = len(records)
     if n == 0:
         return []
@@ -525,13 +556,99 @@ def compute_rolling_trends(
     sorted_bars = sorted(records, key=lambda b: b.timestamp)
     trend_series: List[Optional[str]] = []
 
+    confirmed_highs: List[SwingPoint] = []
+    confirmed_lows: List[SwingPoint] = []
+
     for t in range(n):
-        res = analyze_market_trend(
-            records=sorted_bars,
-            swing_window=swing_window,
-            min_swings=min_swings,
-            as_of_index=t,
-        )
-        trend_series.append(res.classification)
+        # Candidate pivot confirmed exactly at t: p = t - swing_window
+        p = t - swing_window
+        if p >= swing_window:
+            bar_p = sorted_bars[p]
+            if _validate_bar_geometry(bar_p):
+                h_p = float(bar_p.high)
+                l_p = float(bar_p.low)
+
+                # Check Swing High
+                is_high = True
+                for j in range(1, swing_window + 1):
+                    prev_bar = sorted_bars[p - j]
+                    next_bar = sorted_bars[p + j]
+                    if not _validate_bar_geometry(prev_bar) or not _validate_bar_geometry(next_bar):
+                        is_high = False
+                        break
+                    if not (h_p > float(prev_bar.high) and h_p >= float(next_bar.high)):
+                        is_high = False
+                        break
+
+                if is_high:
+                    label: Optional[str] = None
+                    if confirmed_highs:
+                        prev_price = confirmed_highs[-1].price
+                        if h_p > prev_price:
+                            label = "HH"
+                        elif h_p < prev_price:
+                            label = "LH"
+                        else:
+                            label = "EH"
+                    confirm_bar = sorted_bars[t]
+                    confirmed_highs.append(
+                        SwingPoint(
+                            index=p,
+                            timestamp=bar_p.timestamp,
+                            price=h_p,
+                            swing_type="HIGH",
+                            confirmation_index=t,
+                            confirmation_timestamp=confirm_bar.timestamp,
+                            structure_label=label,
+                        )
+                    )
+
+                # Check Swing Low
+                is_low = True
+                for j in range(1, swing_window + 1):
+                    prev_bar = sorted_bars[p - j]
+                    next_bar = sorted_bars[p + j]
+                    if not _validate_bar_geometry(prev_bar) or not _validate_bar_geometry(next_bar):
+                        is_low = False
+                        break
+                    if not (l_p < float(prev_bar.low) and l_p <= float(next_bar.low)):
+                        is_low = False
+                        break
+
+                if is_low:
+                    label = None
+                    if confirmed_lows:
+                        prev_price = confirmed_lows[-1].price
+                        if l_p > prev_price:
+                            label = "HL"
+                        elif l_p < prev_price:
+                            label = "LL"
+                        else:
+                            label = "EL"
+                    confirm_bar = sorted_bars[t]
+                    confirmed_lows.append(
+                        SwingPoint(
+                            index=p,
+                            timestamp=bar_p.timestamp,
+                            price=l_p,
+                            swing_type="LOW",
+                            confirmation_index=t,
+                            confirmation_timestamp=confirm_bar.timestamp,
+                            structure_label=label,
+                        )
+                    )
+
+        # Classify market structure at index t
+        if len(confirmed_highs) < min_swings or len(confirmed_lows) < min_swings:
+            trend_series.append(None)
+        else:
+            last_high_label = confirmed_highs[-1].structure_label
+            last_low_label = confirmed_lows[-1].structure_label
+            if last_high_label == "HH" and last_low_label == "HL":
+                trend_series.append(TrendClassification.UPTREND)
+            elif last_high_label == "LH" and last_low_label == "LL":
+                trend_series.append(TrendClassification.DOWNTREND)
+            else:
+                trend_series.append(TrendClassification.SIDEWAYS)
 
     return trend_series

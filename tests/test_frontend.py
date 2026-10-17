@@ -197,3 +197,29 @@ def test_frontend_js_api_contract_parity():
     assert "res.ensemble.source_references" in content
     assert "res.ensemble.llm_direction" in content
     assert "res.ensemble.llm_confidence" in content
+
+
+def test_event_renderer_xss_protection():
+    """Verify event renderer uses safe DOM APIs (createElement, textContent) and safe URL checks.
+
+    Remediates CodeRabbit Deep Scan finding 9f11423b-6961-4960-854a-699db69ff89c.
+    """
+    js_file = STATIC_DIR / "js" / "app.js"
+    content = js_file.read_text(encoding="utf-8")
+
+    # 1. Verify safe URL validation enforces http: and https: protocols only
+    assert "parsed.protocol === 'http:' || parsed.protocol === 'https:'" in content
+    assert "return false;" in content
+
+    # 2. Verify events grid renderer builds elements with document.createElement
+    assert "document.createElement('div')" in content
+    assert "document.createElement('h4')" in content
+    assert "document.createElement('a')" in content
+
+    # 3. Verify textContent is used for untrusted event content (no innerHTML interpolation)
+    assert "titleEl.textContent = ev.title || '';" in content
+    assert "link.textContent = 'Official Circular ↗';" in content
+
+    # 4. Verify href is assigned via element property only after isSafeHttpUrl validation
+    assert "link.href = parsed.href;" in content
+    assert "if (isSafeHttpUrl(ev.url))" in content

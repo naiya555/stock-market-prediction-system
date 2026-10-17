@@ -284,7 +284,7 @@ class PredictionService:
 
         # Step 3: Feature Matrix Assembly & Isolation Guard
         try:
-            dataset = assemble_feature_matrix(pipeline_result)
+            dataset = assemble_feature_matrix(pipeline_result, only_latest=True)
         except Exception as exc:
             logger.error("Feature assembly failed for symbol '%s': %s", clean_symbol, exc)
             return self._build_error_result(

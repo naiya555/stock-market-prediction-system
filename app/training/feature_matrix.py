@@ -40,7 +40,10 @@ from app.market.pipeline import (
     MarketDataPipelineResult,
     process_market_data,
 )
-from app.market.trend import compute_rolling_trends
+from app.market.trend import (
+    compute_latest_trend,
+    compute_rolling_trends,
+)
 from app.prediction.target import (
     TargetObservation,
     generate_direction_targets,
@@ -286,6 +289,7 @@ def assemble_feature_matrix(
     data: Union[MarketDataPipelineResult, Sequence[MarketOHLCV]],
     swing_window: int = 2,
     min_swings: int = 2,
+    only_latest: bool = False,
 ) -> FeatureMatrixDataset:
     """Assemble an aligned, leakage-safe technical feature matrix joined with Day 15 targets.
 
@@ -293,6 +297,8 @@ def assemble_feature_matrix(
         data: Either an existing MarketDataPipelineResult or a sequence of MarketOHLCV records.
         swing_window: Flank window for Trend Engine swing confirmation (default 2).
         min_swings: Minimum confirmed swings required for trend classification (default 2).
+        only_latest: If True, evaluates features and trend classification only for the final
+            bar (t = N - 1), bypassing full rolling trend history for fast inference.
 
     Returns:
         FeatureMatrixDataset container with cleanly separated X, y, metadata, and full df.
@@ -334,7 +340,6 @@ def assemble_feature_matrix(
         )
         cleaned_records = pipeline_res.cleaned_records
 
-
     n_records = len(cleaned_records)
     if n_records == 0:
         empty_df = pd.DataFrame(columns=METADATA_COLUMNS + FEATURE_COLUMNS + TARGET_COLUMNS)
@@ -356,19 +361,28 @@ def assemble_feature_matrix(
         (t.symbol, t.timestamp): t for t in target_obs_list
     }
 
-    # Step 3: Compute Point-in-Time Rolling Trend Regimes
-    rolling_trends: List[Optional[str]] = compute_rolling_trends(
-        cleaned_records,
-        swing_window=swing_window,
-        min_swings=min_swings,
-    )
+    # Step 3: Compute Trend Regimes
+    if only_latest:
+        rolling_trends = [compute_latest_trend(
+            cleaned_records,
+            swing_window=swing_window,
+            min_swings=min_swings,
+        )]
+        indices_to_process = [n_records - 1]
+    else:
+        rolling_trends = compute_rolling_trends(
+            cleaned_records,
+            swing_window=swing_window,
+            min_swings=min_swings,
+        )
+        indices_to_process = list(range(n_records))
 
     # Step 4: Extract and Aligned Feature Rows
     rows: List[Dict[str, Any]] = []
     indicators_list = pipeline_res.indicators
     returns_list = pipeline_res.features
 
-    for i in range(n_records):
+    for loop_idx, i in enumerate(indices_to_process):
         bar = cleaned_records[i]
         key = (bar.symbol, bar.timestamp)
 
@@ -381,7 +395,7 @@ def assemble_feature_matrix(
 
         ind = indicators_list[i] if i < len(indicators_list) else None
         ret = returns_list[i] if i < len(returns_list) else None
-        trend_label = rolling_trends[i] if i < len(rolling_trends) else None
+        trend_label = rolling_trends[0] if only_latest else (rolling_trends[i] if i < len(rolling_trends) else None)
 
         row: Dict[str, Any] = {
             # Metadata
@@ -459,7 +473,7 @@ def assemble_feature_matrix(
     logger.info(
         "Assembled technical feature matrix for %s: %d total rows (%d labeled, %d unlabeled, %d features)",
         symbol,
-        n_records,
+        len(full_df),
         labeled_count,
         unlabeled_count,
         len(FEATURE_COLUMNS),
@@ -472,7 +486,7 @@ def assemble_feature_matrix(
         y=y,
         metadata=metadata,
         feature_names=FEATURE_COLUMNS,
-        total_rows=n_records,
+        total_rows=len(full_df),
         labeled_rows=labeled_count,
         unlabeled_rows=unlabeled_count,
     )

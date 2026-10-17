@@ -5,6 +5,7 @@ historical prediction queries, feedback handling, and macroeconomic/regulatory e
 """
 
 from datetime import datetime
+import re
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -113,9 +114,15 @@ class PredictRequest(BaseModel):
     @field_validator("symbol")
     @classmethod
     def validate_symbol(cls, v: str) -> str:
-        clean = v.strip().upper()
-        if not clean:
+        if not v or not v.strip():
             raise ValueError("symbol cannot be empty or whitespace.")
+        clean = v.strip().upper()
+        # Reject control characters (CR, LF, tabs, non-printables)
+        if any(ord(c) < 32 or ord(c) == 127 for c in v):
+            raise ValueError("symbol contains invalid control characters or line breaks.")
+        # Validate against supported ticker grammar (letters, digits, dot, hyphen, underscore, caret)
+        if not re.match(r"^[A-Z0-9_\-\.\^]{1,30}$", clean):
+            raise ValueError(f"symbol '{clean}' does not match supported ticker format.")
         return clean
 
 
@@ -246,6 +253,18 @@ class FeedbackRequest(BaseModel):
     )
     comments: Optional[str] = Field(None, max_length=2000, description="Optional user comments")
     rating: Optional[int] = Field(None, ge=1, le=5, description="Optional 1-5 rating")
+
+    @field_validator("prediction_id", "feedback_type")
+    @classmethod
+    def validate_identifiers(cls, v: str) -> str:
+        clean = v.strip()
+        if not clean:
+            raise ValueError("Field cannot be empty or whitespace.")
+        if any(ord(c) < 32 or ord(c) == 127 for c in v):
+            raise ValueError("Field contains invalid control characters or line breaks.")
+        if not re.match(r"^[A-Za-z0-9_\-]{1,64}$", clean):
+            raise ValueError("Field contains invalid characters; only alphanumeric, dash, and underscore allowed.")
+        return clean
 
 
 class FeedbackResponse(BaseModel):

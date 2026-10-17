@@ -24,12 +24,26 @@ DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) StockMarketPredi
 IST = ZoneInfo("Asia/Kolkata")
 
 
-def _strip_html(text: str) -> str:
-    """Remove HTML markup, unescape entities, and collapse whitespace."""
+MAX_RBI_PAYLOAD_CHARS = 5_000_000
+
+
+def _strip_html(text: str, max_length: int = 100_000) -> str:
+    """Remove HTML markup, unescape entities, and collapse whitespace in linear O(N) time."""
     if not text:
         return ""
-    clean = re.sub(r"<[^>]+>", " ", text)
-    clean = html.unescape(clean)
+    if len(text) > max_length:
+        text = text[:max_length]
+    out = []
+    in_tag = False
+    for ch in text:
+        if ch == "<":
+            in_tag = True
+            out.append(" ")
+        elif ch == ">":
+            in_tag = False
+        elif not in_tag:
+            out.append(ch)
+    clean = html.unescape("".join(out))
     return " ".join(clean.split())
 
 
@@ -57,17 +71,31 @@ def _parse_rbi_date(date_str: str) -> datetime:
     raise ValueError(f"Could not parse RBI date: '{date_str}'")
 
 
-def _extract_repo_rate_value(text: str) -> Optional[StructuredEventValue]:
-    """Scan title and summary for explicit repo rate percentage changes or levels."""
-    # Look for patterns like "repo rate ... 6.50%" or "repo rate by 25 bps"
-    match_pct = re.search(r"repo\s+rate.*?(\d+\.\d+)\s*%", text, re.IGNORECASE)
-    if match_pct:
-        rate = float(match_pct.group(1))
-        return StructuredEventValue(
-            metric_name="repo_rate",
-            value=rate,
-            unit="percent",
-        )
+def _extract_repo_rate_value(text: str, max_length: int = 20_000) -> Optional[StructuredEventValue]:
+    """Scan title and summary for explicit repo rate percentage changes or levels with linear bounded search."""
+    if not text:
+        return None
+    bounded = text[:max_length]
+    lower = bounded.lower()
+    start = 0
+    pattern_pct = re.compile(r"^[^\n%]{0,120}?(\d+\.\d+)\s*(?:%|per\s+cent)", re.IGNORECASE)
+    while True:
+        pos = lower.find("repo rate", start)
+        if pos == -1:
+            break
+        window = bounded[pos + 9 : pos + 150]
+        match_pct = pattern_pct.search(window)
+        if match_pct:
+            try:
+                rate = float(match_pct.group(1))
+                return StructuredEventValue(
+                    metric_name="repo_rate",
+                    value=rate,
+                    unit="percent",
+                )
+            except ValueError:
+                pass
+        start = pos + 9
     return None
 
 
@@ -145,6 +173,11 @@ class RBIEventProvider(BaseEventProvider):
         if not xml_content or not xml_content.strip():
             logger.warning("Received empty RBI RSS XML payload")
             return []
+
+        if len(xml_content) > MAX_RBI_PAYLOAD_CHARS:
+            raise EventProviderError(
+                f"RBI RSS payload exceeds maximum allowed size ({len(xml_content)} > {MAX_RBI_PAYLOAD_CHARS} chars)"
+            )
 
         try:
             root = ET.fromstring(xml_content.strip())

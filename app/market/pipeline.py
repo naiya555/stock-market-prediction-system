@@ -19,6 +19,8 @@ from app.market.providers.yfinance_provider import YFinanceProvider
 from app.market.returns import ReturnFeatures, compute_market_returns
 from app.market.trend import TrendAnalysisResult, analyze_market_trend
 
+from app.core.logging_config import get_logger, sanitize_log_field
+
 logger = get_logger(__name__)
 
 
@@ -253,7 +255,7 @@ def run_market_data_pipeline(
 
     logger.info(
         "Starting end-to-end pipeline: %s [%s to %s] via %s",
-        symbol,
+        sanitize_log_field(symbol),
         active_start.date(),
         active_end.date(),
         active_provider.name,

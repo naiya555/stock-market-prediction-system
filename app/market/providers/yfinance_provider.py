@@ -9,7 +9,7 @@ from typing import List
 import pandas as pd
 import yfinance as yf
 
-from app.core.logging_config import get_logger
+from app.core.logging_config import get_logger, sanitize_log_field
 from app.core.schemas import MarketOHLCV, ValidationError
 from app.market.providers.base import BaseMarketDataProvider
 
@@ -118,8 +118,8 @@ class YFinanceProvider(BaseMarketDataProvider):
 
         logger.info(
             "Fetching historical OHLCV for %s (%s) from %s to %s [interval=%s]",
-            base_symbol,
-            query_ticker,
+            sanitize_log_field(base_symbol),
+            sanitize_log_field(query_ticker),
             start_date.date(),
             end_date.date(),
             interval,

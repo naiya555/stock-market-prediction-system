@@ -96,6 +96,25 @@ def _map_ensemble_details(res: EnsemblePredictionResult) -> EnsembleDetailsRespo
     )
 
 
+def _sanitize_public_error_message(msg: Optional[str], model_name: str) -> Optional[str]:
+    """Sanitize internal diagnostics to prevent filesystem path and exception leakage."""
+    if not msg:
+        return None
+    logger.warning("Internal prediction diagnostic for '%s': %s", model_name, msg)
+    lower = msg.lower()
+    if "artifact not found" in lower or "not found at" in lower:
+        return f"Model artifact unavailable for '{model_name}'. Model must be trained and persisted prior to inference."
+    if "failed to deserialize" in lower or "failed to load" in lower:
+        return f"Model artifact could not be deserialized for '{model_name}'."
+    if "unsupported model" in lower:
+        return f"Unsupported model architecture '{model_name}'."
+    if "feature matrix assembly failed" in lower:
+        return f"Feature matrix assembly failed for '{model_name}'."
+    if any(sep in msg for sep in ("\\", "/", "Traceback", "line ")):
+        return f"Prediction computation failed for '{model_name}'. Check server logs."
+    return msg
+
+
 @router.post(
     "",
     response_model=PredictionResponse,
@@ -149,7 +168,7 @@ def predict(
             logger.error("Ensemble prediction service error: %s", exc)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Ensemble prediction failure: {exc}",
+                detail="Ensemble prediction service encountered an unexpected error.",
             )
 
         # Retrieve prediction ID if persisted
@@ -178,7 +197,7 @@ def predict(
             probability_calibration="uncalibrated",
             data_quality=dq_api,
             ensemble=_map_ensemble_details(ensemble_res),
-            error_message=ensemble_res.error_message,
+            error_message=_sanitize_public_error_message(ensemble_res.error_message, "ensemble"),
             disclaimer=ensemble_res.disclaimer,
         )
 
@@ -198,7 +217,7 @@ def predict(
         logger.error("Prediction service failure for %s: %s", clean_symbol, exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Prediction service failure: {exc}",
+            detail="Prediction service encountered an unexpected error.",
         )
 
     pred_id = None
@@ -224,6 +243,6 @@ def predict(
         probability_calibration=ml_res.probability_calibration,
         data_quality=_map_data_quality(ml_res.data_quality),
         ensemble=None,
-        error_message=ml_res.error_message,
+        error_message=_sanitize_public_error_message(ml_res.error_message, payload.model_name),
         disclaimer=ml_res.disclaimer,
     )

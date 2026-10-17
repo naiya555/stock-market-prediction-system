@@ -352,7 +352,63 @@ def test_predict_standalone_ml_service_exception(
     assert res.status_code == 500
     data = res.json()
     assert "error" in data
-    assert "CUDA memory fault" in data["error"]["message"]
+    # Ensure internal exception details are not disclosed in public response
+    assert "CUDA memory fault" not in data["error"]["message"]
+    assert "unexpected error" in data["error"]["message"].lower()
+
+
+def test_predict_error_sanitization_no_path_disclosure(
+    client: TestClient,
+    mock_prediction_service: MagicMock,
+):
+    """Verify internal filesystem paths and loader details in error_message are sanitized.
+
+    Remediates CodeRabbit Deep Scan finding 3b923d5b-eb3d-4516-8cc7-41a22c917f99.
+    """
+    sensitive_path = "D:\\Share_market_predictor\\models\\checkpoints\\xgboost_v1.bin"
+    path_result = PredictionResult(
+        symbol="RELIANCE",
+        prediction_timestamp="2026-10-17T10:00:00+00:00",
+        latest_input_timestamp=None,
+        status=PredictionStatus.MODEL_UNAVAILABLE,
+        predicted_direction=None,
+        predicted_label=None,
+        probability_up=None,
+        probability_down=None,
+        model_name="xgboost",
+        model_version="xgb_v1",
+        model_metadata={},
+        data_quality=None,
+        error_message=f"Model artifact not found at {sensitive_path}. Traceback: File /app/loader.py line 42",
+        disclaimer="Standard research disclaimer.",
+    )
+    mock_prediction_service.predict.return_value = path_result
+
+    res = client.post("/api/predict", json={"symbol": "RELIANCE"})
+    assert res.status_code == 200
+    data = res.json()
+
+    # Sensitive internal path and traceback must NOT be disclosed
+    assert sensitive_path not in data["error_message"]
+    assert "/app/loader.py" not in data["error_message"]
+    assert "Model artifact unavailable for 'xgboost'" in data["error_message"]
+
+
+def test_predict_ensemble_service_exception_sanitized(
+    client: TestClient,
+    mock_ensemble_service: MagicMock,
+):
+    """Verify unexpected ensemble exception returns sanitized message without path disclosure."""
+    mock_ensemble_service.predict_ensemble.side_effect = FileNotFoundError(
+        "Missing config at /etc/secrets/config.json"
+    )
+
+    payload = {"symbol": "RELIANCE", "model_name": "ensemble"}
+    res = client.post("/api/predict", json=payload)
+    assert res.status_code == 500
+    data = res.json()
+    assert "/etc/secrets/config.json" not in data["error"]["message"]
+    assert "unexpected error" in data["error"]["message"].lower()
 
 
 def test_predict_ensemble_success(

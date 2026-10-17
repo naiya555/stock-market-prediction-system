@@ -815,28 +815,84 @@
       return;
     }
 
-    grid.innerHTML = events.map((ev) => {
-      const catClass = ev.category === 'monetary_policy' ? 'badge-purple' : 'badge-info';
-      const sectorTags = (ev.affected_sectors || []).map((s) => `<span class="chip">${escapeHtml(s)}</span>`).join('');
-      const safeUrl = isSafeHttpUrl(ev.url) ? escapeHtml(ev.url) : null;
+    // Safely construct cards via DOM APIs avoiding innerHTML string interpolation of untrusted values
+    grid.replaceChildren();
 
-      return `
-        <article class="event-card">
-          <div class="event-header">
-            <span class="badge ${catClass}">${escapeHtml(ev.category.replace('_', ' ').toUpperCase())}</span>
-            <span class="badge badge-timestamp">${formatDateTimeIST(ev.published_at || ev.ingested_at)}</span>
-          </div>
-          <h4 class="event-title">${escapeHtml(ev.title)}</h4>
-          <div class="event-meta-row">
-            <span>🏛️ Source: <strong>${escapeHtml(ev.source_org)}</strong></span>
-            <span>&bull;</span>
-            <span>Provider: ${escapeHtml(ev.provider)}</span>
-          </div>
-          ${sectorTags ? `<div class="event-sectors">${sectorTags}</div>` : ''}
-          ${safeUrl ? `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm" style="margin-top: auto; align-self: flex-start;">Official Circular ↗</a>` : ''}
-        </article>
-      `;
-    }).join('');
+    events.forEach((ev) => {
+      const card = document.createElement('article');
+      card.className = 'event-card';
+
+      const header = document.createElement('div');
+      header.className = 'event-header';
+
+      const catBadge = document.createElement('span');
+      catBadge.className = `badge ${ev.category === 'monetary_policy' ? 'badge-purple' : 'badge-info'}`;
+      catBadge.textContent = String(ev.category || '').replace('_', ' ').toUpperCase();
+
+      const timeBadge = document.createElement('span');
+      timeBadge.className = 'badge badge-timestamp';
+      timeBadge.textContent = formatDateTimeIST(ev.published_at || ev.ingested_at);
+
+      header.appendChild(catBadge);
+      header.appendChild(timeBadge);
+      card.appendChild(header);
+
+      const titleEl = document.createElement('h4');
+      titleEl.className = 'event-title';
+      titleEl.textContent = ev.title || '';
+      card.appendChild(titleEl);
+
+      const metaRow = document.createElement('div');
+      metaRow.className = 'event-meta-row';
+
+      const srcSpan = document.createElement('span');
+      srcSpan.textContent = '🏛️ Source: ';
+      const srcStrong = document.createElement('strong');
+      srcStrong.textContent = ev.source_org || '';
+      srcSpan.appendChild(srcStrong);
+
+      const bulletSpan = document.createElement('span');
+      bulletSpan.textContent = ' • ';
+
+      const provSpan = document.createElement('span');
+      provSpan.textContent = `Provider: ${ev.provider || ''}`;
+
+      metaRow.appendChild(srcSpan);
+      metaRow.appendChild(bulletSpan);
+      metaRow.appendChild(provSpan);
+      card.appendChild(metaRow);
+
+      if (ev.affected_sectors && ev.affected_sectors.length > 0) {
+        const sectorsDiv = document.createElement('div');
+        sectorsDiv.className = 'event-sectors';
+        ev.affected_sectors.forEach((sec) => {
+          const chip = document.createElement('span');
+          chip.className = 'chip';
+          chip.textContent = String(sec);
+          sectorsDiv.appendChild(chip);
+        });
+        card.appendChild(sectorsDiv);
+      }
+
+      if (isSafeHttpUrl(ev.url)) {
+        try {
+          const parsed = new URL(ev.url);
+          if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+            const link = document.createElement('a');
+            link.href = parsed.href;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.className = 'btn btn-outline btn-sm';
+            link.style.marginTop = 'auto';
+            link.style.alignSelf = 'flex-start';
+            link.textContent = 'Official Circular ↗';
+            card.appendChild(link);
+          }
+        } catch (_) {}
+      }
+
+      grid.appendChild(card);
+    });
   }
 
   // -------------------------------------------------------------------------

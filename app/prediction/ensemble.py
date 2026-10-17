@@ -21,6 +21,7 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple, Union
 
+from app.core.logging_config import sanitize_log_field
 from app.core.schemas import ValidationError
 
 if TYPE_CHECKING:
@@ -539,7 +540,8 @@ class EnsembleService:
             EnsemblePredictionResult.
         """
         # Step 1: Run Quantitative ML Inference
-        logger.info("Executing quantitative ML prediction for '%s' (%s)", request.symbol, request.model_name)
+        clean_sym = sanitize_log_field(request.symbol)
+        logger.info("Executing quantitative ML prediction for '%s' (%s)", clean_sym, request.model_name)
         ml_result = self.prediction_service.predict(
             request=request,
             preloaded_model=preloaded_ml_model,
@@ -549,7 +551,7 @@ class EnsembleService:
         llm_result: Optional[LLMReasoningResult] = None
         if articles or events:
             try:
-                logger.info("Executing qualitative LLM reasoning for '%s'", request.symbol)
+                logger.info("Executing qualitative LLM reasoning for '%s'", clean_sym)
                 llm_result = self.llm_service.generate_qualitative_reasoning(
                     symbol=request.symbol,
                     articles=articles or [],
@@ -558,7 +560,7 @@ class EnsembleService:
             except Exception as exc:
                 logger.warning(
                     "Qualitative LLM reasoning failed for '%s': %s. Proceeding with ML-only fallback.",
-                    request.symbol,
+                    clean_sym,
                     exc,
                 )
                 llm_result = None

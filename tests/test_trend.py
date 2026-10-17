@@ -31,6 +31,7 @@ from app.market.trend import (
     TrendClassification,
     analyze_market_trend,
     classify_market_structure,
+    compute_latest_trend,
     compute_rolling_trends,
     identify_swings,
     label_market_structure,
@@ -434,3 +435,53 @@ def test_serialization_to_dict():
     assert d["confirmation_index"] == 4
     assert d["confirmation_timestamp"] == confirm_ts.isoformat()
     assert d["structure_label"] == "HH"
+
+
+def test_incremental_rolling_trends_exact_equivalence_with_naive_analysis():
+    """Verify incremental O(N) compute_rolling_trends matches repeated analyze_market_trend 100% exactly.
+
+    Remediates CodeRabbit Deep Scan finding 3bb2c072-3523-41f5-9f47-3a836cd17ce9.
+    """
+    bars = _create_uptrend_bars() + _create_downtrend_bars()
+    rolling = compute_rolling_trends(bars, swing_window=2, min_swings=2)
+
+    # Reference calculation: independent naive analyze_market_trend at each cutoff t
+    naive_expected = [
+        analyze_market_trend(bars, swing_window=2, min_swings=2, as_of_index=t).classification
+        for t in range(len(bars))
+    ]
+
+    assert rolling == naive_expected
+
+
+def test_compute_latest_trend_matches_rolling_tail():
+    """Verify compute_latest_trend matches the final element of compute_rolling_trends."""
+    bars = _create_uptrend_bars()
+    rolling = compute_rolling_trends(bars, swing_window=2, min_swings=2)
+    latest = compute_latest_trend(bars, swing_window=2, min_swings=2)
+
+    assert latest == rolling[-1]
+    assert latest == TrendClassification.UPTREND
+
+
+def test_assemble_feature_matrix_only_latest_speedup_and_equivalence():
+    """Verify assemble_feature_matrix(only_latest=True) produces identical latest row to full matrix."""
+    from app.training.feature_matrix import assemble_feature_matrix
+
+    bars = _create_uptrend_bars()
+    full_ds = assemble_feature_matrix(bars, swing_window=2, min_swings=2, only_latest=False)
+    fast_ds = assemble_feature_matrix(bars, swing_window=2, min_swings=2, only_latest=True)
+
+    assert len(fast_ds.X) == 1
+    assert len(full_ds.X) == len(bars)
+
+    # Values in the latest row must be strictly identical across all 37 features
+    full_last_row = full_ds.X.iloc[-1].to_dict()
+    fast_row = fast_ds.X.iloc[0].to_dict()
+
+    for col, val in fast_row.items():
+        expected = full_last_row[col]
+        if val is None or (isinstance(val, float) and (val != val)):
+            assert expected is None or (isinstance(expected, float) and (expected != expected))
+        else:
+            assert val == expected, f"Mismatch in feature '{col}': {val} vs {expected}"

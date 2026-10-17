@@ -24,12 +24,26 @@ DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) StockMarketPredi
 IST = ZoneInfo("Asia/Kolkata")
 
 
-def _strip_html(text: str) -> str:
-    """Remove HTML markup, unescape entities, and collapse whitespace."""
+MAX_SEBI_PAYLOAD_CHARS = 5_000_000
+
+
+def _strip_html(text: str, max_length: int = 100_000) -> str:
+    """Remove HTML markup, unescape entities, and collapse whitespace in linear O(N) time."""
     if not text:
         return ""
-    clean = re.sub(r"<[^>]+>", " ", text)
-    clean = html.unescape(clean)
+    if len(text) > max_length:
+        text = text[:max_length]
+    out = []
+    in_tag = False
+    for ch in text:
+        if ch == "<":
+            in_tag = True
+            out.append(" ")
+        elif ch == ">":
+            in_tag = False
+        elif not in_tag:
+            out.append(ch)
+    clean = html.unescape("".join(out))
     return " ".join(clean.split())
 
 
@@ -146,6 +160,11 @@ class SEBIEventProvider(BaseEventProvider):
         if not xml_content or not xml_content.strip():
             logger.warning("Received empty SEBI RSS XML payload")
             return []
+
+        if len(xml_content) > MAX_SEBI_PAYLOAD_CHARS:
+            raise EventProviderError(
+                f"SEBI RSS payload exceeds maximum allowed size ({len(xml_content)} > {MAX_SEBI_PAYLOAD_CHARS} chars)"
+            )
 
         try:
             root = ET.fromstring(xml_content.strip())
