@@ -232,7 +232,8 @@ def verify_day25() -> int:
         assert metrics.eligible_predictions == 2
         assert metrics.pending_predictions == 1
         assert metrics.verified_predictions == 1
-        assert metrics.directional_accuracy is not None
+        expected_accuracy = 1.0 if v_rec.is_correct else 0.0
+        assert metrics.directional_accuracy == expected_accuracy
         # Verify denominator is strictly verified_predictions (1) and not total (2)
         assert metrics.verified_predictions == metrics.correct_predictions + metrics.incorrect_predictions
         print("  -> Evaluation metrics and denominator isolation PASSED.")
