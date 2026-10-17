@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Indian Stock Market Prediction System | Multi-Agent AI & Quantitative Forecasting</title>
+  <meta name="description" content="Directional Indian stock market prediction system combining quantitative gradient-boosted ML (XGBoost/LightGBM) with qualitative LLM reasoning (Gemma 3 12B) and macroeconomic event tracking.">
+  <link rel="stylesheet" href="/static/css/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- App Container -->
+  <div class="app-layout">
+    
+    <!-- Header / Navigation Bar -->
+    <header class="app-header">
+      <div class="header-left">
+        <div class="logo-group">
+          <div class="logo-symbol" aria-hidden="true">📈</div>
+          <div>
+            <h1 class="logo-title">Indian Stock Market <span class="gradient-text">Prediction System</span></h1>
+            <p class="logo-subtitle">NSE / BSE Multi-Agent Ensemble & Quantitative Forecasting Platform</p>
+          </div>
+        </div>
+      </div>
+      
+      <div class="header-right">
+        <!-- Live Market Clock (Asia/Kolkata) -->
+        <div class="header-badge clock-badge" id="market-clock-container" title="Current Indian Standard Time (IST)">
+          <span class="pulse-dot"></span>
+          <span id="market-clock-time">--:--:-- IST</span>
+        </div>
+
+        <!-- System Health Pill -->
+        <div class="header-badge health-pill" id="health-pill" title="Click to view subsystem readiness diagnostics">
+          <span class="status-indicator status-unknown" id="health-indicator-dot"></span>
+          <span id="health-pill-label">Checking System...</span>
+        </div>
+
+        <!-- Documentation Link -->
+        <a href="/docs" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm" id="header-api-docs-btn" title="Open interactive Swagger API documentation">
+          <span>API Docs</span>
+          <span class="icon-external">↗</span>
+        </a>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs-bar" role="tablist" aria-label="Main Application Views">
+      <button class="nav-tab active" id="tab-btn-predict" role="tab" aria-selected="true" aria-controls="tab-panel-predict">
+        <span class="tab-icon">🎯</span>
+        <span class="tab-label">Prediction Engine</span>
+      </button>
+      <button class="nav-tab" id="tab-btn-history" role="tab" aria-selected="false" aria-controls="tab-panel-history">
+        <span class="tab-icon">📜</span>
+        <span class="tab-label">Prediction History</span>
+      </button>
+      <button class="nav-tab" id="tab-btn-events" role="tab" aria-selected="false" aria-controls="tab-panel-events">
+        <span class="tab-icon">🏛️</span>
+        <span class="tab-label">Macro & Regulatory Events</span>
+      </button>
+      <button class="nav-tab" id="tab-btn-health" role="tab" aria-selected="false" aria-controls="tab-panel-health">
+        <span class="tab-icon">🩺</span>
+        <span class="tab-label">System Readiness</span>
+      </button>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      
+      <!-- ================================================================= -->
+      <!-- TAB 1: PREDICTION ENGINE                                         -->
+      <!-- ================================================================= -->
+      <section class="tab-panel active" id="tab-panel-predict" role="tabpanel" aria-labelledby="tab-btn-predict">
+        
+        <!-- Search and Configuration Card -->
+        <div class="card search-card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">Run Directional Stock Forecast</h2>
+              <p class="card-subtitle">Select an NSE equity ticker and configure model architecture for next-session directional inference.</p>
+            </div>
+            <div class="philosophy-badge" title="Architectural Core Workflow">
+              <code>PREDICT ➔ EXPLAIN ➔ VERIFY</code>
+            </div>
+          </div>
+
+          <form id="prediction-form" class="prediction-form" novalidate>
+            <!-- Symbol Input Row -->
+            <div class="form-row">
+              <div class="form-group flex-2">
+                <label for="symbol-input" class="form-label">
+                  Stock Ticker Symbol <span class="required">*</span>
+                </label>
+                <div class="input-with-icon">
+                  <span class="input-icon">🔍</span>
+                  <input 
+                    type="text" 
+                    id="symbol-input" 
+                    name="symbol" 
+                    class="form-input text-uppercase" 
+                    placeholder="e.g. RELIANCE, TCS, INFY, HDFCBANK" 
+                    required 
+                    autocomplete="off"
+                    spellcheck="false"
+                    maxlength="20"
+                    aria-describedby="symbol-error"
+                  >
+                </div>
+                <div id="symbol-error" class="input-error" role="alert" aria-live="polite"></div>
+              </div>
+
+              <!-- Model Selector -->
+              <div class="form-group flex-1">
+                <label for="model-select" class="form-label">Model Architecture</label>
+                <select id="model-select" name="model_name" class="form-select">
+                  <option value="ensemble" selected>Multi-Agent Ensemble (ML + Gemma 3 12B)</option>
+                  <option value="xgboost">XGBoost Classifier (Quantitative Only)</option>
+                  <option value="lightgbm">LightGBM Classifier (Quantitative Only)</option>
+                </select>
+              </div>
+
+              <!-- Submit Button -->
+              <div class="form-group submit-group">
+                <label class="form-label">&nbsp;</label>
+                <button type="submit" id="btn-run-prediction" class="btn btn-primary btn-block">
+                  <span class="btn-spinner" id="btn-predict-spinner" aria-hidden="true"></span>
+                  <span class="btn-text" id="btn-predict-text">Generate Prediction</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Quick Ticker Chips -->
+            <div class="quick-chips-row">
+              <span class="chips-label">Popular Equities:</span>
+              <div class="chips-group" id="quick-ticker-chips">
+                <button type="button" class="chip" data-symbol="RELIANCE">RELIANCE</button>
+                <button type="button" class="chip" data-symbol="TCS">TCS</button>
+                <button type="button" class="chip" data-symbol="INFY">INFY</button>
+                <button type="button" class="chip" data-symbol="HDFCBANK">HDFCBANK</button>
+                <button type="button" class="chip" data-symbol="ICICIBANK">ICICIBANK</button>
+                <button type="button" class="chip" data-symbol="BHARTIARTL">BHARTIARTL</button>
+                <button type="button" class="chip" data-symbol="SBIN">SBIN</button>
+              </div>
+            </div>
+
+            <!-- Advanced Configuration Accordion -->
+            <details class="advanced-accordion" id="advanced-options-accordion">
+              <summary class="accordion-toggle">
+                <span>Advanced Parameters (Ensemble Weights, Warmup Lookback, Staleness)</span>
+                <span class="toggle-icon">▼</span>
+              </summary>
+              <div class="accordion-content">
+                <div class="form-row-grid">
+                  <!-- Ensemble Custom Weights -->
+                  <div class="form-group" id="ensemble-weights-group">
+                    <label class="form-label" for="ml-weight-slider">
+                      Ensemble Weight Ratio: <span id="weight-display" class="font-mono text-bold">70% ML / 30% LLM</span>
+                    </label>
+                    <input 
+                      type="range" 
+                      id="ml-weight-slider" 
+                      min="0" 
+                      max="100" 
+                      value="70" 
+                      step="5" 
+                      class="form-range"
+                    >
+                    <span class="input-hint">Heuristic weighting between quantitative models and qualitative LLM stance.</span>
+                  </div>
+
+                  <!-- Lookback Days -->
+                  <div class="form-group">
+                    <label for="lookback-days-input" class="form-label">Lookback Calendar Days</label>
+                    <input 
+                      type="number" 
+                      id="lookback-days-input" 
+                      name="lookback_days" 
+                      class="form-input" 
+                      value="1825" 
+                      min="35" 
+                      max="3650"
+                    >
+                    <span class="input-hint">Historical warmup window (min 35 days for MACD/Bollinger).</span>
+                  </div>
+
+                  <!-- Max Stale Days -->
+                  <div class="form-group">
+                    <label for="max-stale-days-input" class="form-label">Max Stale Days</label>
+                    <input 
+                      type="number" 
+                      id="max-stale-days-input" 
+                      name="max_stale_days" 
+                      class="form-input" 
+                      value="7" 
+                      min="1" 
+                      max="90"
+                    >
+                    <span class="input-hint">Tolerance for weekends and market holidays.</span>
+                  </div>
+
+                  <!-- Persist Toggle -->
+                  <div class="form-group checkbox-group">
+                    <label class="form-label">Audit Trail</label>
+                    <label class="checkbox-label" for="persist-checkbox">
+                      <input type="checkbox" id="persist-checkbox" name="persist" checked>
+                      <span>Persist immutably to SQLite database</span>
+                    </label>
+                    <span class="input-hint">Enables Phase 7 automated outcome verification.</span>
+                  </div>
+                </div>
+              </div>
+            </details>
+          </form>
+        </div>
+
+        <!-- Global Alert Banner (Network / API Errors) -->
+        <div id="prediction-alert" class="alert-banner" role="alert" style="display: none;">
+          <div class="alert-icon" id="alert-icon">⚠️</div>
+          <div class="alert-content">
+            <h4 class="alert-title" id="alert-title">Prediction Error</h4>
+            <p class="alert-message" id="alert-message"></p>
+          </div>
+          <button type="button" class="alert-close" id="alert-close-btn" aria-label="Dismiss alert">✕</button>
+        </div>
+
+        <!-- Prediction Loading Skeleton -->
+        <div id="prediction-loading-skeleton" class="skeleton-container" style="display: none;" aria-live="polite">
+          <div class="skeleton-card skeleton-banner pulse"></div>
+          <div class="skeleton-grid">
+            <div class="skeleton-card skeleton-box pulse"></div>
+            <div class="skeleton-card skeleton-box pulse"></div>
+            <div class="skeleton-card skeleton-box pulse"></div>
+          </div>
+        </div>
+
+        <!-- Prediction Results Container -->
+        <div id="prediction-results-container" class="results-container" style="display: none;">
+          
+          <!-- Primary Overview Hero Card -->
+          <div class="card result-hero-card" id="result-hero-card">
+            <div class="hero-header">
+              <div class="hero-symbol-group">
+                <span class="hero-ticker" id="res-symbol">--</span>
+                <span class="badge" id="res-model-badge">--</span>
+                <span class="badge badge-timestamp" id="res-timestamp">--</span>
+              </div>
+              <div class="hero-direction-wrapper">
+                <div class="direction-badge" id="res-direction-badge">
+                  <span class="direction-icon" id="res-direction-icon">--</span>
+                  <span class="direction-text" id="res-direction-text">--</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Probability Bar & Metrics -->
+            <div class="hero-metrics-grid">
+              <div class="metric-item">
+                <span class="metric-label">Estimated Direction Probability</span>
+                <div class="probability-bar-wrapper">
+                  <div class="probability-track">
+                    <div class="probability-fill" id="res-probability-fill" style="width: 50%;"></div>
+                  </div>
+                  <div class="probability-labels">
+                    <span class="prob-down-label" id="res-prob-down">P(DOWN): --</span>
+                    <span class="prob-up-label" id="res-prob-up">P(UP): --</span>
+                  </div>
+                </div>
+                <span class="metric-caption">
+                  ⚠️ Note: Uncalibrated tree/heuristic probability blend; does not represent calibrated Bayesian certainty.
+                </span>
+              </div>
+
+              <!-- Volatility-Anchored Expected Range (Target Range) -->
+              <div class="metric-item" id="target-range-metric-item" style="display: none;">
+                <span class="metric-label">Volatility-Anchored Expected Range (1-Session ATR-14)</span>
+                <div class="target-range-box">
+                  <div class="range-bounds-row">
+                    <div class="range-bound lower">
+                      <span class="bound-title">Lower Bound</span>
+                      <span class="bound-price" id="res-range-lower">₹--</span>
+                    </div>
+                    <div class="range-bound reference">
+                      <span class="bound-title">Reference Close</span>
+                      <span class="bound-price" id="res-range-ref">₹--</span>
+                    </div>
+                    <div class="range-bound upper">
+                      <span class="bound-title">Upper Bound</span>
+                      <span class="bound-price" id="res-range-upper">₹--</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Agreement & Divergence Banner (Ensemble only) -->
+            <div class="agreement-banner" id="res-agreement-banner" style="display: none;">
+              <div class="agreement-icon" id="res-agreement-icon">🤝</div>
+              <div class="agreement-text-group">
+                <div class="agreement-title-row">
+                  <span class="agreement-title" id="res-agreement-title">Signal Agreement Status</span>
+                  <span class="badge" id="res-agreement-badge">--</span>
+                </div>
+                <p class="agreement-desc" id="res-agreement-desc">--</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Multi-Column Breakdown Cards -->
+          <div class="breakdown-grid">
+            
+            <!-- Column 1: Quantitative ML Model Signals -->
+            <div class="card breakdown-card" id="ml-breakdown-card">
+              <div class="breakdown-header">
+                <h3 class="breakdown-title">
+                  <span class="header-icon">🤖</span> Quantitative ML Engine
+                </h3>
+                <span class="badge badge-info" id="ml-model-tag">37-Feature Matrix</span>
+              </div>
+              
+              <div class="breakdown-body">
+                <div class="data-pair-list">
+                  <div class="data-pair">
+                    <span class="data-key">Direction Signal:</span>
+                    <span class="data-val font-mono" id="ml-dir-val">--</span>
+                  </div>
+                  <div class="data-pair">
+                    <span class="data-key">Raw Probability Up:</span>
+                    <span class="data-val font-mono" id="ml-prob-up-val">--</span>
+                  </div>
+                  <div class="data-pair">
+                    <span class="data-key">Warmup Quality:</span>
+                    <span class="data-val" id="ml-warmup-val">--</span>
+                  </div>
+                  <div class="data-pair">
+                    <span class="data-key">Latest Input Bar:</span>
+                    <span class="data-val font-mono" id="ml-input-ts-val">--</span>
+                  </div>
+                  <div class="data-pair">
+                    <span class="data-key">Staleness Check:</span>
+                    <span class="data-val" id="ml-staleness-val">--</span>
+                  </div>
+                </div>
+
+                <div class="factor-list-section">
+                  <h4 class="factor-heading">Identified Technical Momentum Factors</h4>
+                  <ul class="factor-list" id="ml-factors-list">
+                    <li>No technical factors returned.</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- Column 2: Qualitative Contextual LLM Reasoning -->
+            <div class="card breakdown-card" id="llm-breakdown-card">
+              <div class="breakdown-header">
+                <h3 class="breakdown-title">
+                  <span class="header-icon">🧠</span> Contextual LLM Reasoning
+                </h3>
+                <span class="badge badge-purple" id="llm-model-tag">Gemma 3 12B</span>
+              </div>
+
+              <div class="breakdown-body" id="llm-body-content">
+                <div class="llm-status-row">
+                  <div class="data-pair">
+                    <span class="data-key">Qualitative Stance:</span>
+                    <span class="data-val font-mono" id="llm-stance-val">--</span>
+                  </div>
+                  <div class="data-pair">
+                    <span class="data-key">Confidence Assessment:</span>
+                    <span class="data-val" id="llm-conf-val">--</span>
+                  </div>
+                </div>
+
+                <!-- LLM Summary Paragraph -->
+                <div class="llm-summary-box">
+                  <h4 class="factor-heading">Reasoning Summary</h4>
+                  <p class="llm-summary-text" id="llm-summary-text">No qualitative reasoning available for this model selection.</p>
+                </div>
+
+                <!-- Positive Catalysts -->
+                <div class="factor-list-section">
+                  <h4 class="factor-heading text-emerald">Positive Catalysts</h4>
+                  <ul class="factor-list factor-positive" id="llm-positive-factors">
+                    <li>None identified.</li>
+                  </ul>
+                </div>
+
+                <!-- Downside Risks -->
+                <div class="factor-list-section">
+                  <h4 class="factor-heading text-rose">Downside Risks & Vulnerabilities</h4>
+                  <ul class="factor-list factor-negative" id="llm-downside-risks">
+                    <li>None identified.</li>
+                  </ul>
+                </div>
+
+                <!-- Citations & Sources -->
+                <div class="sources-box" id="llm-sources-box">
+                  <h4 class="factor-heading">Source References</h4>
+                  <div class="sources-tags" id="llm-sources-tags">--</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Column 3: Audit Trail & Data Health -->
+            <div class="card breakdown-card" id="audit-breakdown-card">
+              <div class="breakdown-header">
+                <h3 class="breakdown-title">
+                  <span class="header-icon">🛡️</span> Audit Integrity & Quality
+                </h3>
+                <span class="badge badge-success" id="audit-status-tag">Point-in-Time</span>
+              </div>
+
+              <div class="breakdown-body">
+                <div class="data-pair-list">
+                  <div class="data-pair">
+                    <span class="data-key">Audit Record ID:</span>
+                    <span class="data-val font-mono text-truncate" id="audit-id-val" title="Click to copy UUID">--</span>
+                  </div>
+                  <div class="data-pair">
+                    <span class="data-key">Total Bars Fetched:</span>
+                    <span class="data-val font-mono" id="audit-bars-fetched">--</span>
+                  </div>
+                  <div class="data-pair">
+                    <span class="data-key">Cleaned Bars:</span>
+                    <span class="data-val font-mono" id="audit-bars-cleaned">--</span>
+                  </div>
+                  <div class="data-pair">
+                    <span class="data-key">Warmup Required:</span>
+                    <span class="data-val font-mono">34 bars (MACD/EMA-26)</span>
+                  </div>
+                  <div class="data-pair">
+                    <span class="data-key">Temporal Isolation:</span>
+                    <span class="data-val text-emerald font-bold">100% Zero Leakage</span>
+                  </div>
+                </div>
+
+                <div class="legal-disclaimer-box">
+                  <h4 class="factor-heading">Research & Compliance Disclosure</h4>
+                  <p class="disclaimer-text" id="audit-disclaimer-text">
+                    This forecast is for quantitative academic and decision-support research only. It does not constitute investment advice or return guarantees.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Initial Blank State Callout -->
+        <div class="empty-state-card" id="predict-empty-state">
+          <div class="empty-state-icon">⚡</div>
+          <h3 class="empty-state-title">Ready for Directional Market Forecasting</h3>
+          <p class="empty-state-text">Enter an NSE equity ticker above or click one of the popular quick-chips to execute real-time model inference.</p>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- TAB 2: PREDICTION HISTORY & OUTCOME AUDIT                          -->
+      <!-- ================================================================= -->
+      <section class="tab-panel" id="tab-panel-history" role="tabpanel" aria-labelledby="tab-btn-history">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">Immutable Prediction Audit History</h2>
+              <p class="card-subtitle">Every prediction is permanently logged prior to market outcome. Verified outcomes are linked automatically via SQLite foreign keys.</p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-refresh-history">
+              <span class="icon-refresh">🔄</span> Refresh History
+            </button>
+          </div>
+
+          <!-- History Filter Bar -->
+          <div class="filter-bar">
+            <div class="filter-group">
+              <label for="history-symbol-filter" class="filter-label">Filter Ticker:</label>
+              <input type="text" id="history-symbol-filter" class="form-input form-input-sm text-uppercase" placeholder="e.g. RELIANCE">
+            </div>
+            <div class="filter-group">
+              <label for="history-model-filter" class="filter-label">Filter Model:</label>
+              <select id="history-model-filter" class="form-select form-select-sm">
+                <option value="">All Models</option>
+                <option value="ensemble">Ensemble</option>
+                <option value="xgboost">XGBoost</option>
+                <option value="lightgbm">LightGBM</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label for="history-limit-select" class="filter-label">Page Size:</label>
+              <select id="history-limit-select" class="form-select form-select-sm">
+                <option value="10">10 records</option>
+                <option value="25" selected>25 records</option>
+                <option value="50">50 records</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- History Table Container -->
+          <div class="table-container">
+            <table class="data-table" id="history-table" aria-label="Historical Predictions Table">
+              <thead>
+                <tr>
+                  <th scope="col">Prediction ID</th>
+                  <th scope="col">Ticker</th>
+                  <th scope="col">Model</th>
+                  <th scope="col">Prediction Time (UTC)</th>
+                  <th scope="col">Direction Signal</th>
+                  <th scope="col">Estimated Prob</th>
+                  <th scope="col">Verified Market Outcome</th>
+                </tr>
+              </thead>
+              <tbody id="history-table-body">
+                <tr>
+                  <td colspan="7" class="text-center py-8 text-muted">Loading prediction history...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- History Pagination Controls -->
+          <div class="pagination-footer">
+            <span class="pagination-info" id="history-pagination-info">Showing 0 of 0 records</span>
+            <div class="pagination-buttons">
+              <button type="button" class="btn btn-outline btn-sm" id="btn-history-prev" disabled>← Previous</button>
+              <button type="button" class="btn btn-outline btn-sm" id="btn-history-next" disabled>Next →</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- TAB 3: MACRO & REGULATORY EVENTS                                  -->
+      <!-- ================================================================= -->
+      <section class="tab-panel" id="tab-panel-events" role="tabpanel" aria-labelledby="tab-btn-events">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">Macroeconomic & Regulatory Event Feed</h2>
+              <p class="card-subtitle">Official press releases and regulatory circulars ingested from Reserve Bank of India (RBI) and SEBI RSS feeds with point-in-time deduplication.</p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-refresh-events">
+              <span class="icon-refresh">🔄</span> Refresh Events
+            </button>
+          </div>
+
+          <!-- Category Filter Chips -->
+          <div class="filter-chips-bar" id="events-category-filters">
+            <button type="button" class="filter-chip active" data-category="">All Announcements</button>
+            <button type="button" class="filter-chip" data-category="monetary_policy">Monetary Policy (RBI)</button>
+            <button type="button" class="filter-chip" data-category="regulatory">Regulatory Guidelines (SEBI)</button>
+            <button type="button" class="filter-chip" data-category="macro_indicator">Macro Indicators</button>
+          </div>
+
+          <!-- Events Grid -->
+          <div class="events-grid" id="events-cards-grid">
+            <div class="loading-placeholder">Loading macroeconomic events...</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- TAB 4: SYSTEM READINESS & SUBSYSTEM DIAGNOSTICS                   -->
+      <!-- ================================================================= -->
+      <section class="tab-panel" id="tab-panel-health" role="tabpanel" aria-labelledby="tab-btn-health">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h2 class="card-title">System Health & Dependency Readiness</h2>
+              <p class="card-subtitle">Real-time status of underlying prediction pipelines, SQLite database storage, model registry, and local Ollama runtime.</p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-refresh-health">
+              <span class="icon-refresh">🔄</span> Refresh Diagnostics
+            </button>
+          </div>
+
+          <!-- Health Overview Banner -->
+          <div class="health-overview-card" id="health-overview-card">
+            <div class="health-hero-status">
+              <span class="health-large-icon" id="health-hero-icon">⚡</span>
+              <div>
+                <h3 class="health-hero-title" id="health-hero-title">System Status: Checking...</h3>
+                <p class="health-hero-desc" id="health-hero-desc">Connecting to FastAPI health endpoint (/api/health)...</p>
+              </div>
+            </div>
+            <div class="health-timestamp font-mono" id="health-last-evaluated">Last Evaluated: --</div>
+          </div>
+
+          <!-- Dependencies Grid -->
+          <div class="dependencies-grid" id="dependencies-grid">
+            <!-- Dynamic dependency cards will be rendered here -->
+          </div>
+
+          <!-- Security Non-Disclosure Box -->
+          <div class="security-card">
+            <h4 class="security-title">🔒 Architectural Safety & Privacy Guarantee</h4>
+            <p class="security-text">
+              The health check endpoint performs strictly lightweight diagnostics (SQLite query ping, artifact folder access, and local Ollama endpoint configuration). It does not invoke slow LLM inference or expose database credentials, environment secrets, or absolute server filesystem paths.
+            </p>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <div class="footer-content">
+        <div class="footer-left">
+          <span>Indian Stock Market Prediction System &bull; Phase 13 Web Application</span>
+        </div>
+        <div class="footer-center">
+          <code>70% ML / 30% LLM Weighted Ensemble &bull; 37-Feature Technical Matrix</code>
+        </div>
+        <div class="footer-right">
+          <span>Ollama Gemma 3 12B &bull; SQLite Immutable Storage</span>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- JavaScript Entry Point -->
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 33: FastAPI REST API Foundation (Phase 13)<br/>
+> **Status:** Ongoing Project — Day 34: Interactive Stock Prediction Web UI (Phase 13 Complete)<br/>
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -40,7 +40,7 @@ When fully developed, the end-user workflow will operate as follows:
 
 ## 3. Major Components
 
-- **`app/api/`**: FastAPI REST API endpoints, Pydantic schemas, dependency injection, and exception handlers (`app/api/`).
+- **`app/api/`**: FastAPI REST API endpoints, Pydantic schemas, dependency injection, exception handlers, and static web dashboard (`app/api/static/`).
 - **`app/core/`**: Centralized configuration (`config.py`), logging foundation (`logging_config.py`), and canonical schema contracts (`schemas.py`).
 - **`app/database/`**: Relational database persistence (SQLite schema, WAL mode, foreign keys, immutability triggers, and PredictionRepository).
 - **`app/events/`**: Macroeconomic, regulatory, and external market event ingestion, session alignment, and impact analysis (`providers/`, `schemas.py`, `cleaner.py`, `calendar.py`, `aligner.py`, `impact.py`).
@@ -54,18 +54,31 @@ When fully developed, the end-user workflow will operate as follows:
 
 ---
 
-## 4. Current Status: Day 33 (FastAPI REST API Foundation)
+## 4. Current Status: Day 34 (Interactive Stock Prediction Web UI)
 
-Day 33 begins Phase 13: Web Application & API Layer (`app/api/`). It provides a tested FastAPI REST API foundation that connects existing prediction, ensemble, history, feedback, and event modules through clean, typed API contracts without duplicating business logic, fabricating unverified data, or leaking internal secrets.
+Day 34 completes Phase 13: Web Application & API Layer. It provides a clean, modern, responsive web dashboard (`app/api/static/`) consuming the Day 33 FastAPI REST API foundation.
 
-The API exposes:
-- `GET /api/health`: Subsystem readiness diagnostics (database query ping, model storage accessibility, and LLM configuration) without disclosing secrets or executing slow inference.
-- `POST /api/predict`: Point-in-time directional inference executing standalone ML (XGBoost/LightGBM) or synthesized Multi-Agent Ensemble (ML + Gemma 3 12B), with optional immutable SQLite persistence.
-- `GET /api/history`: Bounded historical prediction audit trail with symbol/model filtering and linked verified actual market outcomes.
-- `POST /api/feedback`: Validated feedback intake with explicit HTTP 501 `deferred` status honoring ADR 10 prohibitions against automated retraining loops.
-- `GET /api/events`: Normalized macroeconomic and regulatory announcements aggregated and deduplicated across RBI and SEBI providers.
+The dashboard features:
+- **Prediction Engine**: Stock ticker search with input validation, popular Indian equity quick-chips (`RELIANCE`, `TCS`, `INFY`, `HDFCBANK`, `ICICIBANK`, `BHARTIARTL`, `SBIN`), model selector, and collapsible advanced options (custom ensemble weights, lookback window, staleness tolerance, and SQLite persistence toggle).
+- **Financial Analysis Cards**: Clean visual separation of quantitative ML metrics from qualitative LLM contextual reasoning, consensus agreement / divergence status banner, volatility price bounds ($Close \pm ATR$), and research compliance disclosures.
+- **Prediction Audit History**: Tabular review of immutable predictions with pagination, symbol/model filters, and real-time display of verified market outcomes.
+- **Macro & Regulatory Events**: Live feed of official RBI monetary policy circulars and SEBI regulatory circulars with category filters.
+- **System Readiness**: Real-time diagnostic cards querying `/api/health` for database connectivity, model registry readiness, and local LLM runtime.
+- **Zero Framework Bloat**: Pure Vanilla HTML5, CSS3, and JavaScript (zero npm/node build steps or external JavaScript dependencies).
 
-All endpoints are validated through 20 automated offline unit tests and a 6-stage end-to-end verification script.
+### Running the Web Application
+
+Launch the local development server:
+```powershell
+python -m uvicorn app.api.app:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Open in your browser:
+- **Interactive Web UI Dashboard:** [http://127.0.0.1:8000/ui](http://127.0.0.1:8000/ui) (or [http://127.0.0.1:8000/](http://127.0.0.1:8000/))
+- **Interactive API Documentation:** [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+- **Alternative API Docs (ReDoc):** [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)
+
+All endpoints and UI interactions are verified through 483 automated offline unit tests and `scripts/verify_day34.py`.
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.
@@ -256,7 +269,7 @@ All endpoints are validated through 20 automated offline unit tests and a 6-stag
   - Date-only precision guard: conservative next-session alignment for regulatory notices (SEBI) lacking time-of-day.
   - Empirical event impact analyzer (`EventImpactAnalyzer`): calculates same-day return, 1d/3d/5d forward returns, pre/post realized volatility (5 sessions, ddof=1), and benchmark excess returns (^NSEI).
   - Incomplete outcome safeguards (`INCOMPLETE_OUTCOME_WINDOW` returning `None` without price fabrication), multi-event deduplication, and mandatory non-causal disclosures.
-- 399 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, XGBoost direction classifier, LightGBM direction classifier, baseline comparison suite, walk-forward cross-validation engine, model error analysis, feature usefulness audit, prediction service engine, structured prediction output, visualizer, SQLite prediction database, outcome verification/evaluation, benchmark context engine, financial news ingestion foundation, FinBERT financial sentiment scoring foundation, macroeconomic/regulatory event ingestion foundation, and trading session alignment & event impact analysis.
+- 483 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, XGBoost direction classifier, LightGBM direction classifier, baseline comparison suite, walk-forward cross-validation engine, model error analysis, feature usefulness audit, prediction service engine, structured prediction output, visualizer, SQLite prediction database, outcome verification/evaluation, benchmark context engine, financial news ingestion foundation, FinBERT financial sentiment scoring foundation, macroeconomic/regulatory event ingestion foundation, trading session alignment & event impact analysis, Gemma 3 12B LLM integration, multi-agent ensemble layer, FastAPI REST API foundation, and interactive stock prediction web UI.
 
 ---
 

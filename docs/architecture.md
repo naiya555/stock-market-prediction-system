@@ -1216,3 +1216,50 @@ Phase 13 establishes the FastAPI REST API foundation connecting the prediction e
   2. **Dependency Inversion via FastAPI Dependency Injection (`app/api/dependencies.py`):** Routes obtain database connections, repositories, and services via injectable providers. This enables 100% deterministic, offline automated unit and integration testing without disk modification or live daemon dependencies.
   3. **Strict Non-Disclosure & Error Boundaries:** System errors and health checks never return local filesystem paths, database credentials, environment variables, or unhandled tracebacks. Internal logs capture diagnostic details while HTTP responses return structured, sanitized machine-readable error codes.
   4. **Faithful Schema Alignment & No Fabricated Persistence:** In accordance with ADR 10 and ADR 11, routes that lack a production persistence schema (`POST /api/feedback`) return an explicit HTTP 501 Not Implemented status with machine-readable `deferred` indicators rather than faking persistence.
+
+---
+
+### 4.29 Interactive Stock Prediction Web UI (`app/api/static/` - Day 34)
+
+Phase 13 culminates in an interactive, responsive single-page web interface consuming the Day 33 FastAPI REST API foundation.
+
+```text
+                                    User Browser / Mobile Device
+                                                 │
+                                                 ▼
+                        ┌─────────────────────────────────────────────────┐
+                        │             Interactive Web Frontend            │
+                        │    (app/api/static/index.html, styles, js)      │
+                        │  ├── Semantic HTML5 UI with ARIA Accessibility  │
+                        │  ├── Vanilla Modern CSS (Dark Theme & Glass)    │
+                        │  └── Modular JS Client (State, API, Dom Render) │
+                        └────────────────────────┬────────────────────────┘
+                                                 │
+                   ┌─────────────────────────────┼─────────────────────────────┐
+                   │                             │                             │
+                   ▼                             ▼                             ▼
+      ┌─────────────────────────┐   ┌─────────────────────────┐   ┌─────────────────────────┐
+      │    Prediction Engine    │   │   Prediction History    │   │   Events & Readiness    │
+      │ ├── Ticker input & chips│   │ ├── Audit trail table   │   │ ├── RBI / SEBI feed     │
+      │ ├── Model selector      │   │ ├── Bounded pagination  │   │ ├── Category chips      │
+      │ ├── Ensemble weights    │   │ ├── Symbol/model filter │   │ └── Subsystem readiness │
+      │ └── ML/LLM/Audit cards  │   │ └── Verified outcomes   │   │     diagnostics card    │
+      └─────────────────────────┘   └─────────────────────────┘   └─────────────────────────┘
+```
+
+- **Architectural Tenets & Technical Choices:**
+  1. **Zero Frontend Framework Bloat:** Implemented strictly in standard Vanilla HTML5, CSS3, and modern JavaScript (ES6+). Avoids heavy npm/node bundling overhead, build-step brittleness, or external CDN dependency chains, ensuring fast native browser execution and effortless local deployment.
+  2. **Strict Financial Display & Non-Fabrication Rules:**
+     - Quantitative ML metrics (probabilities, warmup completeness, feature bars) and qualitative LLM reasoning (stance, confidence, catalysts, risks) are strictly separated into independent visual cards.
+     - Uncalibrated heuristic weights (70% ML / 30% LLM) are explicitly labeled with research disclaimers and never represented as calibrated statistical probabilities.
+     - Volatility price bounds ($Close \pm ATR$) and agreement/divergence badges are rendered exclusively when provided in API responses.
+     - Production HTML contains zero hardcoded mock predictions or fabricated prices; empty and loading states use clean skeletons and placeholders.
+  3. **FastAPI Static Delivery & Content Negotiation:**
+     - Mounted via Starlette `StaticFiles` at `/static`.
+     - Direct dashboard access at `GET /ui`.
+     - Browser content-negotiation on `GET /` serves `index.html` when `text/html` is requested, preserving raw JSON output for API clients and automated tests.
+     - Starlette `CORSMiddleware` configured to enable cross-origin UI consumers without compromising security.
+  4. **Resilience, Accessibility, & Responsive Design:**
+     - Complete keyboard accessibility with unique DOM IDs, ARIA roles, live regions, and semantic landmark tags (`<header>`, `<nav>`, `<main>`, `<section>`).
+     - Mobile-first responsive layout scaling seamlessly from 320px mobile viewports up to 4K ultra-wide monitors.
+     - Comprehensive UI error states handling network disconnects, 4xx input validation errors, and 5xx backend service degradation without unhandled JavaScript exceptions.

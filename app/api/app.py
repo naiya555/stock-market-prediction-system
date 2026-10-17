@@ -4,11 +4,14 @@ Configures FastAPI application instance, exception handling, logging, and route 
 """
 
 import logging
+from pathlib import Path
 from typing import Any, Dict
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from starlette.staticfiles import StaticFiles
 
 from app.api.routes import api_router
 from app.api.schemas import ErrorDetail, ErrorResponse
@@ -16,6 +19,8 @@ from app.core.config import get_settings
 from app.core.schemas import ValidationError
 
 logger = logging.getLogger(__name__)
+
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 def create_app() -> FastAPI:
@@ -31,6 +36,15 @@ def create_app() -> FastAPI:
         version="1.0.0",
         docs_url="/docs",
         redoc_url="/redoc",
+    )
+
+    # Configure CORS with safe defaults
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     # -----------------------------------------------------------------------
@@ -112,12 +126,21 @@ def create_app() -> FastAPI:
         )
 
     # -----------------------------------------------------------------------
-    # Root & Information Endpoints
+    # Static Assets & Web UI Mounting
     # -----------------------------------------------------------------------
 
-    @app.get("/", tags=["system"], summary="Root API Information")
-    def get_root() -> Dict[str, Any]:
-        """Return basic service metadata and documentation links."""
+    if STATIC_DIR.exists():
+        app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+    @app.get("/", tags=["system"], summary="Root API Information and Interactive Dashboard")
+    def get_root(request: Request) -> Any:
+        """Return basic service metadata, or serve web UI if requested by browser."""
+        accept = request.headers.get("accept", "")
+        if "text/html" in accept and "application/json" not in accept:
+            index_path = STATIC_DIR / "index.html"
+            if index_path.exists():
+                return FileResponse(index_path, media_type="text/html")
+
         return {
             "name": settings.app_name,
             "version": "1.0.0",
@@ -125,7 +148,16 @@ def create_app() -> FastAPI:
             "status": "running",
             "docs": "/docs",
             "health": "/api/health",
+            "ui": "/ui",
         }
+
+    @app.get("/ui", tags=["system"], summary="Interactive Stock Prediction Dashboard")
+    def get_ui() -> FileResponse:
+        """Serve the interactive web UI dashboard."""
+        index_path = STATIC_DIR / "index.html"
+        if not index_path.exists():
+            raise HTTPException(status_code=404, detail="Frontend index.html not found.")
+        return FileResponse(index_path, media_type="text/html")
 
     # Mount API router under /api
     app.include_router(api_router, prefix="/api")

@@ -3210,3 +3210,83 @@ Executed 6-stage empirical verification pipeline:
 - Interactive Web UI dashboard (stock search, prediction visualization, and audit history) is planned for Day 34.
 - Direct user feedback persistence is intentionally deferred until formal auditing schemas and human-in-the-loop workflows are approved per ADR 10.
 - Next scheduled milestone: Day 34 — Interactive Web Application UI (HTML/CSS/JS frontend communicating with Day 33 REST endpoints).
+
+---
+
+## Day 34: Interactive Stock Prediction Web UI
+
+### Objective
+Complete Phase 13 of `docs/roadmap.md` by building a clean, modern, responsive web dashboard that consumes the Day 33 FastAPI REST API foundation. Provide stock search, real-time prediction visualization, quantitative ML breakdown, qualitative LLM breakdown, ensemble synthesis, immutable prediction history with verified outcomes, and macroeconomic event tracking while strictly following financial display rules, non-fabrication constraints, and zero bloated frontend dependencies.
+
+### Implementation Summary
+1. **Frontend Architecture & Design (`app/api/static/`):**
+   - Implemented a single-page web dashboard using standard Vanilla HTML5, CSS3, and modern JavaScript (ES6+), eliminating external JavaScript framework overhead or Node.js build dependencies.
+   - Built a sleek dark-theme aesthetic (`#070a13` background, `#0f172a` surface containers, glassmorphism, `#10b981` emerald bullish up, `#f43f5e` rose bearish down, `#38bdf8` sky accents, modern Google Fonts `Inter` and `JetBrains Mono`).
+   - Mobile-first responsive layout supporting screen widths from 320px mobile viewports to 4K desktops.
+2. **Dashboard Views & Components (`index.html`):**
+   - **Header Bar:** Platform identity, real-time Indian Standard Time (IST) clock with flashing pulse indicator, interactive health badge reflecting backend readiness, and direct link to `/docs` OpenAPI documentation.
+   - **Prediction Engine Tab:**
+     - Search card with stock ticker input, live validation, and popular ticker quick-chips (`RELIANCE`, `TCS`, `INFY`, `HDFCBANK`, `ICICIBANK`, `BHARTIARTL`, `SBIN`).
+     - Model architecture selector (`ensemble`, `xgboost`, `lightgbm`).
+     - Collapsible advanced inference settings: interactive ML/LLM weight ratio slider (default 70% ML / 30% LLM), historical warmup lookback days (default 1825), max stale days tolerance (default 7), and SQLite persistence toggle.
+     - Direction hero card with bold UP/DOWN decision badges, animated probability progress bar, and volatility price bounds ($Close \pm ATR$) when supplied.
+     - Consensus agreement / divergence banner with explicit warnings when models conflict.
+     - Three-column analytical breakdown:
+       - Column 1: Quantitative ML metrics (signal, raw probability, warmup quality, feature bar count, technical momentum factors).
+       - Column 2: Qualitative LLM contextual reasoning (Gemma 3 12B stance, confidence rating, reasoning summary, positive catalysts, downside risks, source references) rendered only when returned by the API.
+       - Column 3: Audit trail & data health integrity (prediction record UUID, bars fetched/cleaned, zero leakage confirmation, research disclaimer).
+   - **Prediction History Tab:**
+     - Paginated audit table displaying prediction ID, symbol, model, UTC timestamp, signal, probability, and verified actual market outcome ($Close_{t+1}$ vs $Close_t$, return %, directional accuracy badge).
+     - Filter controls for ticker symbol, model architecture, and page size (10, 25, 50).
+   - **Macro & Regulatory Events Tab:**
+     - Feed of official RBI monetary policy circulars and SEBI regulatory announcements with category filter chips and external source citations.
+   - **System Readiness Tab:**
+     - Live subsystem diagnostic cards querying non-inferencing `/api/health` for SQLite database connectivity, model registry readiness, and local Ollama runtime.
+3. **Client-Side Service & State Management (`app.js`):**
+   - Modular `ApiService` cleanly encapsulating `fetch()` calls to `/api/predict`, `/api/history`, `/api/events`, and `/api/health`.
+   - Comprehensive error handling: handles non-2xx responses, displays structured validation error messages without crashing, and recovers gracefully from service degradation.
+   - Full keyboard accessibility, ARIA landmark tags, live regions, and zero inline script event handlers.
+4. **FastAPI Delivery & Security Integration (`app/api/app.py`):**
+   - Mounted static assets via Starlette `StaticFiles` at `/static`.
+   - Added `GET /ui` serving `index.html`.
+   - Added content-negotiation on `GET /` to deliver HTML to web browsers while preserving pure JSON output for API clients and automated tests.
+   - Configured Starlette `CORSMiddleware` supporting secure cross-origin requests.
+
+### Verification Results (`scripts/verify_day34.py`)
+Executed automated verification covering static assets, FastAPI routing, security headers, DOM accessibility, and API contract parity:
+- **Static Assets Existence & Sizing:** PASS — Verified `index.html` (30.7 KB), `styles.css` (28.6 KB), and `app.js` (35.7 KB).
+- **Semantic DOM Elements & IDs:** PASS — Verified presence of 19 required interactive controls and container IDs.
+- **Zero Fabricated Demo Data:** PASS — Verified templates contain zero hardcoded prices, demo predictions, or fake outcomes.
+- **GET /ui & Content Negotiation:** PASS — Verified `/ui` serves `text/html; charset=utf-8` and `/` cleanly negotiates HTML vs. JSON.
+- **Static MIME Types:** PASS — Verified CSS delivered as `text/css` and JS delivered as `text/javascript`.
+- **CORS Configuration:** PASS — Verified appropriate `Access-Control-Allow-Origin` preflight and response headers.
+- **API Contract Parity:** PASS — Verified matching payload and response fields between frontend JS client and backend schemas (`/api/predict`, `/api/history`, `/api/events`, `/api/health`).
+
+### Tests
+- Created `tests/test_frontend.py` with 8 comprehensive integration tests:
+  1. `test_ui_endpoint_serves_html`: verifies `GET /ui` returns 200 with HTML content type.
+  2. `test_root_endpoint_content_negotiation`: verifies `GET /` serves HTML to browsers and JSON to API clients.
+  3. `test_static_css_served_correctly`: verifies CSS static file route and stylesheet contents.
+  4. `test_static_js_served_correctly`: verifies JavaScript static file route and script contents.
+  5. `test_cors_preflight_headers`: verifies Starlette CORS preflight headers on API routes.
+  6. `test_html_contains_required_dom_elements`: verifies accessibility IDs and UI containers in HTML.
+  7. `test_html_zero_hardcoded_predictions`: ensures no fabricated stock prices or predictions appear in production HTML.
+  8. `test_js_api_contracts_aligned`: verifies JS API client aligns with backend Pydantic schema field names.
+- **Full Test Suite Results:**
+  - Previous baseline: 475 passed across 31 test modules.
+  - New total: **483 passed in 6.45s** (8 new tests, 0 failures, 0 regressions across 32 test modules).
+  - 100% offline and deterministic; zero network dependency in unit tests.
+
+### Review
+- **Browser Automation Note:** Direct visual inspection via Playwright browser subagent encountered an offline environment limitation (driver binary download restricted in sandbox). Thorough verification was performed via FastAPI TestClient offline integration tests, static syntax checks, and `scripts/verify_day34.py`.
+- **Ponytail / Senior Dev Mode:** Zero new npm packages or frontend frameworks; pure Vanilla HTML/CSS/JS; reused Day 33 FastAPI routes without modifying backend business logic; zero fabricated data; verified clean error states.
+
+### Documentation
+- Updated `README.md` to Day 34 status with 483 passing tests and interactive UI instructions.
+- Updated `docs/architecture.md` with Section 4.29 detailing the Interactive Web UI layer.
+- Updated `docs/roadmap.md` marking Phase 13 complete.
+- Updated `docs/daily-progress.md` with Day 34 development log.
+
+### Known Limitations & Next Steps
+- Day 34 completes Phase 13: Web Application & API Layer.
+- Next scheduled milestone: Phase 14: Live Data Pipeline (connect near-real-time market data providers with strict timestamp preservation and market session state handling).

@@ -134,7 +134,7 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Canonical adapter: `.to_prediction_result()` seamlessly enables immutable SQLite persistence (`PredictionRepository`), outcome verification (`OutcomeVerifier`), and comparative performance metrics (`PredictionEvaluator`).
   - Graceful degradation: handles LLM service failures or offline states by falling back to 100% ML weight without crashing.
 
-### Phase 13: Web Application & API Layer (Partially Complete - Day 33)
+### Phase 13: Web Application & API Layer (Complete - Day 34)
 - FastAPI REST API Foundation (`app/api/` - Day 33 complete):
   - Application factory (`app/api/app.py`): central FastAPI instance with OpenAPI documentation (`/docs`, `/redoc`), structured error handlers, and non-disclosure sanitization.
   - Dependency injection layer (`app/api/dependencies.py`): loosely coupled database connections, `PredictionRepository`, `PredictionService`, `EnsembleService`, and event providers for clean test overrides.
@@ -144,8 +144,16 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - History endpoint (`GET /api/history`): retrieves persisted predictions with bounded pagination, ticker/model filtering, and linked verified actual outcomes.
   - Feedback endpoint (`POST /api/feedback`): validates feedback schema and explicitly defers persistence (HTTP 501) with ADR 10 disclosure against automated retraining loops.
   - Events endpoint (`GET /api/events`): exposes normalized, deduplicated macroeconomic and regulatory announcements across RBI and SEBI providers.
-- Interactive Web UI (Day 34):
-  - Develop lightweight web UI for stock search, prediction visualization, and audit history.
+- Interactive Stock Prediction Web UI (`app/api/static/` - Day 34 complete):
+  - Modern, responsive single-page web dashboard adhering strictly to Vanilla HTML5, CSS3, and JavaScript (zero bloated frontend framework dependencies).
+  - Deep dark-theme aesthetic (`#070a13` canvas, glassmorphic cards, emerald `#10b981` bullish up, rose `#f43f5e` bearish down, responsive grid down to 320px mobile).
+  - Four dedicated tab views:
+    1. **Prediction Engine**: Stock search input with regex validation, popular ticker quick-chips (RELIANCE, TCS, INFY, etc.), model selector, collapsible advanced controls (ensemble weight slider, lookback days, staleness threshold, SQLite persistence toggle).
+    2. **Prediction History**: Tabular view of immutable audit records, pagination controls, ticker/model filters, and real-time display of verified market outcomes ($Close_{t+1}$ vs $Close_t$, return %, directional accuracy).
+    3. **Macro & Regulatory Events**: Live feed of normalized RBI monetary policy and SEBI regulatory circulars, categorized filter chips, and verified source citations.
+    4. **System Readiness**: Real-time diagnostic cards for SQLite connectivity, model artifact registry, and LLM Ollama runtime via non-inferencing `/api/health`.
+  - Financial display compliance: strictly separates quantitative ML metrics from qualitative LLM reasoning, prominently disclaims uncalibrated 70/30 heuristic weights, renders volatility target ranges ($Close \pm ATR$) and agreement badges only when provided by API responses, and never displays hardcoded demo prices or synthetic outcomes.
+  - FastAPI integration: mounted static directory (`/static`), `/ui` HTML route, browser content-negotiation on `/`, and Starlette CORS middleware supporting cross-origin integration.
 
 ### Phase 14: Live Data Pipeline
 - Connect near-real-time market data providers with strict timestamp preservation.
