@@ -3365,4 +3365,66 @@ Systematically remediated all 12 findings identified across CodeRabbit Deep Scan
 
 ### Known Limitations & Next Steps
 - Day 34 code review remediation is complete with all 12 deep scan findings resolved and empirically tested.
-- Next scheduled milestone: Phase 14: Live Data Pipeline (connect near-real-time market data providers with strict timestamp preservation and market session state handling).
+
+---
+
+## Day 35 - Phase 14: Live Data Pipeline (Near-Real-Time Quotes & Session Engine)
+
+### Goal
+Implement the first safe, testable increment of Phase 14: connect near-real-time market data providers with strict timestamp preservation, market session state handling (pre-open, regular hours, post-close, closed), provider delay disclosures, and zero-fabrication guarantees.
+
+### Work Completed
+
+1. **Indian Equity Market Session & Calendar Engine (`app/market/session.py`)**:
+   - Implemented `MarketSessionState` enum: `PRE_OPEN` (09:00-09:15 IST), `REGULAR_HOURS` (09:15-15:30 IST), `POST_CLOSE` (15:30-16:00 IST), and `CLOSED` (off-hours, weekends, holidays).
+   - Created `MarketSessionInfo` frozen dataclass tracking active trading state, localized IST timestamp, current session date, weekend/holiday flags, and calculated `next_open` and `next_close` boundaries.
+   - Built deterministic `get_market_session(dt, holidays)` engine with automatic IST localization (`ZoneInfo("Asia/Kolkata")`), weekend checks, and comprehensive NSE 2026 declared holiday calendar.
+
+2. **Live & Near-Real-Time Quote Contracts (`app/market/quote.py`)**:
+   - Defined `DataFreshnessStatus` enum: `FRESH`, `DELAYED`, `STALE`, and `UNKNOWN`.
+   - Created `LiveQuote` frozen dataclass capturing verified last traded price, trade timestamp (`as_of`), retrieval timestamp (`retrieved_at`), day OHLC metrics, volume, prior close, net change, change percentage, session state, and freshness classification.
+   - Enforced explicit provider transparency: standard 15-minute exchange delay flag (`is_delayed=True`, `delay_minutes=15`) and disclaimer clarifying data is for decision support rather than high-frequency execution.
+   - Provided seamless backward compatibility adapter `.to_market_quote()` converting to canonical `MarketQuote` schema from `app.core.schemas`.
+
+3. **Provider Contract & YFinance Quote Adapter (`app/market/providers/base.py`, `app/market/providers/yfinance_provider.py`)**:
+   - Extended `BaseMarketDataProvider` ABC with `fetch_quote(symbol: str) -> LiveQuote` with a default `NotImplementedError` preserving full backward compatibility across all existing mock providers in test suites.
+   - Implemented concrete `fetch_quote` in `YFinanceProvider`:
+     - Resolves bare symbols and exchange tickers (e.g. `RELIANCE` -> `RELIANCE.NS`).
+     - Queries `fast_info` for instantaneous price and OHLC metrics with intraday 1-minute history (`1d`, `1m`) for exact exchange timestamps.
+     - Implements multi-tier fallback to 5-day daily bars for off-market, weekend, and holiday queries.
+     - Enforces strict zero-fabrication guarantees: missing or delisted tickers raise `RuntimeError`, corrupted non-positive prices raise `ValidationError`.
+     - Dynamically evaluates staleness against active session thresholds (stale if trade date is before today during regular hours, or older than 5 days outside market hours).
+
+4. **Pipeline Orchestration & Module Exports (`app/market/pipeline.py`, `app/market/__init__.py`)**:
+   - Added `fetch_live_quote(symbol, provider, max_staleness_seconds)` orchestrator in pipeline with sanitized logging.
+   - Cleanly exported all new contracts in `app/market/__init__.py`: `MarketSessionState`, `MarketSessionInfo`, `get_market_session`, `DataFreshnessStatus`, `LiveQuote`, and `fetch_live_quote`.
+
+5. **Test Suite Expansion & Real-Data Verification**:
+   - Created `tests/test_market_session.py` (9 unit tests): verified pre-open, regular hours, post-close, closed, exact second boundaries, weekend closures, 2026 holidays, timezone localization, and serialization.
+   - Created `tests/test_live_quote.py` (9 unit tests): verified contract validation, physical boundary rejections, downcasting, provider error propagation, non-positive price rejection, fast_info parsing, daily fallback, and pipeline orchestration.
+   - Created `scripts/verify_day35.py`: live verification script testing real quotes on `RELIANCE.NS`, `TCS.NS`, `INFY.NS`, session engine transitions, and zero-fabrication failure modes.
+
+### Validation
+- **Focused Unit Tests:**
+  ```powershell
+  & .\.venv\Scripts\python -m pytest tests/test_market_session.py tests/test_live_quote.py -v
+  ```
+  *Result:* 18 passed in 1.48s.
+- **Full Automated Test Suite:**
+  ```powershell
+  & .\.venv\Scripts\python -m pytest -q
+  ```
+  *Result:* **540 passed**, 0 failed, 1 warning (Starlette testclient deprecation) in 12.40s across 37 test files (expanded from 522 baseline).
+- **Day 35 Verification Script:**
+  ```powershell
+  & .\.venv\Scripts\python scripts/verify_day35.py
+  ```
+  *Result:* Exited with code `0` (SUCCESS). Verified session engine, real-data quotes for RELIANCE (₹1,211.20) and TCS (₹2,465.00), downcasting, and zero-fabrication rejection on invalid symbols.
+- **Existing Verification Scripts:**
+  - `verify_day34.py`: PASS (SUCCESS)
+  - `verify_trend.py`: PASS (SUCCESS)
+  - `verify_pipeline.py`: PASS (SUCCESS)
+
+### Known Limitations & Next Steps
+- Near-real-time quotes currently use Yahoo Finance free tier with inherent ~15-minute exchange delay during continuous trading hours.
+- Next scheduled increment in Phase 14: Connect near-real-time quote retrieval into prediction inference pipelines (`PredictionService` / `EnsembleService`) to dynamically anchor next-session volatility bands and current price references during active trading sessions.

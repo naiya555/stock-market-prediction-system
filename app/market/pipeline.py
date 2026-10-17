@@ -16,6 +16,7 @@ from app.market.candlestick import CandlestickFeatures, compute_candlestick_feat
 from app.market.indicators import MovingAverageFeatures, compute_moving_averages
 from app.market.providers.base import BaseMarketDataProvider
 from app.market.providers.yfinance_provider import YFinanceProvider
+from app.market.quote import LiveQuote
 from app.market.returns import ReturnFeatures, compute_market_returns
 from app.market.trend import TrendAnalysisResult, analyze_market_trend
 
@@ -287,3 +288,24 @@ def run_market_data_pipeline(
         swing_window=swing_window,
         min_swings=min_swings,
     )
+
+
+def fetch_live_quote(
+    symbol: str,
+    provider: Optional[BaseMarketDataProvider] = None,
+    max_staleness_seconds: int = 3600,
+) -> LiveQuote:
+    """Acquire latest near-real-time quote for an Indian equity symbol.
+
+    Args:
+        symbol: Ticker symbol (e.g., 'RELIANCE', 'TCS.NS', '^NSEI').
+        provider: Market data provider implementing BaseMarketDataProvider (defaults to YFinanceProvider).
+        max_staleness_seconds: Maximum tolerable data age in seconds during active market hours.
+
+    Returns:
+        LiveQuote containing price, session state, and freshness metrics.
+    """
+    active_provider = provider or YFinanceProvider()
+    clean_sym = sanitize_log_field(symbol)
+    logger.info("Executing live quote fetch for '%s' via %s", clean_sym, active_provider.name)
+    return active_provider.fetch_quote(symbol=symbol, max_staleness_seconds=max_staleness_seconds)

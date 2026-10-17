@@ -7,9 +7,12 @@ canonical MarketOHLCV records from app.core.schemas.
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import List
+from typing import TYPE_CHECKING, List
 
 from app.core.schemas import MarketOHLCV
+
+if TYPE_CHECKING:
+    from app.market.quote import LiveQuote
 
 
 class BaseMarketDataProvider(ABC):
@@ -50,3 +53,19 @@ class BaseMarketDataProvider(ABC):
             Exception: If provider communication or parsing fails.
         """
         pass
+
+    def fetch_quote(self, symbol: str) -> "LiveQuote":
+        """Fetch latest / near-real-time quote for a given symbol.
+
+        Args:
+            symbol: Ticker symbol (e.g., 'RELIANCE').
+
+        Returns:
+            LiveQuote record with price, session state, and freshness metadata.
+
+        Raises:
+            NotImplementedError: If provider does not support live quotes.
+            ValidationError: If returned data violates schema bounds.
+            RuntimeError: If provider communication fails or ticker does not exist.
+        """
+        raise NotImplementedError(f"Provider '{self.name}' does not implement fetch_quote")

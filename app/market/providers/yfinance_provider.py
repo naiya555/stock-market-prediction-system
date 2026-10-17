@@ -5,13 +5,16 @@ Normalizes raw OHLCV series into canonical MarketOHLCV records.
 """
 
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Optional
+from zoneinfo import ZoneInfo
 import pandas as pd
 import yfinance as yf
 
 from app.core.logging_config import get_logger, sanitize_log_field
 from app.core.schemas import MarketOHLCV, ValidationError
 from app.market.providers.base import BaseMarketDataProvider
+from app.market.quote import DataFreshnessStatus, LiveQuote
+from app.market.session import IST, MarketSessionState, get_market_session
 
 logger = get_logger(__name__)
 
@@ -203,3 +206,202 @@ class YFinanceProvider(BaseMarketDataProvider):
             base_symbol,
         )
         return records
+
+    def fetch_quote(
+        self,
+        symbol: str,
+        max_staleness_seconds: int = 3600,
+    ) -> LiveQuote:
+        """Fetch latest / near-real-time quote for a given Indian equity symbol.
+
+        Retrieves current traded price, OHLC intraday statistics, volume, and
+        prior closing price. Evaluates the active Indian market session state
+        and enforces explicit delay disclosures and freshness checks.
+
+        Args:
+            symbol: Ticker symbol (e.g. 'RELIANCE', 'TCS.NS', '^NSEI').
+            max_staleness_seconds: Staleness threshold in seconds during regular hours (default 3600).
+
+        Returns:
+            LiveQuote containing verified price, session state, and freshness status.
+
+        Raises:
+            ValidationError: If symbol is empty or returned prices violate schema bounds.
+            RuntimeError: If yfinance communication fails or no quote is returned.
+        """
+        if not symbol or not symbol.strip():
+            raise ValidationError("symbol cannot be empty")
+
+        base_symbol, query_ticker = self._resolve_symbols(symbol)
+        retrieved_at = datetime.now(IST)
+        session_info = get_market_session(retrieved_at)
+        clean_base = sanitize_log_field(base_symbol)
+
+        logger.info("Fetching quote for %s (%s) via %s", clean_base, query_ticker, self.name)
+
+        try:
+            ticker = yf.Ticker(query_ticker)
+        except Exception as exc:
+            logger.error("Failed to initialize yfinance ticker for %s: %s", query_ticker, exc)
+            raise RuntimeError(f"yfinance quote fetch failed for '{query_ticker}': {exc}") from exc
+
+        # Step 1: Attempt to read fast_info (lightweight metadata)
+        fast_info = getattr(ticker, "fast_info", None)
+        last_price: Optional[float] = None
+        open_price: Optional[float] = None
+        day_high: Optional[float] = None
+        day_low: Optional[float] = None
+        prev_close: Optional[float] = None
+        volume: Optional[int] = None
+        currency: str = "INR"
+
+        if fast_info:
+            try:
+                raw_lp = getattr(fast_info, "last_price", None)
+                if raw_lp is not None and not pd.isna(raw_lp):
+                    last_price = float(raw_lp)
+                raw_op = getattr(fast_info, "open", None)
+                if raw_op is not None and not pd.isna(raw_op):
+                    open_price = float(raw_op)
+                raw_dh = getattr(fast_info, "day_high", None)
+                if raw_dh is not None and not pd.isna(raw_dh):
+                    day_high = float(raw_dh)
+                raw_dl = getattr(fast_info, "day_low", None)
+                if raw_dl is not None and not pd.isna(raw_dl):
+                    day_low = float(raw_dl)
+                raw_pc = getattr(fast_info, "previous_close", None)
+                if raw_pc is not None and not pd.isna(raw_pc):
+                    prev_close = float(raw_pc)
+                raw_vol = getattr(fast_info, "last_volume", None)
+                if raw_vol is not None and not pd.isna(raw_vol):
+                    volume = int(raw_vol)
+                raw_cur = getattr(fast_info, "currency", None)
+                if raw_cur and isinstance(raw_cur, str):
+                    currency = raw_cur
+            except Exception as e:
+                logger.debug("fast_info attribute access encountered exception for %s: %s", query_ticker, e)
+
+        # Step 2: Query intraday history for exact timestamp and fallback prices
+        as_of: Optional[datetime] = None
+        try:
+            df_intra = ticker.history(period="1d", interval="1m", auto_adjust=False)
+            if df_intra is not None and not df_intra.empty:
+                last_idx = df_intra.index[-1]
+                if isinstance(last_idx, pd.Timestamp):
+                    as_of = last_idx.to_pydatetime()
+                elif isinstance(last_idx, datetime):
+                    as_of = last_idx
+                else:
+                    as_of = pd.to_datetime(last_idx).to_pydatetime()
+                if as_of.tzinfo is None:
+                    as_of = as_of.replace(tzinfo=IST)
+                else:
+                    as_of = as_of.astimezone(IST)
+
+                # If fast_info missed any metrics, backfill from intraday series
+                if last_price is None:
+                    last_price = float(df_intra["Close"].iloc[-1])
+                if open_price is None:
+                    open_price = float(df_intra["Open"].iloc[0])
+                if day_high is None:
+                    day_high = float(df_intra["High"].max())
+                if day_low is None:
+                    day_low = float(df_intra["Low"].min())
+                if volume is None:
+                    volume = int(df_intra["Volume"].sum())
+        except Exception as exc:
+            logger.debug("Intraday 1m query failed for %s: %s", query_ticker, exc)
+
+        # Step 3: Daily fallback if intraday returned no bars (e.g. market closed, weekend)
+        if last_price is None:
+            try:
+                df_daily = ticker.history(period="5d", interval="1d", auto_adjust=False)
+                if df_daily is not None and not df_daily.empty:
+                    last_row = df_daily.iloc[-1]
+                    last_price = float(last_row["Close"])
+                    if open_price is None:
+                        open_price = float(last_row["Open"])
+                    if day_high is None:
+                        day_high = float(last_row["High"])
+                    if day_low is None:
+                        day_low = float(last_row["Low"])
+                    if volume is None:
+                        volume = int(last_row["Volume"])
+
+                    last_idx = df_daily.index[-1]
+                    if isinstance(last_idx, pd.Timestamp):
+                        as_of = last_idx.to_pydatetime()
+                    else:
+                        as_of = pd.to_datetime(last_idx).to_pydatetime()
+                    if as_of.tzinfo is None:
+                        as_of = as_of.replace(tzinfo=IST)
+                    else:
+                        as_of = as_of.astimezone(IST)
+
+                    if prev_close is None and len(df_daily) >= 2:
+                        prev_close = float(df_daily["Close"].iloc[-2])
+            except Exception as exc:
+                logger.debug("Daily fallback query failed for %s: %s", query_ticker, exc)
+
+        # Step 4: Strict validation - fail fast rather than fabricating fake prices
+        if last_price is None:
+            logger.warning("No price data returned by yfinance for %s", query_ticker)
+            raise RuntimeError(f"No quote data returned by yfinance for '{query_ticker}'")
+
+        if last_price <= 0:
+            raise ValidationError(f"Invalid non-positive quote price {last_price} for '{query_ticker}'")
+
+        if as_of is None:
+            as_of = retrieved_at
+
+        # Step 5: Compute change and change percentage if previous close exists
+        change: Optional[float] = None
+        change_pct: Optional[float] = None
+        if prev_close is not None and prev_close > 0:
+            change = round(last_price - prev_close, 4)
+            change_pct = round((change / prev_close) * 100, 4)
+
+        # Step 6: Determine data freshness
+        elapsed_seconds = (retrieved_at - as_of).total_seconds()
+        if session_info.state == MarketSessionState.REGULAR_HOURS:
+            # During trading hours, verify quote is from today and not excessively stale
+            if as_of.date() < retrieved_at.date() or elapsed_seconds > max_staleness_seconds:
+                freshness = DataFreshnessStatus.STALE
+            else:
+                freshness = DataFreshnessStatus.DELAYED  # Free tier exchange delay (~15m)
+        else:
+            # Outside market hours, quote represents the latest session close
+            # If the quote is older than 5 calendar days, flag as stale
+            if (retrieved_at.date() - as_of.date()).days > 5:
+                freshness = DataFreshnessStatus.STALE
+            else:
+                freshness = DataFreshnessStatus.FRESH
+
+        quote = LiveQuote(
+            symbol=base_symbol,
+            price=last_price,
+            timestamp=as_of,
+            retrieved_at=retrieved_at,
+            source=self.name,
+            session_state=session_info.state,
+            freshness_status=freshness,
+            open_price=open_price,
+            day_high=day_high,
+            day_low=day_low,
+            previous_close=prev_close,
+            change=change,
+            change_percent=change_pct,
+            volume=volume,
+            currency=currency,
+            is_delayed=True,
+            delay_minutes=15,
+        )
+
+        logger.info(
+            "Fetched live quote for %s: price=%.2f [%s, %s]",
+            clean_base,
+            quote.price,
+            quote.session_state.value,
+            quote.freshness_status.value,
+        )
+        return quote
