@@ -79,3 +79,17 @@ def test_search_repo_no_match(bash_executable):
     )
     assert res.returncode == 0
     assert "No matches found" in res.stdout
+
+
+def test_search_repo_prevents_command_injection(bash_executable):
+    """Verify arguments with command-separating metacharacters are treated literally without shell execution."""
+    res = subprocess.run(
+        [bash_executable, "scripts/search_repo.sh", "non_existent_target", "app/", "-e", "; echo INJECTED_COMMAND_RAN ;"],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+    )
+    assert res.returncode == 0
+    # Command injection must NOT execute
+    assert "INJECTED_COMMAND_RAN" not in res.stdout
+    assert "INJECTED_COMMAND_RAN" not in res.stderr

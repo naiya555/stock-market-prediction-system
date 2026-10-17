@@ -3360,7 +3360,7 @@ Systematically remediated all 12 findings identified across CodeRabbit Deep Scan
     - Added regression tests in `tests/test_trend.py` verifying 100% exact numerical and semantic equivalence between incremental trend computation and repeated naive historical analysis.
 
 - **Full Test Suite Results:**
-  - Expanded from 486 baseline tests to **521 passed tests in 10.29s** (35 new focused regression tests, 0 failures, 0 regressions across 35 test files).
+  - Expanded from 486 baseline tests to **522 passed tests in 7.77s** (36 new focused regression tests, 0 failures, 0 regressions across 35 test files).
   - Verification scripts (`verify_trend.py`, `verify_feature_matrix.py`, `verify_pipeline.py`, `verify_day34.py`) all pass with exit code 0.
 
 ### Known Limitations & Next Steps
