@@ -3048,3 +3048,79 @@ Executed `scripts/verify_day31.py`:
 - Day 31 completes the isolated foundational LLM package (`app/llm/`).
 - The LLM service is deliberately NOT yet integrated into the production prediction pipeline; quantitative XGBoost/LightGBM predictions remain authoritative.
 - Next scheduled milestone: Phase 12: ML + LLM Combination (ensemble synthesis layer combining numerical ML outputs with qualitative LLM reasoning while preserving both independent outputs).
+
+---
+
+## Day 32 - Multi-Agent Ensemble & Synthesis Layer (Phase 12)
+
+### Goal
+Implement the multi-agent ensemble synthesis layer (`app/prediction/ensemble.py`) combining quantitative machine learning forecasts (XGBoost/LightGBM) with qualitative LLM reasoning (Gemma 3 12B) and financial sentiment features, strictly preserving independent standalone model outputs (ADR 05), transparent weighted blending, agreement/divergence classification, volatility-anchored target ranges, and persistence/verification parity with SQLite.
+
+### Work Completed
+1. **Repository Preflight:**
+   - Verified clean working tree and synchronization with `origin/main` (`0cd9a91`).
+   - Verified 436 existing tests passing in 12.58s.
+   - Identified exact next incomplete milestone: Phase 12 (ML + LLM Combination).
+2. **Canonical Data Contracts (`app/prediction/ensemble.py`):**
+   - Created `EnsembleAgreement` enum: `STRONG_AGREEMENT`, `AGREEMENT`, `DIVERGENCE`, `PARTIAL`, `ML_ONLY`, `LLM_ONLY`.
+   - Created `EnsembleWeights` dataclass: validated and normalized weights for ML and LLM signals (default 70% ML / 30% LLM).
+   - Created `TargetRange` dataclass: volatility-anchored physical price boundaries $[Close - ATR, Close + ATR]$ for next session.
+   - Created `EnsemblePredictionResult` dataclass: complete container preserving standalone `ml_prediction` and `llm_reasoning` in full, combined direction, combined probabilities, agreement diagnostics, integrated factor rankings, and downside risks.
+   - Implemented canonical adapter `.to_prediction_result()`: translates ensemble predictions into standard `PredictionResult` with `model_name="ensemble"`, enabling immediate SQLite database persistence and outcome verification.
+3. **Synthesis Engine (`EnsembleService`):**
+   - Implemented `synthesize`: pure deterministic synthesis method combining pre-computed ML predictions and LLM reasoning.
+   - Mapped qualitative LLM direction and qualitative confidence to bounded polarity $S_{LLM} \in [-1.0, 1.0]$.
+   - Implemented linear convex probability combination: $P_{comb}(UP) = W_{ML} \cdot P_{ML}(UP) + W_{LLM} \cdot P_{LLM}(UP)$.
+   - Explicitly surfaced `DIVERGENCE` when ML and LLM issue opposing directional forecasts to highlight conflicting regime risk.
+   - Implemented `predict_ensemble`: end-to-end multi-agent orchestration method executing ML prediction, LLM qualitative reasoning, synthesis, and optional SQLite persistence.
+   - Graceful degradation: handles LLM service failures or offline states by falling back to 100% ML weight (`ML_ONLY`) without crashing.
+4. **Package Exports & Entry Point:**
+   - Exported all new ensemble types in `app/prediction/__init__.py`.
+   - Updated `main.py` with Day 32 readiness verification.
+
+### Real-Data & Offline Verification (`scripts/verify_day32.py`)
+Executed `scripts/verify_day32.py`:
+- **Stage 1 (Offline Multi-Agent Synthesis):**
+  - Strong Agreement: verified blended probability $P(UP) = 77.60\%$ and ATR target range $[2715.0 - 2785.0]$.
+  - Divergence: verified ML(UP, 0.68) vs LLM(DOWN, HIGH) correctly surfaces `DIVERGENCE` with $P(UP) = 47.60\%$.
+  - Partial: verified LLM `INSUFFICIENT_EVIDENCE` shrinks probability towards 50%.
+  - ML-Only Fallback: verified graceful 100% ML weight assignment.
+  - Independent Score Preservation: confirmed standalone models are retained in full without loss of attribution.
+- **Stage 2 (SQLite Persistence & Outcome Verification):**
+  - Saved ensemble prediction to SQLite repository with `model_name='ensemble'`.
+  - Verified outcome using `OutcomeVerifier` against market session bars (`is_correct=True`).
+  - Verified `PredictionEvaluator` tracks ensemble accuracy side-by-side with ML models.
+- **Stage 3 (Live Multi-Agent Synthesis with Gemma 3 12B):**
+  - Checked Ollama reachability at `http://127.0.0.1:11434` (latency 37.2ms); model `gemma3:12b` active.
+  - Executed live synthesis combining quantitative ML prediction with live Gemma 3 12B qualitative reasoning on real automotive news in 51.13s:
+    - Combined Direction: `UP`
+    - Combined Probability: `69.7%`
+    - Agreement: `STRONG_AGREEMENT`
+    - Target Range: `[961.50 - 998.50]`
+
+### Tests
+- Created `tests/test_ensemble_service.py` with 19 comprehensive unit tests:
+  1. `TestEnsembleWeights`: default weights normalization, custom weights normalization, negative weights rejection, zero-sum weights rejection.
+  2. `TestEnsembleAgreement`: strong agreement UP, moderate agreement, divergence ML UP vs LLM DOWN, divergence ML DOWN vs LLM UP, partial on LLM insufficient evidence, ML-only when LLM is None.
+  3. `TestEnsembleSynthesis`: exact mathematical probability blending, standalone independent score preservation, ATR target range calculation, integrated factor rankings with deduplication.
+  4. `TestEnsemblePersistenceAndVerification`: conversion to canonical PredictionResult, SQLite persistence, outcome verification against actuals.
+  5. `TestEnsembleFailureHandling`: ML failure propagation, LLM exception degradation fallback to ML_ONLY, clean text summary formatting.
+- **Full Test Suite Results:**
+  - Previous baseline: 436 passed across 29 test modules.
+  - New total: **455 passed in 12.90s** (19 new tests, 0 failures, 0 regressions across 30 test modules).
+  - 100% offline and deterministic; zero network dependency in unit tests.
+
+### Review
+- **Ponytail / Senior Dev Mode:** Reused existing `PredictionResult`, `PredictionRepository`, `OutcomeVerifier`, and `PredictionEvaluator`; zero new dependencies; lazy imports breaking circular dependency cycles; transparent weighted probability blending without fabricating false statistical certainty.
+
+### Documentation
+- Updated `README.md` to Day 32 status with 455 passing tests.
+- Updated `docs/architecture.md` with Section 4.27 detailing Multi-Agent Ensemble Layer.
+- Updated `docs/decisions.md` with ADR 60.
+- Updated `docs/roadmap.md` marking Phase 12 complete and highlighting Phase 13 as the next objective.
+- Updated `docs/daily-progress.md` with Day 32 development log.
+
+### Known Limitations & Next Steps
+- Day 32 completes Phase 12 (ML + LLM Combination).
+- REST API endpoints and web UI dashboards are not yet built (deferred to Phase 13 per roadmap).
+- Next scheduled milestone: Phase 13: Web Application (build FastAPI REST API endpoints and interactive web UI for stock search, prediction visualization, and audit history).

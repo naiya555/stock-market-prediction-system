@@ -1102,3 +1102,71 @@ Phase 11 implements the local LLM integration foundation, connecting the local O
   2. **Security & Anti-Prompt-Injection:** Qualitative context from news feeds is explicitly encapsulated inside XML-like `<source_context>` tags with delimiter neutralization. System prompts strictly instruct the LLM to treat source text as untrusted data rather than system directives.
   3. **Zero Fabrication & Error Integrity:** In the event of network disruption, daemon unavailability, or malformed JSON responses, the service raises typed errors (`LLMClientError`, `LLMParseError`, `LLMValidationError`). Under no circumstances is a synthetic "NEUTRAL" or fabricated reasoning summary substituted.
   4. **Strict Temporal Integrity:** Callers must pass news and events filtered by existing point-in-time engines (`filter_news_point_in_time`, `filter_events_point_in_time`). Qualitative reasoning can never access future-published information.
+
+---
+
+### 4.27 Multi-Agent Ensemble & Synthesis Layer (`app/prediction/ensemble.py` - Day 32)
+
+Phase 12 implements the ensemble synthesis layer, bridging quantitative time-series models with qualitative LLM reasoning while strictly preserving standalone accountability (ADR 05, ADR 60).
+
+```text
+┌─────────────────────────────────┐       ┌─────────────────────────────────┐
+│     Quantitative ML Engine      │       │     Contextual LLM Service      │
+│  ├── XGBoost / LightGBM Model   │       │  ├── Gemma 3 12B (Ollama Local) │
+│  ├── Canonical 37 Features      │       │  ├── Point-in-Time News/Events  │
+│  └── PredictionResult:          │       │  └── LLMReasoningResult:        │
+│        P(UP), P(DOWN), Direction│       │        Direction, Factors, Risks│
+└────────────────┬────────────────┘       └────────────────┬────────────────┘
+                 │                                         │
+                 │ P_ML(UP)                                │ Direction & Polarity S_LLM
+                 └────────────────────┬────────────────────┘
+                                      │
+                                      ▼
+             ┌─────────────────────────────────────────────────┐
+             │       EnsembleService (Weighted Blending)       │
+             │                                                 │
+             │   P_comb(UP) = W_ML * P_ML + W_LLM * P_LLM      │
+             │   P_comb(DOWN) = 1.0 - P_comb(UP)               │
+             │   Direction = UP if P_comb > 0.50 else DOWN     │
+             └────────────────────────┬────────────────────────┘
+                                      │
+                                      ▼
+             ┌─────────────────────────────────────────────────┐
+             │         Signal & Factor Synthesis Logic         │
+             │                                                 │
+             │  ├── Agreement Analysis:                        │
+             │  │     - STRONG_AGREEMENT / AGREEMENT           │
+             │  │     - DIVERGENCE (Conflicting Signal Flag)   │
+             │  │     - PARTIAL / ML_ONLY                      │
+             │  ├── Volatility-Anchored Target Range:          │
+             │  │     - [Close - ATR_14, Close + ATR_14]       │
+             │  └── Integrated Factor Ranking:                 │
+             │        - Quantitative Technical Indicators      │
+             │        - Qualitative News/Regulatory Drivers    │
+             │        - Downside Risk Factors & Sources        │
+             └────────────────────────┬────────────────────────┘
+                                      │
+                                      ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│                        EnsemblePredictionResult                            │
+│  ├── Combined Direction, Probability, and Target Range                     │
+│  ├── Agreement Status (surfacing consensus vs divergence)                  │
+│  ├── Standalone ml_prediction (fully preserved)                            │
+│  ├── Standalone llm_reasoning (fully preserved)                            │
+│  └── .to_prediction_result() -> Adapter for Canonical SQLite Persistence   │
+└─────────────────────────────────────┬──────────────────────────────────────┘
+                                      │
+                                      ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│                    Downstream Audit & Verification                         │
+│  ├── PredictionRepository: save_prediction() under model_name='ensemble'   │
+│  ├── OutcomeVerifier: verifies realized t+1 close against prediction       │
+│  └── PredictionEvaluator: side-by-side benchmark (ML vs LLM vs Ensemble)   │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Architectural Tenets:**
+  1. **Independent Accountability (ADR 05):** Both standalone quantitative prediction and qualitative reasoning are preserved in full within `EnsemblePredictionResult`. Neither model is obscured or subordinated.
+  2. **Transparent, Audited Blending:** Probabilities are combined via an explicit linear convex combination ($W_{ML} \cdot P_{ML} + W_{LLM} \cdot P_{LLM}$) with normalized weights. Qualitative LLM stance is mapped to polarity $S_{LLM} \in [-1.0, 1.0]$ rather than fabricating false statistical confidence.
+  3. **Explicit Divergence Surfacing:** When the quantitative model and qualitative LLM issue contradictory directional recommendations, the ensemble explicitly tags the result as `DIVERGENCE`, preventing blind averaging from hiding market regime conflict.
+  4. **Persistence & Evaluation Parity:** Through `.to_prediction_result()`, ensemble outputs conform to the canonical `PredictionResult` schema, allowing identical immutable persistence, outcome verification, and side-by-side accuracy evaluation.

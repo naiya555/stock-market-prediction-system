@@ -123,9 +123,16 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
     - Safe fast-paths: empty context yields `INSUFFICIENT_EVIDENCE` with LOW confidence; client errors and malformed responses raise explicit typed exceptions (`LLMClientError`, `LLMParseError`, `LLMValidationError`) rather than fabricating fake neutral answers.
   - Strict quantitative model isolation: quantitative ML models (XGBoost/LightGBM), the 37-feature matrix, and prediction database records remain completely unaffected by qualitative LLM reasoning.
 
-### Phase 12: ML + LLM Combination
-- Implement ensemble layer synthesizing numerical ML predictions with qualitative LLM reasoning.
-- Retain both independent scores and weighted synthesis in the output payload.
+### Phase 12: ML + LLM Combination (Complete - Day 32)
+- Multi-agent ensemble and synthesis layer (`app/prediction/ensemble.py` - Day 32 complete):
+  - Canonical data contracts: `EnsemblePredictionResult`, `EnsembleAgreement`, `EnsembleWeights`, `TargetRange`.
+  - Independent score preservation (ADR 05): Both standalone quantitative `PredictionResult` (XGBoost/LightGBM) and qualitative `LLMReasoningResult` (Gemma 3 12B) are retained in full without loss of attribution.
+  - Transparent, audited weighted probability synthesis: blends quantitative $P_{ML}(UP)$ with qualitative polarity $S_{LLM}$ using configurable normalized weights (default 70% ML / 30% LLM).
+  - Agreement & Divergence analysis: classifies model alignment into `STRONG_AGREEMENT`, `AGREEMENT`, `DIVERGENCE` (conflicting signals flag), `PARTIAL`, `ML_ONLY`, or `LLM_ONLY`.
+  - Integrated factor rankings and downside risks combining quantitative indicators and qualitative news/regulatory drivers.
+  - Volatility-anchored expected price range estimation (1-session ATR-14 bounds).
+  - Canonical adapter: `.to_prediction_result()` seamlessly enables immutable SQLite persistence (`PredictionRepository`), outcome verification (`OutcomeVerifier`), and comparative performance metrics (`PredictionEvaluator`).
+  - Graceful degradation: handles LLM service failures or offline states by falling back to 100% ML weight without crashing.
 
 ### Phase 13: Web Application
 - Build FastAPI REST API endpoints.

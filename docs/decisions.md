@@ -1089,3 +1089,37 @@ This document formalizes the architectural decisions made on Day 1. All future i
   - Establishes a lightweight, robust, leak-free LLM integration layer for Phase 11.
   - Enables local, private inference via Gemma 3 12B without external API keys or cloud dependencies.
   - Ensures 100% deterministic offline CI testability and zero risk of corrupting numerical model performance.
+
+---
+
+## ADR 60: Multi-Agent Ensemble Synthesis Layer, Weighted Probability Blending, and Independent Score Preservation
+- **Status:** Accepted
+- **Context:**
+  - In Phase 12 (Day 32), the system implements the ensemble layer combining quantitative machine learning predictions (XGBoost/LightGBM) with qualitative LLM reasoning (Gemma 3 12B) and financial sentiment features.
+  - Naive combination risks several critical failure modes:
+    1. Black-box conflation: Collapsing quantitative probabilities and LLM textual rationales into a single synthetic number loses error attribution (violating ADR 05).
+    2. Calibrated probability fabrication: Treating qualitative LLM confidence assessments ("HIGH", "MEDIUM", "LOW") as true Bayesian probabilities distorts statistical calibration.
+    3. Silent signal divergence: When ML predicts "UP" and LLM predicts "DOWN", a silent average obscures high-risk conflicting market regimes.
+    4. Database schema incompatibility: If ensemble predictions cannot be stored or verified using existing persistence and evaluation tables, side-by-side performance benchmarking becomes impossible.
+- **Decision:**
+  1. **Canonical Schema Contract (`app/prediction/ensemble.py`):**
+     - Define `EnsemblePredictionResult` containing combined direction, combined probabilities, agreement diagnostics, integrated factors, downside risks, target range, and full standalone component outputs (`ml_prediction`, `llm_reasoning`, `sentiment_summary`).
+  2. **Transparent, Audited Weighted Probability Blending:**
+     - Map qualitative LLM direction and qualitative confidence to a bounded polarity score $S_{LLM} \in [-1.0, 1.0]$.
+     - Convert to implied directional score: $P_{LLM}(UP) = 0.50 + 0.50 \cdot S_{LLM}$. When LLM has `NEUTRAL` or `INSUFFICIENT_EVIDENCE`, $P_{LLM} = 0.50$ (zero directional tilt).
+     - Synthesize combined probability using normalized configurable weights (default $W_{ML} = 0.70, W_{LLM} = 0.30$):
+       $$P_{comb}(UP) = W_{ML} \cdot P_{ML}(UP) + W_{LLM} \cdot P_{LLM}(UP)$$
+     - Clearly mark combined probabilities as `is_probability_calibrated=False`, `probability_calibration="uncalibrated_weighted_ensemble"`.
+  3. **Agreement and Divergence Classification (`EnsembleAgreement`):**
+     - Explicitly classify signal relationships into `STRONG_AGREEMENT`, `AGREEMENT`, `DIVERGENCE` (conflicting signals flag), `PARTIAL`, `ML_ONLY`, or `LLM_ONLY`.
+     - In divergence scenarios (e.g. ML UP vs LLM DOWN), the divergence flag is prominently surfaced to warn downstream consumers of conflicting evidence.
+  4. **Volatility-Anchored Target Range:**
+     - Derive expected next-session price bounds using current price and 14-period Average True Range ($[Close - ATR, Close + ATR]$), returning explicit diagnostic status when ATR is unavailable without fabricating values.
+  5. **Canonical Adapter & Persistence Parity:**
+     - Provide `.to_prediction_result() -> PredictionResult` with `model_name="ensemble"` and `model_version="ensemble_v1"`.
+     - Seamlessly integrates with `PredictionRepository.save_prediction()`, `OutcomeVerifier.verify_prediction()`, and `PredictionEvaluator.evaluate()`, enabling continuous side-by-side accuracy comparisons between pure ML models and the ensemble.
+  6. **Graceful Degradation:**
+     - If the LLM daemon is offline or fails, the ensemble automatically falls back to 100% ML weighting with status `ML_ONLY` without throwing unhandled exceptions.
+- **Consequences:**
+  - Establishes a mathematically rigorous, transparent, and auditable ensemble synthesis layer for Phase 12.
+  - Preserves independent model accountability while delivering actionable, unified predictions with target ranges and risk identification.

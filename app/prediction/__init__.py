@@ -10,6 +10,14 @@ from app.prediction.contract import (
     PredictionResult,
     PredictionStatus,
 )
+from app.prediction.ensemble import (
+    ENSEMBLE_DISCLAIMER,
+    EnsembleAgreement,
+    EnsemblePredictionResult,
+    EnsembleService,
+    EnsembleWeights,
+    TargetRange,
+)
 from app.prediction.target import (
     DirectionTarget,
     TargetObservation,
@@ -34,6 +42,7 @@ def __getattr__(name: str):
         return globals()[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
+
 __all__ = [
     "DirectionTarget",
     "TargetObservation",
@@ -48,4 +57,11 @@ __all__ = [
     "PredictionService",
     "train_and_persist_baseline_model",
     "MIN_WARMUP_BARS",
+    # Ensemble Components (Phase 12 / Day 32)
+    "EnsembleAgreement",
+    "EnsembleWeights",
+    "TargetRange",
+    "EnsemblePredictionResult",
+    "EnsembleService",
+    "ENSEMBLE_DISCLAIMER",
 ]

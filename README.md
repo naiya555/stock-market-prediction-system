@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 31: Gemma 3 12B LLM Integration Foundation<br/>
+> **Status:** Ongoing Project — Day 32: Multi-Agent Ensemble & Synthesis Layer (Phase 12)<br/>
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -48,19 +48,17 @@ When fully developed, the end-user workflow will operate as follows:
 - **`app/market/`**: Market data acquisition, cleaning, technical feature engineering (returns, volatility, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features), trend engine (swing points, market structure, trend classification), market breadth and benchmark relative performance (`benchmark.py`), pipeline orchestration, and visualization.
 - **`app/news/`**: Financial news ingestion (`providers/base.py`, `providers/rss_provider.py`), typed article schemas (`schemas.py`), deduplication, point-in-time filtering (`cleaner.py`), and FinBERT sentiment scoring foundation (`sentiment.py`).
 - **`app/nlp/`**: FinBERT sentiment scoring foundation and textual analysis (`app/nlp/__init__.py`).
-- **`app/prediction/`**: Target formulation (`target.py`), directional prediction service (`service.py`), and inference contract (`contract.py`).
+- **`app/prediction/`**: Target formulation (`target.py`), directional prediction service (`service.py`), inference contract (`contract.py`), and multi-agent ensemble synthesis layer (`ensemble.py`).
 - **`app/training/`**: Walk-forward validation, dataset splits without temporal leakage, baseline benchmark comparison suite, XGBoost and LightGBM models, model error analysis, feature usefulness audit, and controlled retraining.
 - **`app/history/`**: Prediction audit logs, outcome verification engine (`verifier.py`), evaluation service (`evaluator.py`), and accuracy tracking.
 
 ---
 
-## 4. Current Status: Day 31 (Gemma 3 12B LLM Integration Foundation)
+## 4. Current Status: Day 32 (Multi-Agent Ensemble & Synthesis Layer)
 
-Day 31 completes Phase 11: LLM Integration (`app/llm/`). It establishes the first isolated LLM integration layer connecting the local Ollama runtime and Gemma 3 12B (`gemma3:12b`), with dual-role functional contracts (Role A: Context Extraction; Role B: Qualitative Reasoning & Risk Identification), strict anti-injection prompt sandboxing, zero-fabrication error boundaries, and absolute quantitative model isolation.
+Day 32 completes Phase 12: ML + LLM Combination (`app/prediction/ensemble.py`). It establishes the multi-agent ensemble layer that synthesizes quantitative gradient-boosted ML forecasts (XGBoost / LightGBM) with qualitative contextual LLM reasoning (Gemma 3 12B) and financial sentiment features into an explainable directional forecast.
 
-Role A parses point-in-time filtered unstructured articles and event notices into structured entities, affected sectors, macroeconomic factors, regulatory decisions, and sentiment tone with explicit source citations. Role B synthesizes qualitative context for target equity symbols into independent directional assessments (`UP`, `DOWN`, `NEUTRAL`, `INSUFFICIENT_EVIDENCE`), positive/negative factors, and downside risks without inventing target prices, forward percentage returns, or uncalibrated probabilities.
-
-Underlying HTTP communication uses the Python standard library (`urllib.request`), avoiding third-party framework wrappers (no LangChain, no LlamaIndex). Deterministic offline testing is 100% supported via `MockLLMClient`. When the local Ollama daemon or model is unavailable, the service raises typed exceptions rather than fabricating false neutral answers. Quantitative ML models (XGBoost/LightGBM), the 37-feature matrix, and database records remain strictly isolated from LLM reasoning.
+In strict adherence to ADR 05, the ensemble preserves standalone quantitative `PredictionResult` and qualitative `LLMReasoningResult` outputs in full within `EnsemblePredictionResult`. Probability combination uses an audited linear convex blend with configurable weights (default 70% ML / 30% LLM) without fabricating uncalibrated Bayesian certainty. Signal relationships are classified into `STRONG_AGREEMENT`, `AGREEMENT`, `DIVERGENCE` (conflicting signals flag), `PARTIAL`, `ML_ONLY`, or `LLM_ONLY`. Volatility-anchored expected price ranges are derived using 14-period ATR bounds, and a canonical adapter `.to_prediction_result()` enables immediate immutable SQLite persistence, outcome verification, and side-by-side evaluator benchmarking.
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.
