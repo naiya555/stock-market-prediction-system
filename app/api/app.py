@@ -38,12 +38,12 @@ def create_app() -> FastAPI:
         redoc_url="/redoc",
     )
 
-    # Configure CORS with safe defaults
+    # Configure CORS: Restrict to trusted origins and disable credentials (no cookie auth needed)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
+        allow_origins=list(settings.cors_origins),
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
     )
 

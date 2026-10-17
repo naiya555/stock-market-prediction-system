@@ -191,11 +191,27 @@ def run_day34_verification() -> bool:
         },
     )
     cors_allow_origin = cors_resp.headers.get("access-control-allow-origin")
-    cors_ok = cors_allow_origin in ("*", "http://localhost:3000")
+    cors_cred = cors_resp.headers.get("access-control-allow-credentials")
+
+    untrusted_resp = client.options(
+        "/api/predict",
+        headers={
+            "Origin": "http://evil.com",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "Content-Type",
+        },
+    )
+    cors_untrusted_blocked = "access-control-allow-origin" not in untrusted_resp.headers
+
+    cors_ok = (
+        cors_allow_origin == "http://localhost:3000"
+        and cors_cred is None
+        and cors_untrusted_blocked
+    )
     log_step(
-        "CORS Security Headers",
+        "Restricted CORS Security Headers",
         cors_ok,
-        f"Allow-Origin: {cors_allow_origin}, Status: {cors_resp.status_code}",
+        f"Allow-Origin: {cors_allow_origin}, Cred: {cors_cred}, Untrusted Blocked: {cors_untrusted_blocked}",
     )
     all_passed = all_passed and cors_ok
 
@@ -232,12 +248,15 @@ def run_day34_verification() -> bool:
         "probability_down",
         "target_range",
         "agreement_status",
+        "llm_direction",
+        "llm_confidence",
         "llm_reasoning_summary",
+        "isSafeHttpUrl",
     ]
     missing_js_fields = [f for f in expected_js_fields if f not in js_content]
     js_parity_ok = len(missing_js_fields) == 0
     log_step(
-        "JavaScript Client Schema Alignment",
+        "JavaScript Client Schema Alignment & Security Helpers",
         js_parity_ok,
         f"Aligned fields: {expected_js_fields}. Missing: {missing_js_fields}",
     )

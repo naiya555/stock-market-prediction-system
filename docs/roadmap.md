@@ -152,8 +152,8 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
     2. **Prediction History**: Tabular view of immutable audit records, pagination controls, ticker/model filters, and real-time display of verified market outcomes ($Close_{t+1}$ vs $Close_t$, return %, directional accuracy).
     3. **Macro & Regulatory Events**: Live feed of normalized RBI monetary policy and SEBI regulatory circulars, categorized filter chips, and verified source citations.
     4. **System Readiness**: Real-time diagnostic cards for SQLite connectivity, model artifact registry, and LLM Ollama runtime via non-inferencing `/api/health`.
-  - Financial display compliance: strictly separates quantitative ML metrics from qualitative LLM reasoning, prominently disclaims uncalibrated 70/30 heuristic weights, renders volatility target ranges ($Close \pm ATR$) and agreement badges only when provided by API responses, and never displays hardcoded demo prices or synthetic outcomes.
-  - FastAPI integration: mounted static directory (`/static`), `/ui` HTML route, browser content-negotiation on `/`, and Starlette CORS middleware supporting cross-origin integration.
+  - Financial display compliance: strictly separates quantitative ML metrics from qualitative LLM reasoning, prominently disclaims uncalibrated 70/30 heuristic weights, renders volatility target ranges ($Close \pm ATR$) and agreement badges only when provided by API responses, never substitutes 50% for missing probabilities, validates event link protocols strictly to HTTP(S), and never displays hardcoded demo prices or synthetic outcomes.
+  - FastAPI integration: mounted static directory (`/static`), `/ui` HTML route, browser content-negotiation on `/`, and Starlette CORS middleware restricted to trusted local origin whitelists with credentials disabled to prevent credential leakage.
 
 ### Phase 14: Live Data Pipeline
 - Connect near-real-time market data providers with strict timestamp preservation.

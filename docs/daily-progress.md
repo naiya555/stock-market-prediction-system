@@ -3287,6 +3287,17 @@ Executed automated verification covering static assets, FastAPI routing, securit
 - Updated `docs/roadmap.md` marking Phase 13 complete.
 - Updated `docs/daily-progress.md` with Day 34 development log.
 
+### Code Review Remediation (Day 34 Post-Review)
+Systematically addressed all 7 findings identified in code review:
+1. **Restricted CORS Origins & Disabled Credentials**: Configured `Settings.cors_origins` (defaulting to localhost/127.0.0.1 ports 8000/3000) and set `allow_credentials=False` on `CORSMiddleware` in `app/api/app.py`, eliminating CSRF and cross-origin credential leakage risks.
+2. **Prohibited Probability Substitution**: Removed `0.5` / 50% fallbacks in `app/api/routes/predict.py` and `app/api/static/js/app.js`. Missing directional probabilities now strictly display as unavailable (`--` / `N/A`) with 0% bar fill.
+3. **Eliminated Invented Ensemble Factors & Confidence**: Removed hardcoded tree-split factor narratives in `app.js`. Added `llm_direction: Optional[str] = None` to `EnsembleDetailsResponse` and removed `'MEDIUM'` fallback for missing confidence.
+4. **Independent ML and LLM Outputs**: Separated Quantitative ML metrics (probabilities, model version, calibration, data health) from Qualitative LLM reasoning (stance, confidence, summary, catalysts, risks). When LLM reasoning is not returned, the LLM card clearly indicates so rather than populating from ensemble summaries.
+5. **Safe URL Scheme Validation**: Added `isSafeHttpUrl` in `app.js` enforcing `http:` or `https:` protocols before rendering event circular links, preventing script execution via arbitrary URI schemes.
+6. **Consistent History Timestamps & Labels**: Updated history table header from `Prediction Time (UTC)` to `Prediction Time (IST)` in `app/api/static/index.html` to align with the IST output produced by `formatDateTimeIST`.
+7. **Roadmap & Architecture Alignment**: Reconciled `docs/roadmap.md` and `docs/architecture.md` Section 4.29 to reflect restricted CORS origin whitelisting, disabled credentials, and zero-fabrication guarantees.
+- Added regression tests in `tests/test_frontend.py` expanding test count to **485 passing tests**.
+
 ### Known Limitations & Next Steps
 - Day 34 completes Phase 13: Web Application & API Layer.
 - Next scheduled milestone: Phase 14: Live Data Pipeline (connect near-real-time market data providers with strict timestamp preservation and market session state handling).

@@ -1253,12 +1253,14 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
      - Quantitative ML metrics (probabilities, warmup completeness, feature bars) and qualitative LLM reasoning (stance, confidence, catalysts, risks) are strictly separated into independent visual cards.
      - Uncalibrated heuristic weights (70% ML / 30% LLM) are explicitly labeled with research disclaimers and never represented as calibrated statistical probabilities.
      - Volatility price bounds ($Close \pm ATR$) and agreement/divergence badges are rendered exclusively when provided in API responses.
+     - Missing directional probabilities are strictly displayed as unavailable (`--` / `N/A`) without substituting a fabricated 50% neutral guess.
+     - Event source links are validated against an explicit whitelist of safe HTTP(S) URL protocols, preventing arbitrary URI execution.
      - Production HTML contains zero hardcoded mock predictions or fabricated prices; empty and loading states use clean skeletons and placeholders.
   3. **FastAPI Static Delivery & Content Negotiation:**
      - Mounted via Starlette `StaticFiles` at `/static`.
      - Direct dashboard access at `GET /ui`.
      - Browser content-negotiation on `GET /` serves `index.html` when `text/html` is requested, preserving raw JSON output for API clients and automated tests.
-     - Starlette `CORSMiddleware` configured to enable cross-origin UI consumers without compromising security.
+     - Starlette `CORSMiddleware` configured with a strict whitelist of trusted local origins (`Settings.cors_origins`) and credentials disabled (`allow_credentials=False`), eliminating cross-origin credential leakage risks.
   4. **Resilience, Accessibility, & Responsive Design:**
      - Complete keyboard accessibility with unique DOM IDs, ARIA roles, live regions, and semantic landmark tags (`<header>`, `<nav>`, `<main>`, `<section>`).
      - Mobile-first responsive layout scaling seamlessly from 320px mobile viewports up to 4K ultra-wide monitors.

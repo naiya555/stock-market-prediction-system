@@ -78,7 +78,7 @@ Open in your browser:
 - **Interactive API Documentation:** [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 - **Alternative API Docs (ReDoc):** [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)
 
-All endpoints and UI interactions are verified through 483 automated offline unit tests and `scripts/verify_day34.py`.
+All endpoints and UI interactions are verified through 485 automated offline unit tests and `scripts/verify_day34.py`.
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.
@@ -269,7 +269,7 @@ All endpoints and UI interactions are verified through 483 automated offline uni
   - Date-only precision guard: conservative next-session alignment for regulatory notices (SEBI) lacking time-of-day.
   - Empirical event impact analyzer (`EventImpactAnalyzer`): calculates same-day return, 1d/3d/5d forward returns, pre/post realized volatility (5 sessions, ddof=1), and benchmark excess returns (^NSEI).
   - Incomplete outcome safeguards (`INCOMPLETE_OUTCOME_WINDOW` returning `None` without price fabrication), multi-event deduplication, and mandatory non-causal disclosures.
-- 483 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, XGBoost direction classifier, LightGBM direction classifier, baseline comparison suite, walk-forward cross-validation engine, model error analysis, feature usefulness audit, prediction service engine, structured prediction output, visualizer, SQLite prediction database, outcome verification/evaluation, benchmark context engine, financial news ingestion foundation, FinBERT financial sentiment scoring foundation, macroeconomic/regulatory event ingestion foundation, trading session alignment & event impact analysis, Gemma 3 12B LLM integration, multi-agent ensemble layer, FastAPI REST API foundation, and interactive stock prediction web UI.
+- 485 automated unit tests passing across foundation, settings, logging, canonical schemas, provider adapters, data cleaning, returns/volatility calculations, pipeline orchestration, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features, trend engine, prediction target layer, technical feature matrix assembly, XGBoost direction classifier, LightGBM direction classifier, baseline comparison suite, walk-forward cross-validation engine, model error analysis, feature usefulness audit, prediction service engine, structured prediction output, visualizer, SQLite prediction database, outcome verification/evaluation, benchmark context engine, financial news ingestion foundation, FinBERT financial sentiment scoring foundation, macroeconomic/regulatory event ingestion foundation, trading session alignment & event impact analysis, Gemma 3 12B LLM integration, multi-agent ensemble layer, FastAPI REST API foundation, and interactive stock prediction web UI.
 
 ---
 

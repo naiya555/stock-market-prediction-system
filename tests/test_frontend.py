@@ -109,9 +109,10 @@ def test_static_js_served(client: TestClient):
     assert "renderPredictionResult" in res.text
 
 
-def test_cors_headers_present(client: TestClient):
-    """Verify CORS middleware adds Access-Control headers for cross-origin browser requests."""
-    res = client.options(
+def test_cors_headers_restricted(client: TestClient):
+    """Verify CORS middleware allows trusted origins and rejects untrusted origins."""
+    # 1. Allowed origin (e.g. localhost:3000)
+    allowed_res = client.options(
         "/api/predict",
         headers={
             "origin": "http://localhost:3000",
@@ -119,9 +120,44 @@ def test_cors_headers_present(client: TestClient):
             "access-control-request-headers": "content-type",
         },
     )
-    assert res.status_code == 200
-    assert "access-control-allow-origin" in res.headers
-    assert res.headers["access-control-allow-origin"] in ("*", "http://localhost:3000")
+    assert allowed_res.status_code == 200
+    assert allowed_res.headers.get("access-control-allow-origin") == "http://localhost:3000"
+    # Credentials must NOT be allowed with wildcard or unauthenticated public API
+    assert allowed_res.headers.get("access-control-allow-credentials") is None
+
+    # 2. Untrusted origin (e.g. evil.com)
+    untrusted_res = client.options(
+        "/api/predict",
+        headers={
+            "origin": "http://evil.com",
+            "access-control-request-method": "POST",
+            "access-control-request-headers": "content-type",
+        },
+    )
+    assert "access-control-allow-origin" not in untrusted_res.headers
+
+
+def test_history_header_timezone_consistency():
+    """Verify history table header specifies IST matching formatDateTimeIST output."""
+    index_file = STATIC_DIR / "index.html"
+    content = index_file.read_text(encoding="utf-8")
+    assert '<th scope="col">Prediction Time (IST)</th>' in content
+    assert '<th scope="col">Prediction Time (UTC)</th>' not in content
+
+
+def test_safe_url_and_data_integrity_in_js():
+    """Verify safe URL protocol validation and absence of invented data/defaults in JS."""
+    js_file = STATIC_DIR / "js" / "app.js"
+    content = js_file.read_text(encoding="utf-8")
+
+    # 1. Safe URL validation protocol exists and is applied to event circular links
+    assert "function isSafeHttpUrl(" in content
+    assert "isSafeHttpUrl(ev.url)" in content
+
+    # 2. No invented confidence or 50% fallbacks
+    assert "|| 'MEDIUM'" not in content
+    assert "probUp !== null ? res.probability_up : 0.5" not in content
+    assert "res.ensemble.combined_direction || '--'" not in content
 
 
 def test_frontend_template_no_hardcoded_demo_predictions():
@@ -159,3 +195,5 @@ def test_frontend_js_api_contract_parity():
     assert "res.ensemble.integrated_positive_factors" in content
     assert "res.ensemble.downside_risks" in content
     assert "res.ensemble.source_references" in content
+    assert "res.ensemble.llm_direction" in content
+    assert "res.ensemble.llm_confidence" in content

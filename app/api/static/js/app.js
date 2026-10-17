@@ -50,6 +50,16 @@
     return div.innerHTML;
   }
 
+  function isSafeHttpUrl(urlStr) {
+    if (!urlStr || typeof urlStr !== 'string') return false;
+    try {
+      const parsed = new URL(urlStr);
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch (e) {
+      return false;
+    }
+  }
+
   function formatPriceINR(val) {
     if (val === null || val === undefined || isNaN(val)) return '₹--';
     return '₹' + Number(val).toLocaleString('en-IN', {
@@ -421,24 +431,38 @@
       }
     }
 
-    // Probabilities Bar
-    const probUp = res.probability_up !== null ? res.probability_up : 0.5;
-    const probDown = res.probability_down !== null ? res.probability_down : (1.0 - probUp);
+    // Probabilities Bar - Never substitute 50% for missing probability
+    const hasProbUp = typeof res.probability_up === 'number' && res.probability_up !== null && !isNaN(res.probability_up);
+    const hasProbDown = typeof res.probability_down === 'number' && res.probability_down !== null && !isNaN(res.probability_down);
     const fillEl = document.getElementById('res-probability-fill');
     const probUpEl = document.getElementById('res-prob-up');
     const probDownEl = document.getElementById('res-prob-down');
 
-    if (fillEl) fillEl.style.width = `${(probUp * 100).toFixed(1)}%`;
-    if (probUpEl) probUpEl.textContent = `P(UP): ${(probUp * 100).toFixed(1)}%`;
-    if (probDownEl) probDownEl.textContent = `P(DOWN): ${(probDown * 100).toFixed(1)}%`;
+    if (hasProbUp) {
+      const probUp = res.probability_up;
+      const probDown = hasProbDown ? res.probability_down : (1.0 - probUp);
+      if (fillEl) fillEl.style.width = `${Math.max(0, Math.min(100, probUp * 100)).toFixed(1)}%`;
+      if (probUpEl) probUpEl.textContent = `P(UP): ${(probUp * 100).toFixed(1)}%`;
+      if (probDownEl) probDownEl.textContent = `P(DOWN): ${(probDown * 100).toFixed(1)}%`;
+    } else {
+      if (fillEl) fillEl.style.width = '0%';
+      if (probUpEl) probUpEl.textContent = 'P(UP): --';
+      if (probDownEl) probDownEl.textContent = 'P(DOWN): --';
+    }
 
-    // Target Range Box (if present)
+    // Target Range Box - Only display when supported by actual numerical response
     const targetRangeItem = document.getElementById('target-range-metric-item');
     const rangeLower = document.getElementById('res-range-lower');
     const rangeRef = document.getElementById('res-range-ref');
     const rangeUpper = document.getElementById('res-range-upper');
 
-    if (res.ensemble && res.ensemble.target_range && res.ensemble.target_range.reference_price) {
+    if (
+      res.ensemble &&
+      res.ensemble.target_range &&
+      typeof res.ensemble.target_range.reference_price === 'number' &&
+      typeof res.ensemble.target_range.lower_bound === 'number' &&
+      typeof res.ensemble.target_range.upper_bound === 'number'
+    ) {
       const tr = res.ensemble.target_range;
       if (rangeLower) rangeLower.textContent = formatPriceINR(tr.lower_bound);
       if (rangeRef) rangeRef.textContent = formatPriceINR(tr.reference_price);
@@ -487,9 +511,9 @@
       agreementBanner.style.display = 'none';
     }
 
-    // Column 1: ML Breakdown Card
-    document.getElementById('ml-dir-val').textContent = res.predicted_direction || 'None';
-    document.getElementById('ml-prob-up-val').textContent = res.probability_up !== null ? `${(res.probability_up * 100).toFixed(1)}%` : '--';
+    // Column 1: ML Breakdown Card (Strictly Quantitative ML Outputs)
+    document.getElementById('ml-dir-val').textContent = res.predicted_direction || '--';
+    document.getElementById('ml-prob-up-val').textContent = hasProbUp ? `${(res.probability_up * 100).toFixed(1)}%` : '--';
     
     const dq = res.data_quality;
     if (dq) {
@@ -500,25 +524,19 @@
       document.getElementById('audit-bars-cleaned').textContent = dq.cleaned_bars;
     }
 
-    // Technical Factors List
+    // Model Diagnostic Attributes List - Never fabricate tree split factors
     const mlFactorsList = document.getElementById('ml-factors-list');
     if (mlFactorsList) {
       mlFactorsList.innerHTML = '';
-      const factors = (res.ensemble && res.ensemble.integrated_positive_factors) || [];
-      if (factors.length > 0) {
-        factors.forEach((f) => {
-          const li = document.createElement('li');
-          li.textContent = f;
-          mlFactorsList.appendChild(li);
-        });
-      } else {
-        const li = document.createElement('li');
-        li.textContent = isSuccess ? 'Quantitative tree splits indicate directional bias based on moving averages and volatility.' : (res.error_message || 'Inference unsuccessful.');
-        mlFactorsList.appendChild(li);
-      }
+      const li1 = document.createElement('li');
+      li1.textContent = `Model Architecture: ${res.model_name || 'quantitative'} (${res.model_version || 'v1'})`;
+      const li2 = document.createElement('li');
+      li2.textContent = `Probability Calibration: ${res.probability_calibration || 'uncalibrated'}`;
+      mlFactorsList.appendChild(li1);
+      mlFactorsList.appendChild(li2);
     }
 
-    // Column 2: Qualitative LLM Reasoning Card
+    // Column 2: Qualitative LLM Reasoning Card (Strictly Actual API-Returned Reasoning)
     const llmStanceEl = document.getElementById('llm-stance-val');
     const llmConfEl = document.getElementById('llm-conf-val');
     const llmSummaryEl = document.getElementById('llm-summary-text');
@@ -527,8 +545,8 @@
     const llmSourcesTags = document.getElementById('llm-sources-tags');
 
     if (res.ensemble && res.ensemble.llm_reasoning_summary) {
-      llmStanceEl.textContent = res.ensemble.combined_direction || '--';
-      llmConfEl.textContent = res.ensemble.llm_confidence || 'MEDIUM';
+      llmStanceEl.textContent = res.ensemble.llm_direction || '--';
+      llmConfEl.textContent = res.ensemble.llm_confidence || 'Not provided';
       llmSummaryEl.textContent = res.ensemble.llm_reasoning_summary;
 
       // Positive Catalysts
@@ -541,7 +559,7 @@
           llmPositiveList.appendChild(li);
         });
       } else {
-        llmPositiveList.innerHTML = '<li>None identified in context.</li>';
+        llmPositiveList.innerHTML = '<li>None returned by API.</li>';
       }
 
       // Downside Risks
@@ -554,7 +572,7 @@
           llmDownsideList.appendChild(li);
         });
       } else {
-        llmDownsideList.innerHTML = '<li>None identified in context.</li>';
+        llmDownsideList.innerHTML = '<li>None returned by API.</li>';
       }
 
       // Citations / Sources
@@ -568,14 +586,14 @@
           llmSourcesTags.appendChild(span);
         });
       } else {
-        llmSourcesTags.textContent = 'Direct technical series input.';
+        llmSourcesTags.textContent = 'None returned by API.';
       }
     } else {
-      llmStanceEl.textContent = 'N/A (Quantitative Model)';
-      llmConfEl.textContent = 'N/A';
-      llmSummaryEl.textContent = 'Contextual LLM reasoning is active when running the Multi-Agent Ensemble model.';
-      llmPositiveList.innerHTML = '<li>Run Multi-Agent Ensemble to extract catalysts.</li>';
-      llmDownsideList.innerHTML = '<li>Run Multi-Agent Ensemble to extract risk factors.</li>';
+      llmStanceEl.textContent = 'Not requested / Not returned';
+      llmConfEl.textContent = 'Not requested / Not returned';
+      llmSummaryEl.textContent = 'Qualitative LLM reasoning was not returned by the API for this prediction.';
+      llmPositiveList.innerHTML = '<li>No qualitative catalysts returned.</li>';
+      llmDownsideList.innerHTML = '<li>No qualitative risks returned.</li>';
       llmSourcesTags.textContent = 'None.';
     }
 
@@ -800,6 +818,7 @@
     grid.innerHTML = events.map((ev) => {
       const catClass = ev.category === 'monetary_policy' ? 'badge-purple' : 'badge-info';
       const sectorTags = (ev.affected_sectors || []).map((s) => `<span class="chip">${escapeHtml(s)}</span>`).join('');
+      const safeUrl = isSafeHttpUrl(ev.url) ? escapeHtml(ev.url) : null;
 
       return `
         <article class="event-card">
@@ -814,7 +833,7 @@
             <span>Provider: ${escapeHtml(ev.provider)}</span>
           </div>
           ${sectorTags ? `<div class="event-sectors">${sectorTags}</div>` : ''}
-          ${ev.url ? `<a href="${escapeHtml(ev.url)}" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm" style="margin-top: auto; align-self: flex-start;">Official Circular ↗</a>` : ''}
+          ${safeUrl ? `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm" style="margin-top: auto; align-self: flex-start;">Official Circular ↗</a>` : ''}
         </article>
       `;
     }).join('');

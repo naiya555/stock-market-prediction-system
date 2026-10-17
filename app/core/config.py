@@ -34,6 +34,16 @@ class Settings:
     data_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "data")
     model_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "models")
 
+    # Security & CORS origins (restricted to trusted local web environments by default)
+    cors_origins: tuple = field(
+        default_factory=lambda: (
+            "http://localhost:8000",
+            "http://127.0.0.1:8000",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        )
+    )
+
     @classmethod
     def from_env(cls) -> "Settings":
         """Load settings from environment variables with safe defaults."""
@@ -45,6 +55,17 @@ class Settings:
         custom_data_dir = os.getenv("APP_DATA_DIR")
         custom_model_dir = os.getenv("APP_MODEL_DIR")
 
+        cors_env = os.getenv("APP_CORS_ORIGINS")
+        if cors_env:
+            cors_list = tuple(origin.strip() for origin in cors_env.split(",") if origin.strip())
+        else:
+            cors_list = (
+                "http://localhost:8000",
+                "http://127.0.0.1:8000",
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+            )
+
         return cls(
             app_name=os.getenv("APP_NAME", "Indian Stock Market Prediction System"),
             environment=env,
@@ -54,6 +75,7 @@ class Settings:
             base_dir=PROJECT_ROOT,
             data_dir=Path(custom_data_dir).resolve() if custom_data_dir else PROJECT_ROOT / "data",
             model_dir=Path(custom_model_dir).resolve() if custom_model_dir else PROJECT_ROOT / "models",
+            cors_origins=cors_list,
         )
 
     def is_production(self) -> bool:

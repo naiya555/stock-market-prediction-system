@@ -70,20 +70,27 @@ def _map_ensemble_details(res: EnsemblePredictionResult) -> EnsembleDetailsRespo
 
     llm_summary = None
     llm_conf = None
+    llm_dir = None
     if res.llm_reasoning:
         llm_summary = res.llm_reasoning.reasoning_summary
         llm_conf = res.llm_reasoning.confidence_assessment
+        llm_dir = (
+            res.llm_reasoning.direction.value
+            if hasattr(res.llm_reasoning.direction, "value")
+            else str(res.llm_reasoning.direction)
+        )
 
     return EnsembleDetailsResponse(
         agreement_status=res.agreement_status.value,
-        combined_probability_up=res.combined_probability_up or 0.5,
-        combined_probability_down=res.combined_probability_down or 0.5,
+        combined_probability_up=res.combined_probability_up,
+        combined_probability_down=res.combined_probability_down,
         weights_used=res.weights_used,
         integrated_positive_factors=list(res.integrated_positive_factors),
         integrated_negative_factors=list(res.integrated_negative_factors),
         downside_risks=list(res.downside_risks),
         source_references=list(res.source_references),
         target_range=tr,
+        llm_direction=llm_dir,
         llm_reasoning_summary=llm_summary,
         llm_confidence=llm_conf,
     )

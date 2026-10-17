@@ -145,14 +145,15 @@ class EnsembleDetailsResponse(BaseModel):
     """Detailed multi-agent ensemble synthesis breakdown."""
 
     agreement_status: str
-    combined_probability_up: float
-    combined_probability_down: float
+    combined_probability_up: Optional[float] = None
+    combined_probability_down: Optional[float] = None
     weights_used: Dict[str, float]
     integrated_positive_factors: List[str]
     integrated_negative_factors: List[str]
     downside_risks: List[str]
     source_references: List[str]
     target_range: Optional[TargetRangeResponse] = None
+    llm_direction: Optional[str] = None
     llm_reasoning_summary: Optional[str] = None
     llm_confidence: Optional[str] = None
 
