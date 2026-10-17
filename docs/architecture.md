@@ -1026,3 +1026,79 @@ PREDICT ➔ EXPLAIN ➔ VERIFY ➔ EVALUATE ➔ IMPROVE
   - **Preservation of Original Provenance:** Alignment derives session associations without mutating or overwriting original event timestamps (`published_at`, `announced_at`, `effective_at`, `ingested_at`).
 - **Non-Causal Representation:**
   - Event impact measurements describe historical co-movements and realized dispersion; they do NOT assert that an event caused a price movement or that an event category implies a bullish/bearish bias.
+
+---
+
+### 4.26 Contextual LLM Integration Layer (`app/llm/` - Day 31)
+
+Phase 11 implements the local LLM integration foundation, connecting the local Ollama runtime and Gemma 3 12B (`gemma3:12b`) for qualitative contextual analysis without corrupting quantitative machine learning authority.
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│                   Verified Point-in-Time Inputs                        │
+│   ├── NewsArticle records (app/news/ - filtered as of T_pred)          │
+│   └── MacroEvent / Regulatory records (app/events/ - filtered T_pred)  │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+                        ┌───────────▼───────────┐
+                        │ Delimiter Sanitizer   │ (Neutralizes XML breakout tags)
+                        └───────────┬───────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                        app/llm/prompts.py                              │
+│                                                                        │
+│  Role A: Context Extraction Prompt      Role B: Qualitative Reasoning  │
+│  ├── Untrusted <source_context> tags    ├── Target Symbol Isolation    │
+│  ├── Anti-injection system rules       ├── Direction: UP/DOWN/NEUTRAL/ │
+│  └── JSON schema enforcement            │              INSUFFICIENT    │
+│                                         ├── Positive/Negative factors  │
+│                                         ├── Downside Risks             │
+│                                         └── Non-predictive disclaimer  │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                         app/llm/client.py                              │
+│                                                                        │
+│  BaseLLMClient (Abstract Interface)                                    │
+│  ├── OllamaLLMClient: Native urllib.request -> /api/generate (POST)    │
+│  │     - Target Model: gemma3:12b                                      │
+│  │     - Temperature: 0.1 (low randomness, high factual fidelity)      │
+│  │     - JSON Mode: format="json"                                      │
+│  │     - Error Handling: Typed LLMClientError & LLMResponseError       │
+│  └── MockLLMClient: 100% Deterministic Offline Double for Automated CI  │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                         app/llm/service.py                             │
+│                                                                        │
+│  LLMService Orchestrator                                               │
+│  ├── extract_context():                                                │
+│  │     - Returns LLMContextExtraction (entities, sectors, factors)     │
+│  │     - Empty input fast-path -> clean empty record (zero LLM call)   │
+│  ├── generate_qualitative_reasoning():                                 │
+│  │     - Returns LLMReasoningResult (direction, factors, risks)        │
+│  │     - Empty input fast-path -> INSUFFICIENT_EVIDENCE (LOW conf)     │
+│  │     - Error propagation -> Typed exceptions (zero false neutrals)   │
+│  └── Markdown fence stripping (```json ... ```) & JSON validation      │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                 Strict Separation & Governance Boundary                │
+│                                                                        │
+│  [ISOLATED] Qualitative LLM Output:                                    │
+│    - Does NOT alter quantitative XGBoost/LightGBM probabilities         │
+│    - Does NOT modify canonical 37-feature technical matrix             │
+│    - Does NOT invent price targets, future returns, or probabilities   │
+│    - Does NOT claim causal stock price determination                   │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Architectural Tenets:**
+  1. **Standard Library Over Framework Bloat:** Uses native `urllib.request` rather than heavy third-party agent frameworks (LangChain, LlamaIndex), preserving the lean, high-performance architecture mandated by Ponytail / Senior Dev rules.
+  2. **Security & Anti-Prompt-Injection:** Qualitative context from news feeds is explicitly encapsulated inside XML-like `<source_context>` tags with delimiter neutralization. System prompts strictly instruct the LLM to treat source text as untrusted data rather than system directives.
+  3. **Zero Fabrication & Error Integrity:** In the event of network disruption, daemon unavailability, or malformed JSON responses, the service raises typed errors (`LLMClientError`, `LLMParseError`, `LLMValidationError`). Under no circumstances is a synthetic "NEUTRAL" or fabricated reasoning summary substituted.
+  4. **Strict Temporal Integrity:** Callers must pass news and events filtered by existing point-in-time engines (`filter_news_point_in_time`, `filter_events_point_in_time`). Qualitative reasoning can never access future-published information.

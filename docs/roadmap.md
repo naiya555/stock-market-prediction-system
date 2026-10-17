@@ -110,9 +110,18 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Empirical event impact analyzer (`EventImpactAnalyzer` in `impact.py`): computes same-day returns, 1d/3d/5d forward returns, pre- and post-event realized volatilities (5-session rolling sample stdev), and benchmark excess returns (^NSEI).
   - Anti-leakage safeguards: uncompleted future sessions safely return `None` with status `INCOMPLETE_OUTCOME_WINDOW`; multi-event deduplication eliminates double-counting; mandatory non-causal disclosures enforced on all outputs.
 
-### Phase 11: LLM Integration (Current Objective)
-- Deploy LLM for structured context extraction (Role A).
-- Implement independent LLM direct forecast (Role B) with input attribution and risk identification.
+### Phase 11: LLM Integration (Complete - Day 31)
+- Contextual LLM integration foundation (`app/llm/` - Day 31 complete):
+  - Local runtime integration with Ollama (`http://127.0.0.1:11434`) and Gemma 3 12B (`gemma3:12b`) using Python standard library HTTP (`urllib.request`), with zero third-party framework wrappers (no LangChain, no LlamaIndex).
+  - Pluggable backend architecture: `BaseLLMClient` interface with concrete `OllamaLLMClient` and deterministic `MockLLMClient` for 100% offline automated testing.
+  - Role A (Structured Context Extraction):
+    - `LLMContextExtraction` schema capturing entities, affected sectors, macro/regulatory factors, qualitative sentiment tone, source references, and uncertainty notes.
+    - Anti-prompt-injection boundary: wraps untrusted news/events in `<source_context>` tags with delimiter escaping and explicit system rules treating text as reference data only.
+  - Role B (Independent Qualitative Reasoning & Risk Identification):
+    - `LLMReasoningResult` schema capturing symbol, qualitative direction (`UP`, `DOWN`, `NEUTRAL`, `INSUFFICIENT_EVIDENCE`), reasoning summary, positive/negative factors, downside risks, source citations, qualitative confidence (LOW/MEDIUM/HIGH), and mandatory non-causal disclaimer.
+    - Strict zero-fabrication guarantees: no invented prices, price targets, returns, or uncalibrated probabilities.
+    - Safe fast-paths: empty context yields `INSUFFICIENT_EVIDENCE` with LOW confidence; client errors and malformed responses raise explicit typed exceptions (`LLMClientError`, `LLMParseError`, `LLMValidationError`) rather than fabricating fake neutral answers.
+  - Strict quantitative model isolation: quantitative ML models (XGBoost/LightGBM), the 37-feature matrix, and prediction database records remain completely unaffected by qualitative LLM reasoning.
 
 ### Phase 12: ML + LLM Combination
 - Implement ensemble layer synthesizing numerical ML predictions with qualitative LLM reasoning.

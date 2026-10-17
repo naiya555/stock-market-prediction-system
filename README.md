@@ -1,6 +1,6 @@
 # Indian Stock Market Prediction System
 
-> **Status:** Ongoing Project — Day 30: Event Impact Analysis & Trading Session Alignment<br/>
+> **Status:** Ongoing Project — Day 31: Gemma 3 12B LLM Integration Foundation<br/>
 > **Development Philosophy:** `PREDICT → EXPLAIN → VERIFY → EVALUATE → IMPROVE`
 
 ---
@@ -44,6 +44,7 @@ When fully developed, the end-user workflow will operate as follows:
 - **`app/core/`**: Centralized configuration (`config.py`), logging foundation (`logging_config.py`), and canonical schema contracts (`schemas.py`).
 - **`app/database/`**: Relational database persistence (SQLite schema, WAL mode, foreign keys, immutability triggers, and PredictionRepository).
 - **`app/events/`**: Macroeconomic, regulatory, and external market event ingestion, session alignment, and impact analysis (`providers/`, `schemas.py`, `cleaner.py`, `calendar.py`, `aligner.py`, `impact.py`).
+- **`app/llm/`**: Contextual LLM integration layer (Role A structured context extraction, Role B qualitative reasoning, anti-injection prompt sandboxing, standard library Ollama client, and Mock client).
 - **`app/market/`**: Market data acquisition, cleaning, technical feature engineering (returns, volatility, moving averages, RSI, MACD, Bollinger Bands, ATR, ROC, candlestick features), trend engine (swing points, market structure, trend classification), market breadth and benchmark relative performance (`benchmark.py`), pipeline orchestration, and visualization.
 - **`app/news/`**: Financial news ingestion (`providers/base.py`, `providers/rss_provider.py`), typed article schemas (`schemas.py`), deduplication, point-in-time filtering (`cleaner.py`), and FinBERT sentiment scoring foundation (`sentiment.py`).
 - **`app/nlp/`**: FinBERT sentiment scoring foundation and textual analysis (`app/nlp/__init__.py`).
@@ -53,13 +54,13 @@ When fully developed, the end-user workflow will operate as follows:
 
 ---
 
-## 4. Current Status: Day 30 (Event Impact Analysis & Trading Session Alignment)
+## 4. Current Status: Day 31 (Gemma 3 12B LLM Integration Foundation)
 
-Day 30 completes Phase 10: Regulatory & Global Events (`app/events/`). It establishes deterministic Indian equity trading calendar contracts, session alignment for macroeconomic and regulatory announcements, and empirical event-impact measurement across historical market sessions.
+Day 31 completes Phase 11: LLM Integration (`app/llm/`). It establishes the first isolated LLM integration layer connecting the local Ollama runtime and Gemma 3 12B (`gemma3:12b`), with dual-role functional contracts (Role A: Context Extraction; Role B: Qualitative Reasoning & Risk Identification), strict anti-injection prompt sandboxing, zero-fabrication error boundaries, and absolute quantitative model isolation.
 
-The system deterministically routes announcements into `PRE_MARKET`, `IN_SESSION`, or `POST_MARKET` phases. Crucially, events published after market close (> 15:30 IST) or on non-trading days (weekends/holidays) are strictly aligned to the next trading day, preventing information leakage across session close boundaries. Date-only regulatory notices (e.g. SEBI circulars lacking time-of-day) are conservatively aligned to the next session to eliminate unverified same-session lookahead.
+Role A parses point-in-time filtered unstructured articles and event notices into structured entities, affected sectors, macroeconomic factors, regulatory decisions, and sentiment tone with explicit source citations. Role B synthesizes qualitative context for target equity symbols into independent directional assessments (`UP`, `DOWN`, `NEUTRAL`, `INSUFFICIENT_EVIDENCE`), positive/negative factors, and downside risks without inventing target prices, forward percentage returns, or uncalibrated probabilities.
 
-Empirical event impact is measured via same-day returns, multi-session forward returns (1d, 3d, 5d), pre- and post-event realized volatilities (5 sessions, ddof=1), and benchmark relative excess returns against NIFTY 50 (`^NSEI`). Incomplete outcome windows safely return `None` (`INCOMPLETE_OUTCOME_WINDOW`) without fabricating future prices, multi-event deduplication prevents double-counting, and all outputs enforce mandatory non-causal disclosures.
+Underlying HTTP communication uses the Python standard library (`urllib.request`), avoiding third-party framework wrappers (no LangChain, no LlamaIndex). Deterministic offline testing is 100% supported via `MockLLMClient`. When the local Ollama daemon or model is unavailable, the service raises typed exceptions rather than fabricating false neutral answers. Quantitative ML models (XGBoost/LightGBM), the 37-feature matrix, and database records remain strictly isolated from LLM reasoning.
 
 ### Current Features
 - Defined 16-phase long-term project roadmap and architecture documentation.

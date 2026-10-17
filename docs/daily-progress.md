@@ -2972,3 +2972,79 @@ Executed `scripts/verify_day30.py`:
 - Day 30 completes Phase 10 (Regulatory & Global Events). All events and external observations are ingested, deduplicated, point-in-time filtered, session-aligned, and descriptively evaluated for returns and volatility.
 - Predictive integration: Macro events and sentiment are descriptive contextual observations; they are not integrated into the numerical model feature matrix to preserve ML feature purity.
 - Next scheduled milestone: Phase 11: LLM Integration (Role A: structured entity & context extraction; Role B: qualitative reasoning & risk identification).
+
+---
+
+## Day 31 - Gemma 3 12B LLM Integration Foundation
+
+### Goal
+Implement the first isolated LLM integration layer (`app/llm/`) using the existing local Ollama runtime and Gemma 3 12B (`gemma3:12b`), establishing dual-role capabilities (Role A: Context Extraction; Role B: Qualitative Reasoning & Risk Identification), strict anti-injection prompt sandboxing, zero-fabrication guarantees, and absolute quantitative model isolation.
+
+### Work Completed
+1. **Repository Preflight:**
+   - Verified clean working tree and synchronization with `origin/main` (`c82490e`).
+   - Verified 405 existing unit tests passing in 12.31s.
+   - Inspected local Ollama runtime: active at `http://127.0.0.1:11434` with model `gemma3:12b` loaded locally.
+2. **Canonical Schemas (`app/llm/schemas.py`):**
+   - Created `LLMDirection` enum: `UP`, `DOWN`, `NEUTRAL`, `INSUFFICIENT_EVIDENCE`.
+   - Created `LLMContextExtraction` dataclass: immutable container for extracted entities, affected sectors (uppercased), macroeconomic factors, regulatory factors, qualitative sentiment tone, source citations, and uncertainty notes with timezone-aware `extracted_at`.
+   - Created `LLMReasoningResult` dataclass: immutable container for target equity symbol, qualitative direction enum, reasoning summary, positive factors, negative factors, downside risks, source references, qualitative confidence (LOW/MEDIUM/HIGH), timezone-aware `generated_at`, and mandatory `NON_PREDICTIVE_QUALITATIVE_DISCLAIMER`.
+   - Enforced strict validation: rejected naive timestamps, empty symbols/summaries, and invalid enum values.
+3. **Client Abstraction Layer (`app/llm/client.py`):**
+   - Created `BaseLLMClient(ABC)` defining canonical `generate(prompt, system, format_json)` contract.
+   - Created `OllamaLLMClient`: standard library `urllib.request` client connecting directly to Ollama REST endpoint (`/api/generate`) with low sampling temperature (0.1), JSON mode (`format="json"`), and configurable timeouts. Zero external framework dependencies (no LangChain, no LlamaIndex).
+   - Created `MockLLMClient`: deterministic offline double with pre-programmed response maps and simulated exception support for 100% offline automated testing.
+   - Handled network errors, timeouts, HTTP errors, empty bodies, and non-JSON payloads with typed exceptions (`LLMClientError`, `LLMResponseError`).
+4. **Prompt Builders & Anti-Injection Guard (`app/llm/prompts.py`):**
+   - Created `_sanitize_untrusted_text` to neutralize XML delimiter breakouts (`</source_context>`).
+   - Created `build_context_extraction_prompt`: builds Role A system instructions and user prompt enclosing point-in-time news and macro events within `<source_context>` tags. Instructs model to treat source text as untrusted reference data, preserving exact citations without executing directives.
+   - Created `build_qualitative_reasoning_prompt`: builds Role B system instructions and user prompt targeting a specific equity symbol. Instructs model to synthesize positive/negative factors and downside risks, allowing `INSUFFICIENT_EVIDENCE` without inventing target prices or calibrated probabilities.
+5. **Service Orchestration Layer (`app/llm/service.py`):**
+   - Created `LLMService` orchestrating Role A (`extract_context`) and Role B (`generate_qualitative_reasoning`).
+   - Implemented `_extract_json_object`: robustly extracts JSON objects, strips Markdown fences (```` ```json ... ``` ````), and validates object dictionary types.
+   - Deterministic fast-paths: empty news/events inputs safely return empty extraction records or `direction=INSUFFICIENT_EVIDENCE` with `confidence_assessment="LOW"` without calling the LLM.
+   - Zero-fabrication error boundaries: daemon failures and malformed outputs raise typed exceptions (`LLMClientError`, `LLMParseError`, `LLMValidationError`) rather than fabricating fake "neutral" fallbacks.
+6. **Package Exports & Entry Point:**
+   - Exported all public schemas, clients, exceptions, prompt builders, and service in `app/llm/__init__.py`.
+   - Updated `main.py` adding Day 31 readiness verification.
+
+### Real-Data & Offline Verification (`scripts/verify_day31.py`)
+Executed `scripts/verify_day31.py`:
+- **Stage 1 (Offline Mock Verification):**
+  - Validated deterministic Role A extraction and Role B reasoning using `MockLLMClient`.
+  - Verified that empty context inputs trigger `INSUFFICIENT_EVIDENCE` (no false neutrals fabricated).
+  - Verified client failure raises `LLMClientError` without fabricating fallback results.
+- **Stage 2 (Ollama Runtime Inspection):**
+  - Confirmed local Ollama daemon is reachable (`http://127.0.0.1:11434`, latency 66.5ms).
+  - Confirmed `gemma3:12b` model is loaded locally in Ollama.
+- **Stage 3 (Live Gemma 3 12B Inference Smoke Test):**
+  - Executed live Context Extraction on real automotive news: successfully extracted `entities=['Tata Motors']`, `affected_sectors=['AUTOMOTIVE']`, `sentiment_tone='POSITIVE'`, and cited source reference in 113.14s (including cold model memory loading).
+  - Executed live Qualitative Reasoning for `TATAMOTORS`: generated `direction='UP'`, `confidence='MEDIUM'`, summary, and positive factors in 32.44s.
+  - Zero price targets or calibrated probabilities fabricated; non-causal disclaimer preserved.
+
+### Tests
+- Created `tests/test_llm_service.py` with 31 comprehensive unit tests:
+  1. `TestLLMSchemas`: valid context extraction, naive datetime rejection, empty model rejection, valid reasoning result, invalid direction rejection, empty symbol/summary rejection, and naive generation timestamp rejection.
+  2. `TestLLMClients`: mock client deterministic response, mock client simulated error, Ollama client empty prompt handling, connection error handling, timeout handling, HTTP 404/500 error handling, malformed JSON response handling, empty response field handling, and availability check.
+  3. `TestLLMPrompts`: delimiter anti-injection sanitization, Role A prompt assembly with news and macro events, and Role B qualitative reasoning prompt assembly.
+  4. `TestLLMService`: empty context fast-path, extraction success, markdown code fence stripping, malformed JSON error handling, non-dict JSON error handling, reasoning fast-path, reasoning success, `INSUFFICIENT_EVIDENCE` direction handling, invalid direction error handling, missing required keys error handling, and zero false neutral fabrication on client error.
+  5. `TestQuantitativeIsolation`: verified that qualitative LLM outputs possess no numerical price, return, or probability attributes and leave quantitative prediction authority completely untouched.
+- **Full Test Suite Results:**
+  - Previous baseline: 405 passed across 28 test modules.
+  - New total: **436 passed in 12.21s** (31 new tests, 0 failures, 0 regressions across 29 test modules).
+  - 100% offline and deterministic; unit tests require zero external network access and zero model downloads.
+
+### Review
+- **Ponytail / Senior Dev Mode:** Standard library `urllib.request` and `json` only; zero heavy third-party framework dependencies (no LangChain, no LlamaIndex); prompt sandboxing against injection attacks; zero fabrication of prices, returns, or false neutrals; strict quantitative model isolation.
+
+### Documentation
+- Updated `README.md` to Day 31 status with 436 passing tests.
+- Updated `docs/architecture.md` with Section 4.26 detailing Contextual LLM Integration Layer.
+- Updated `docs/decisions.md` with ADR 59.
+- Updated `docs/roadmap.md` marking Phase 11 complete and highlighting Phase 12 as the next objective.
+- Updated `docs/daily-progress.md` with Day 31 development log.
+
+### Known Limitations & Next Steps
+- Day 31 completes the isolated foundational LLM package (`app/llm/`).
+- The LLM service is deliberately NOT yet integrated into the production prediction pipeline; quantitative XGBoost/LightGBM predictions remain authoritative.
+- Next scheduled milestone: Phase 12: ML + LLM Combination (ensemble synthesis layer combining numerical ML outputs with qualitative LLM reasoning while preserving both independent outputs).

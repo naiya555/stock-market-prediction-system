@@ -1054,3 +1054,38 @@ This document formalizes the architectural decisions made on Day 1. All future i
 - **Consequences:**
   - Establishes a mathematically sound, leak-free session alignment and event-impact analysis layer.
   - Guarantees zero forward look-ahead leakage across market close boundaries and uncompleted outcome windows.
+
+---
+
+## ADR 59: Local Gemma 3 12B Ollama Integration, Dual-Role Architecture (Role A & Role B), and Quantitative Model Isolation
+- **Status:** Accepted
+- **Context:**
+  - Phase 11 introduces Large Language Model (LLM) contextual analysis to process unstructured financial text, macroeconomic news, and regulatory disclosures.
+  - Previous foundational architecture decisions mandate:
+    1. Complete independence between numerical ML models (XGBoost/LightGBM) and qualitative LLM predictions (ADR 05).
+    2. Zero temporal look-ahead leakage across point-in-time boundaries (ADR 07).
+    3. Provider agnosticism and minimal dependency footprint using the Python standard library (ADR 12, Senior Dev / Ponytail rules). Heavy third-party framework wrappers (LangChain, LlamaIndex, LiteLLM) add excessive churn, hidden prompts, and unneeded dependencies.
+    4. Zero fabrication: LLM outputs must never invent target prices, forward percentage returns, or uncalibrated statistical probabilities, nor may failures silently fabricate "neutral" fallbacks.
+    5. Security against prompt injection: qualitative text sourced from RSS feeds and public web pages must be sandboxed and treated as untrusted data rather than system instructions.
+- **Decision:**
+  1. **Standard Library HTTP Integration (`OllamaLLMClient` in `app/llm/client.py`):**
+     - Use native `urllib.request` and `json` against local Ollama REST endpoints (`http://127.0.0.1:11434/api/generate`).
+     - Configure model `gemma3:12b` with low sampling temperature (0.1) and JSON output enforcement (`format="json"`).
+     - Handle connection failures, timeouts, non-success HTTP codes, invalid JSON, and empty responses with explicit typed errors (`LLMClientError`, `LLMResponseError`).
+     - Implement `MockLLMClient` with deterministic responses and simulated error modes for 100% offline unit tests without requiring active Ollama or model downloads.
+  2. **Dual-Role Functional Architecture (`app/llm/schemas.py`, `app/llm/prompts.py`, `app/llm/service.py`):**
+     - **Role A — Structured Context Extraction (`LLMContextExtraction`):** Parses untrusted qualitative articles and event announcements into structured entities, affected sectors, macroeconomic factors, regulatory decisions, sentiment tone, and explicit source references.
+     - **Role B — Independent Qualitative Reasoning (`LLMReasoningResult`):** Synthesizes qualitative context for a target equity symbol into an independent directional assessment (`UP`, `DOWN`, `NEUTRAL`, `INSUFFICIENT_EVIDENCE`), positive factors, negative factors, downside risks, source citations, qualitative confidence (LOW/MEDIUM/HIGH), and a mandatory non-causal disclaimer.
+  3. **Prompt Sandboxing & Anti-Injection Guards:**
+     - Enclose all user-supplied news and event text inside XML-like `<source_context>` tags with delimiter neutralization (`_sanitize_untrusted_text`).
+     - System prompts explicitly direct the model to treat content inside `<source_context>` strictly as untrusted data, ignoring embedded instructions or command directives.
+  4. **Strict Zero-Fabrication Guarantees & Error Boundaries:**
+     - Empty context inputs trigger clean, deterministic fast-paths: Role A returns an empty extraction record, and Role B returns `direction=INSUFFICIENT_EVIDENCE` with `confidence_assessment="LOW"`.
+     - When the LLM daemon is offline, times out, or returns corrupted text, `LLMService` raises typed exceptions (`LLMClientError`, `LLMParseError`, `LLMValidationError`). Under no circumstances is a false "NEUTRAL" or fabricated consensus returned.
+  5. **Absolute Quantitative Model Isolation:**
+     - LLM reasoning outputs are completely isolated from quantitative prediction authority.
+     - The canonical 37-feature technical matrix, XGBoost and LightGBM models, prediction pipelines, and database records remain entirely unmodified.
+- **Consequences:**
+  - Establishes a lightweight, robust, leak-free LLM integration layer for Phase 11.
+  - Enables local, private inference via Gemma 3 12B without external API keys or cloud dependencies.
+  - Ensures 100% deterministic offline CI testability and zero risk of corrupting numerical model performance.
