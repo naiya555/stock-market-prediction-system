@@ -168,8 +168,14 @@ class EventImpactAnalyzer:
                 exclusion_reason="Empty market bars sequence supplied to impact analyzer.",
             )
 
-        # Sort bars chronologically
-        sorted_bars = sorted(market_bars, key=lambda b: b.timestamp)
+        def _is_valid_px(val: Any) -> bool:
+            return isinstance(val, (int, float)) and not isinstance(val, bool) and math.isfinite(val) and val > 0.0
+
+        # Sort and deduplicate market bars by session date (retaining latest bar per date)
+        date_to_bar: Dict[date, MarketOHLCV] = {}
+        for b in sorted(market_bars, key=lambda x: x.timestamp):
+            date_to_bar[self._resolve_bar_date(b)] = b
+        sorted_bars = [date_to_bar[d] for d in sorted(date_to_bar.keys())]
         symbol = sorted_bars[0].symbol
 
         # Find target session bar index
@@ -199,15 +205,16 @@ class EventImpactAnalyzer:
             )
 
         curr_bar = sorted_bars[target_idx]
-        curr_open = curr_bar.open
-        curr_close = curr_bar.close
+        curr_open = curr_bar.open if _is_valid_px(curr_bar.open) else None
+        curr_close = curr_bar.close if _is_valid_px(curr_bar.close) else None
 
         # Prior session close & same-day return
         prior_close: Optional[float] = None
         same_day_ret: Optional[float] = None
         if target_idx > 0:
-            prior_close = sorted_bars[target_idx - 1].close
-            if prior_close > 0.0:
+            p_close = sorted_bars[target_idx - 1].close
+            if _is_valid_px(p_close) and curr_close is not None:
+                prior_close = float(p_close)
                 same_day_ret = round((curr_close / prior_close) - 1.0, 6)
 
         # Forward multi-session returns (1d, 3d, 5d)
@@ -216,30 +223,32 @@ class EventImpactAnalyzer:
         fwd_3d: Optional[float] = None
         fwd_5d: Optional[float] = None
 
-        if target_idx + 1 < n_bars:
-            next_close = sorted_bars[target_idx + 1].close
-            if curr_close > 0.0:
-                fwd_1d = round((next_close / curr_close) - 1.0, 6)
+        if curr_close is not None:
+            if target_idx + 1 < n_bars:
+                next_close = sorted_bars[target_idx + 1].close
+                if _is_valid_px(next_close):
+                    fwd_1d = round((next_close / curr_close) - 1.0, 6)
 
-        if target_idx + 3 < n_bars:
-            c3 = sorted_bars[target_idx + 3].close
-            if curr_close > 0.0:
-                fwd_3d = round((c3 / curr_close) - 1.0, 6)
+            if target_idx + 3 < n_bars:
+                c3 = sorted_bars[target_idx + 3].close
+                if _is_valid_px(c3):
+                    fwd_3d = round((c3 / curr_close) - 1.0, 6)
 
-        if target_idx + 5 < n_bars:
-            c5 = sorted_bars[target_idx + 5].close
-            if curr_close > 0.0:
-                fwd_5d = round((c5 / curr_close) - 1.0, 6)
+            if target_idx + 5 < n_bars:
+                c5 = sorted_bars[target_idx + 5].close
+                if _is_valid_px(c5):
+                    fwd_5d = round((c5 / curr_close) - 1.0, 6)
 
         # Pre-event realized volatility (5 sessions prior: [target_idx - 5 ... target_idx - 1])
+        # Invariant: strictly ends before target_idx to prevent event-day price leakage
         pre_vol_5d: Optional[float] = None
         if target_idx >= 5:
             pre_returns: List[float] = []
             valid_pre = True
-            for k in range(target_idx - 4, target_idx + 1):
+            for k in range(target_idx - 4, target_idx):
                 p0 = sorted_bars[k - 1].close
                 p1 = sorted_bars[k].close
-                if p0 <= 0.0 or math.isnan(p0) or math.isnan(p1):
+                if not _is_valid_px(p0) or not _is_valid_px(p1):
                     valid_pre = False
                     break
                 pre_returns.append((p1 / p0) - 1.0)
@@ -249,13 +258,13 @@ class EventImpactAnalyzer:
 
         # Post-event realized volatility (5 sessions after: [target_idx + 1 ... target_idx + 5])
         post_vol_5d: Optional[float] = None
-        if target_idx + 5 < n_bars:
+        if target_idx + 5 < n_bars and curr_close is not None:
             post_returns: List[float] = []
             valid_post = True
             for k in range(target_idx + 1, target_idx + 6):
                 p0 = sorted_bars[k - 1].close
                 p1 = sorted_bars[k].close
-                if p0 <= 0.0 or math.isnan(p0) or math.isnan(p1):
+                if not _is_valid_px(p0) or not _is_valid_px(p1):
                     valid_post = False
                     break
                 post_returns.append((p1 / p0) - 1.0)
@@ -267,20 +276,28 @@ class EventImpactAnalyzer:
         bench_fwd_1d: Optional[float] = None
         rel_fwd_1d: Optional[float] = None
         if benchmark_bars:
-            sorted_bench = sorted(benchmark_bars, key=lambda b: b.timestamp)
+            b_date_to_bar: Dict[date, MarketOHLCV] = {}
+            for b in sorted(benchmark_bars, key=lambda x: x.timestamp):
+                b_date_to_bar[self._resolve_bar_date(b)] = b
+            sorted_bench = [b_date_to_bar[d] for d in sorted(b_date_to_bar.keys())]
+
             b_idx: Optional[int] = None
             for idx, b in enumerate(sorted_bench):
                 if self._resolve_bar_date(b) == target_date:
                     b_idx = idx
                     break
 
-            if b_idx is not None and b_idx + 1 < len(sorted_bench):
-                b0 = sorted_bench[b_idx].close
-                b1 = sorted_bench[b_idx + 1].close
-                if b0 > 0.0:
-                    bench_fwd_1d = round((b1 / b0) - 1.0, 6)
-                    if fwd_1d is not None:
-                        rel_fwd_1d = round(fwd_1d - bench_fwd_1d, 6)
+            if b_idx is not None and b_idx + 1 < len(sorted_bench) and target_idx + 1 < n_bars:
+                target_outcome_date = self._resolve_bar_date(sorted_bars[target_idx + 1])
+                bench_outcome_date = self._resolve_bar_date(sorted_bench[b_idx + 1])
+                # Invariant: Benchmark outcome date must exactly match asset outcome date
+                if target_outcome_date == bench_outcome_date:
+                    b0 = sorted_bench[b_idx].close
+                    b1 = sorted_bench[b_idx + 1].close
+                    if _is_valid_px(b0) and _is_valid_px(b1):
+                        bench_fwd_1d = round((b1 / b0) - 1.0, 6)
+                        if fwd_1d is not None:
+                            rel_fwd_1d = round(fwd_1d - bench_fwd_1d, 6)
 
         # Status and exclusion details
         status = "MEASURED"

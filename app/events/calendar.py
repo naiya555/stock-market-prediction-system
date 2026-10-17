@@ -127,7 +127,9 @@ class ExchangeTradingCalendar(BaseTradingCalendar):
         """Initialize exchange calendar with configurable holidays and weekend rules.
 
         Args:
-            holidays: Iterable of dates designated as official exchange holidays.
+            holidays: Iterable of dates designated as official exchange holidays. If omitted,
+                only weekend rules are applied; for production equity simulations without market bars,
+                official exchange holiday lists should be supplied.
             weekend_days: Tuple of weekday integers (0=Mon, 6=Sun) considered non-trading.
             special_trading_days: Iterable of weekend/holiday dates that host special sessions
                 (e.g., Diwali Muhurat trading).

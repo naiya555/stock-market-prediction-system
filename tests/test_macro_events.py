@@ -716,3 +716,58 @@ def test_external_market_provider_zero_return_and_custom_ingested_at() -> None:
     # Check event translation
     ev = day2_obs.to_event()
     assert ev.structured_value.change == 0.0
+
+
+def test_sebi_provider_safe_keyword_classification() -> None:
+    """Regression test: verify 'in order to' and 'border' are not misclassified as enforcement orders."""
+    xml_data = """<?xml version="1.0" encoding="utf-8"?>
+    <rss version="2.0">
+      <channel>
+        <title>SEBI Notices</title>
+        <item>
+          <title>Advisory in order to enhance cybersecurity and operational resilience</title>
+          <link>https://sebi.gov.in/advisory.html</link>
+          <pubDate>16 Oct, 2026 +0530</pubDate>
+          <description>Advisory guidelines.</description>
+        </item>
+        <item>
+          <title>Framework for cross border securities issuance</title>
+          <link>https://sebi.gov.in/border.html</link>
+          <pubDate>15 Oct, 2026 +0530</pubDate>
+          <description>Border framework.</description>
+        </item>
+        <item>
+          <title>Adjudication Order in respect of ABC Securities Ltd</title>
+          <link>https://sebi.gov.in/order1.html</link>
+          <pubDate>14 Oct, 2026 +0530</pubDate>
+          <description>Penalty order.</description>
+        </item>
+      </channel>
+    </rss>
+    """
+    provider = SEBIEventProvider(fetcher=lambda url: xml_data)
+    events = provider.fetch_events(limit=10)
+
+    advisory_ev = next(e for e in events if "in order to" in e.title.lower())
+    border_ev = next(e for e in events if "cross border" in e.title.lower())
+    order_ev = next(e for e in events if "adjudication order" in e.title.lower())
+
+    # 'in order to' and 'cross border' must NOT be enforcement_order
+    assert advisory_ev.event_type == "regulatory_notice"
+    assert border_ev.event_type == "regulatory_notice"
+    # Genuine adjudication order must be enforcement_order
+    assert order_ev.event_type == "enforcement_order"
+
+
+def test_rbi_and_sebi_custom_ingested_at_support() -> None:
+    """Regression test: verify explicit ingested_at can be passed to RBI and SEBI providers."""
+    custom_dt = datetime(2026, 10, 10, 10, 0, tzinfo=IST)
+    rbi_provider = RBIEventProvider(fetcher=lambda url: SAMPLE_RBI_XML)
+    rbi_events = rbi_provider.fetch_events(limit=5, ingested_at=custom_dt)
+    assert len(rbi_events) > 0
+    assert all(e.ingested_at == custom_dt for e in rbi_events)
+
+    sebi_provider = SEBIEventProvider(fetcher=lambda url: SAMPLE_SEBI_XML)
+    sebi_events = sebi_provider.fetch_events(limit=5, ingested_at=custom_dt)
+    assert len(sebi_events) > 0
+    assert all(e.ingested_at == custom_dt for e in sebi_events)

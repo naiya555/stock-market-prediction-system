@@ -111,6 +111,7 @@ class RBIEventProvider(BaseEventProvider):
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
         limit: int = 50,
+        ingested_at: Optional[datetime] = None,
     ) -> List[MacroEvent]:
         """Fetch and normalize official RBI announcements.
 
@@ -118,12 +119,19 @@ class RBIEventProvider(BaseEventProvider):
             start_date: Optional inclusive start datetime filter.
             end_date: Optional inclusive end datetime filter.
             limit: Maximum number of events to return.
+            ingested_at: Optional explicit ingestion timestamp for historical replay/point-in-time checks.
 
         Returns:
             List of canonical MacroEvent records.
         """
         raw_xml = self._fetcher(self._url)
-        return self._parse_xml(raw_xml, start_date=start_date, end_date=end_date, limit=limit)
+        return self._parse_xml(
+            raw_xml,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+            ingested_at=ingested_at,
+        )
 
     def _parse_xml(
         self,
@@ -131,6 +139,7 @@ class RBIEventProvider(BaseEventProvider):
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
         limit: int = 50,
+        ingested_at: Optional[datetime] = None,
     ) -> List[MacroEvent]:
         """Parse raw RSS XML into validated MacroEvent instances."""
         if not xml_content or not xml_content.strip():
@@ -142,7 +151,7 @@ class RBIEventProvider(BaseEventProvider):
         except ET.ParseError as e:
             raise EventProviderError(f"Malformed RBI RSS XML payload: {e}") from e
 
-        now_ist = datetime.now(timezone.utc).astimezone(IST)
+        now_ist = ingested_at or datetime.now(timezone.utc).astimezone(IST)
         events: List[MacroEvent] = []
 
         channel = root.find("channel")

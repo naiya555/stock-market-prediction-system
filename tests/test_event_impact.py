@@ -480,3 +480,129 @@ def test_impact_analyzer_deduplication_and_aggregates() -> None:
     assert summary.mean_return_1d is not None
     assert summary.median_return_1d is not None
     assert NON_CAUSAL_DISCLAIMER in summary.disclaimer
+
+
+def test_pre_event_volatility_strictly_excludes_event_session_close() -> None:
+    """Regression test: verify pre-event volatility does not leak the event day's reaction."""
+    dates = [
+        date(2026, 10, 1), date(2026, 10, 2), date(2026, 10, 5), date(2026, 10, 6), date(2026, 10, 7),
+        date(2026, 10, 8), date(2026, 10, 9),
+    ]
+    # Indices 0 to 4 have completely flat prices (returns = 0.0, stdev = 0.0)
+    # Index 5 (event day, Oct 8) spikes violently to 200.0 (+100%)
+    closes = [100.0, 100.0, 100.0, 100.0, 100.0, 200.0, 202.0]
+    bars = [_make_bar(d, px, symbol="TEST") for d, px in zip(dates, closes)]
+
+    cal = MarketDataTradingCalendar(bars)
+    aligner = EventSessionAligner(calendar=cal)
+    analyzer = EventImpactAnalyzer()
+
+    ev = MacroEvent(
+        title="Spike Announcement",
+        category=EventCategory.REGULATORY,
+        event_type="notice",
+        source_org="SEBI",
+        published_at=datetime(2026, 10, 8, 8, 30, tzinfo=IST),
+        ingested_at=datetime(2026, 10, 8, 8, 30, tzinfo=IST),
+    )
+    aligned = aligner.align_event(ev)
+    meas = analyzer.measure_event_impact(aligned, market_bars=bars)
+
+    # If event day close (200.0) leaked into pre-event volatility, stdev would be > 0.
+    # Since all prior sessions were 100.0, pre-event return stdev must be exactly 0.0.
+    assert meas.pre_event_volatility_5d == 0.0
+
+
+def test_benchmark_date_misalignment_returns_none() -> None:
+    """Regression test: verify benchmark returns return None if benchmark dates do not match stock outcome date."""
+    stock_bars = [
+        _make_bar(date(2026, 10, 8), 100.0, symbol="STOCK"),
+        _make_bar(date(2026, 10, 9), 102.0, symbol="STOCK"),  # Outcome date = Oct 9
+    ]
+    bench_bars = [
+        _make_bar(date(2026, 10, 8), 1000.0, symbol="^NSEI"),
+        _make_bar(date(2026, 10, 12), 1010.0, symbol="^NSEI"), # Benchmark missing Oct 9! Next is Oct 12
+    ]
+
+    cal = MarketDataTradingCalendar(stock_bars)
+    aligner = EventSessionAligner(calendar=cal)
+    analyzer = EventImpactAnalyzer()
+
+    ev = MacroEvent(
+        title="Event",
+        category=EventCategory.REGULATORY,
+        event_type="notice",
+        source_org="SEBI",
+        published_at=datetime(2026, 10, 8, 8, 30, tzinfo=IST),
+        ingested_at=datetime(2026, 10, 8, 8, 30, tzinfo=IST),
+    )
+    aligned = aligner.align_event(ev)
+    meas = analyzer.measure_event_impact(aligned, market_bars=stock_bars, benchmark_bars=bench_bars)
+
+    assert meas.forward_return_1d == 0.02
+    # Misaligned benchmark date (Oct 12 != Oct 9) must not compute an incompatible return
+    assert meas.benchmark_forward_return_1d is None
+    assert meas.relative_forward_return_1d is None
+
+
+def test_market_bars_with_duplicate_session_dates_deduplicated() -> None:
+    """Regression test: verify duplicate bars for the same session date are deduplicated."""
+    # Duplicate bars for Oct 8
+    b1_early = _make_bar(date(2026, 10, 8), 100.0)
+    b1_late = _make_bar(date(2026, 10, 8), 100.0)
+    b2 = _make_bar(date(2026, 10, 9), 105.0)
+
+    bars = [b1_early, b1_late, b2]
+    cal = MarketDataTradingCalendar(bars)
+    aligner = EventSessionAligner(calendar=cal)
+    analyzer = EventImpactAnalyzer()
+
+    ev = MacroEvent(
+        title="Event",
+        category=EventCategory.REGULATORY,
+        event_type="notice",
+        source_org="SEBI",
+        published_at=datetime(2026, 10, 8, 8, 30, tzinfo=IST),
+        ingested_at=datetime(2026, 10, 8, 8, 30, tzinfo=IST),
+    )
+    aligned = aligner.align_event(ev)
+    meas = analyzer.measure_event_impact(aligned, market_bars=bars)
+
+    # Forward 1d should correctly compare Oct 8 (100) to Oct 9 (105), not Oct 8 duplicate
+    assert meas.forward_return_1d == 0.05
+
+
+def test_non_finite_bar_prices_handled_safely() -> None:
+    """Regression test: verify NaN or non-positive prices do not crash or poison returns."""
+    d1 = date(2026, 10, 8)
+    d2 = date(2026, 10, 9)
+    # NaN close
+    nan_bar = MarketOHLCV(
+        symbol="TEST",
+        timestamp=datetime.combine(d2, time(15, 30), tzinfo=IST),
+        open=100.0,
+        high=105.0,
+        low=95.0,
+        close=float("nan"),
+        volume=1000,
+        source="test",
+    )
+    bars = [_make_bar(d1, 100.0), nan_bar]
+
+    cal = MarketDataTradingCalendar(bars)
+    aligner = EventSessionAligner(calendar=cal)
+    analyzer = EventImpactAnalyzer()
+
+    ev = MacroEvent(
+        title="Event",
+        category=EventCategory.REGULATORY,
+        event_type="notice",
+        source_org="SEBI",
+        published_at=datetime(2026, 10, 8, 8, 30, tzinfo=IST),
+        ingested_at=datetime(2026, 10, 8, 8, 30, tzinfo=IST),
+    )
+    aligned = aligner.align_event(ev)
+    meas = analyzer.measure_event_impact(aligned, market_bars=bars)
+
+    # Next close is NaN -> return must be None, NOT nan float
+    assert meas.forward_return_1d is None

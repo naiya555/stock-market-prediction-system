@@ -112,6 +112,7 @@ class SEBIEventProvider(BaseEventProvider):
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
         limit: int = 50,
+        ingested_at: Optional[datetime] = None,
     ) -> List[MacroEvent]:
         """Fetch and normalize official SEBI announcements.
 
@@ -119,12 +120,19 @@ class SEBIEventProvider(BaseEventProvider):
             start_date: Optional inclusive start datetime filter.
             end_date: Optional inclusive end datetime filter.
             limit: Maximum number of events to return.
+            ingested_at: Optional explicit ingestion timestamp for historical replay/point-in-time checks.
 
         Returns:
             List of canonical MacroEvent records.
         """
         raw_xml = self._fetcher(self._url)
-        return self._parse_xml(raw_xml, start_date=start_date, end_date=end_date, limit=limit)
+        return self._parse_xml(
+            raw_xml,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+            ingested_at=ingested_at,
+        )
 
     def _parse_xml(
         self,
@@ -132,6 +140,7 @@ class SEBIEventProvider(BaseEventProvider):
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
         limit: int = 50,
+        ingested_at: Optional[datetime] = None,
     ) -> List[MacroEvent]:
         """Parse raw RSS XML into validated MacroEvent instances."""
         if not xml_content or not xml_content.strip():
@@ -143,7 +152,7 @@ class SEBIEventProvider(BaseEventProvider):
         except ET.ParseError as e:
             raise EventProviderError(f"Malformed SEBI RSS XML payload: {e}") from e
 
-        now_ist = datetime.now(timezone.utc).astimezone(IST)
+        now_ist = ingested_at or datetime.now(timezone.utc).astimezone(IST)
         events: List[MacroEvent] = []
 
         channel = root.find("channel")
@@ -180,13 +189,16 @@ class SEBIEventProvider(BaseEventProvider):
                 if end_date is not None and published_at > end_date:
                     continue
 
-            # Classify event type
+            # Classify event type safely using word-boundary checks
             lower_title = raw_title.lower()
             if "master circular" in lower_title:
                 event_type = "master_circular"
             elif "circular" in lower_title:
                 event_type = "circular"
-            elif "order" in lower_title or "adjudication" in lower_title or "recovery" in lower_title:
+            elif (
+                not re.search(r"\bin order to\b", lower_title)
+                and re.search(r"\b(?:order|orders|adjudication|recovery)\b", lower_title)
+            ):
                 event_type = "enforcement_order"
             else:
                 event_type = "regulatory_notice"
