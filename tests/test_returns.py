@@ -350,3 +350,35 @@ def test_invalid_windows_raise_value_error():
 
     with pytest.raises(ValueError, match="must be >= 2"):
         calculate_rolling_volatility([0.01], window=1)
+
+
+def test_compute_market_returns_annual_vol_scaling_reusing_raw(monkeypatch):
+    """Test 22: Verify annual_vols reuses rolling_vols without a second calculate_rolling_volatility call."""
+    import app.market.returns as returns_mod
+
+    call_count = 0
+    orig_calc = returns_mod.calculate_rolling_volatility
+
+    def tracking_calc(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        return orig_calc(*args, **kwargs)
+
+    monkeypatch.setattr(returns_mod, "calculate_rolling_volatility", tracking_calc)
+
+    bars = [_make_bar(day=i, close=100.0 + (i * 2.0)) for i in range(1, 10)]
+    feats = compute_market_returns(bars, volatility_windows=(3, 5), trading_days=252)
+
+    # With 2 windows and 1 symbol, calculate_rolling_volatility should be called exactly 2 times (not 4)
+    assert call_count == 2
+
+    # Verify scaling and None preservation
+    sqrt_252 = math.sqrt(252)
+    for feat in feats:
+        for w in (3, 5):
+            raw = feat.rolling_volatilities[w]
+            annual = feat.annualized_volatilities[w]
+            if raw is None:
+                assert annual is None
+            else:
+                assert annual == pytest.approx(raw * sqrt_252)

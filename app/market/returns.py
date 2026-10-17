@@ -295,21 +295,20 @@ def compute_market_returns(
         # 3. Rolling volatilities (raw and annualized)
         rolling_vols: Dict[int, List[Optional[float]]] = {}
         annual_vols: Dict[int, List[Optional[float]]] = {}
+        sqrt_trading_days = math.sqrt(trading_days)
         for w in volatility_windows:
-            rolling_vols[w] = calculate_rolling_volatility(
+            raw_vols = calculate_rolling_volatility(
                 daily_rets,
                 window=w,
                 ddof=1,
                 annualized=False,
                 trading_days=trading_days,
             )
-            annual_vols[w] = calculate_rolling_volatility(
-                daily_rets,
-                window=w,
-                ddof=1,
-                annualized=True,
-                trading_days=trading_days,
-            )
+            rolling_vols[w] = raw_vols
+            annual_vols[w] = [
+                v * sqrt_trading_days if v is not None else None
+                for v in raw_vols
+            ]
 
         # 4. Assemble canonical ReturnFeatures records
         for i, bar in enumerate(sorted_bars):
