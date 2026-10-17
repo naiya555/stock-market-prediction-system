@@ -207,7 +207,7 @@ This document formalizes the architectural decisions made on Day 1. All future i
 ## ADR 26: Strict Quarantine Policy for Missing Market OHLCV Values
 - **Status:** Accepted
 - **Context:** Missing values in critical financial time series (prices or volume) pose severe risks. Blind forward-filling, mean imputation, or linear interpolation fabricates artificial market transactions, distorts volatility calculations, and biases model predictions.
-- **Decision:** The data cleaning layer strictly rejects/quarantines records with missing, null, or NaN prices, volume, or timestamps. Zero price interpolation or synthetic bar creation is permitted.
+- **Decision:** The data cleaning layer strictly rejects/quarantines records with missing, null, or NaN prices, volume, or timestamps. No price interpolation or synthetic bar creation is permitted.
 - **Consequences:** Guarantees historical data integrity; missing observations are made explicit in `CleaningSummary` audit logs rather than silently masked.
 
 ---
@@ -216,7 +216,7 @@ This document formalizes the architectural decisions made on Day 1. All future i
 - **Status:** Accepted
 - **Context:** Historical feeds can deliver duplicate records for the same `(symbol, timestamp)` due to vendor republishing or boundary overlaps. Duplicates may be identical or contain conflicting numbers.
 - **Decision:** The cleaning pipeline applies a two-tier deterministic policy:
-  1. Identical duplicates (identical prices and volume) are collapsed safely into a single canonical bar.
+  1. Identical duplicates (prices considered identical using math.isclose comparison with an absolute tolerance of 1e-5, and identical volume) are collapsed safely into a single canonical bar.
   2. Conflicting duplicates (different prices/volume for the same timestamp) are quarantined/rejected entirely without guessing a preferred value.
 - **Consequences:** Eliminates double-counting in backtests while preventing ungrounded heuristics from fabricating consensus prices.
 

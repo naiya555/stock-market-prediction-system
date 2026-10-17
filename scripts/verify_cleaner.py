@@ -58,11 +58,22 @@ def main() -> int:
     print(f"    Total Rejected:             {summary.rejected_count}")
     print(f"    Chronologically Sorted:     {summary.is_sorted}")
 
-    # Assert integrity invariants
-    assert summary.input_count == len(raw_records), "Input count mismatch"
-    assert summary.output_count == len(cleaning_result.records), "Output count mismatch"
-    assert summary.is_sorted is True, "Output must be chronologically sorted"
-    assert summary.output_count == summary.input_count - summary.rejected_count, "Audit count equation violated"
+    # Validate integrity invariants
+    if summary.input_count != len(raw_records):
+        print(f"ERROR: Input count mismatch: summary={summary.input_count}, raw={len(raw_records)}")
+        return 1
+    if summary.output_count != len(cleaning_result.records):
+        print(f"ERROR: Output count mismatch: summary={summary.output_count}, output={len(cleaning_result.records)}")
+        return 1
+    if summary.is_sorted is not True:
+        print("ERROR: Output must be chronologically sorted")
+        return 1
+    if summary.output_count != summary.input_count - summary.rejected_count:
+        print(
+            f"ERROR: Audit count equation violated: {summary.output_count} != "
+            f"{summary.input_count} - {summary.rejected_count}"
+        )
+        return 1
 
     for r in cleaning_result.records:
         assert isinstance(r, MarketOHLCV)

@@ -104,6 +104,9 @@ def clean_market_data(
 
     Returns:
         CleaningResult containing validated canonical records and an audit summary.
+
+    Raises:
+        ZoneInfoNotFoundError: If target_timezone is an unknown or invalid timezone name.
     """
     input_count = len(records)
     tz = ZoneInfo(target_timezone)

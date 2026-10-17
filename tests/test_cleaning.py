@@ -290,6 +290,11 @@ def test_timestamp_and_timezone_normalization():
     assert r1.timestamp.date() == datetime(2026, 9, 1).date()
     assert r2.timestamp.date() == datetime(2026, 9, 2).date()
 
+    # Time components: naive bar remains hour 0, UTC midnight maps to 05:30 IST
+    assert r1.timestamp.hour == 0
+    assert r2.timestamp.hour == 5
+    assert r2.timestamp.minute == 30
+
 
 def test_cleaning_result_summary_to_dict():
     """Verify CleaningSummary converts cleanly to serializable dictionary."""
