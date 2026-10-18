@@ -171,9 +171,17 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Atomic promotion protocol copying candidate to active path (`models/{model}_direction.*`) and preserving active models 100% on any gate failure.
   - SQLite model release persistence in `model_releases` table tracking version history, cutoffs, metrics, and gate results.
 
-### Phase 16: Final Testing & Evaluation (In Progress - Day 39)
+### Phase 16: Final Testing & Evaluation (In Progress - Day 40)
 - Comprehensive audit of retraining workflow and model release management (Day 39 complete).
 - Implementation of Gate 0 (Chronological Integrity Gate) eliminating look-ahead bias and inverted cutoffs (ADR 07).
 - Transactional promotion protocol with mandatory archiving, atomic staging (`os.replace`), and automatic rollback from archive on SQLite/filesystem failure.
 - Multi-regime market stress testing across Bull, Bear, Choppy, and Shock Transition regimes (`tests/test_multi_regime_evaluation.py`).
-- Security audit, documentation finalization, and deployment readiness review (Next Objective).
+- Security audit and deployment readiness hardening (Day 40 complete):
+  - Dependency manifest audit (`pip check` verified clean across all 56 installed packages; scanner environment limitation noted).
+  - Production CORS strict validation (wildcards `*` and insecure plain HTTP non-localhost origins rejected at startup).
+  - Production OpenAPI/Swagger docs exposure lockdown (`docs_url=None`, `openapi_url=None` returning 404 in production).
+  - Defensive OWASP response headers middleware (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`).
+  - Production startup guard rejecting `APP_DEBUG=true` in production mode.
+- Remaining Phase 16 acceptance criteria:
+  - Long-running staging deployment soak testing and real-world system telemetry integration.
+  - Periodic CI/CD automated CVE dependency scanner pipeline.

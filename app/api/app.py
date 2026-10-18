@@ -4,6 +4,7 @@ Configures FastAPI application instance, exception handling, logging, and route 
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import Any, Dict
 
@@ -26,6 +27,25 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application instance."""
     settings = get_settings()
+    is_prod = settings.is_production()
+
+    # Production safety checks
+    if is_prod:
+        if settings.debug:
+            raise ValueError("APP_DEBUG cannot be enabled in production environment.")
+        if not os.getenv("APP_CORS_ORIGINS"):
+            raise ValueError(
+                "APP_CORS_ORIGINS must be explicitly configured in production (cannot use local development defaults)."
+            )
+        if any(origin == "*" for origin in settings.cors_origins):
+            raise ValueError(
+                "Wildcard CORS origin '*' is strictly prohibited in production. Configure explicit trusted domain(s)."
+            )
+        for origin in settings.cors_origins:
+            if origin.startswith("http://") and not any(h in origin for h in ("localhost", "127.0.0.1")):
+                raise ValueError(
+                    f"Insecure HTTP origin '{origin}' is strictly prohibited in production CORS settings (must use HTTPS)."
+                )
 
     app = FastAPI(
         title="Indian Stock Market Directional Prediction API",
@@ -34,8 +54,9 @@ def create_app() -> FastAPI:
             "immutable historical tracking, and macroeconomic/regulatory event monitoring."
         ),
         version="1.0.0",
-        docs_url="/docs",
-        redoc_url="/redoc",
+        docs_url=None if is_prod else "/docs",
+        redoc_url=None if is_prod else "/redoc",
+        openapi_url=None if is_prod else "/openapi.json",
     )
 
     # Configure CORS: Restrict to trusted origins and disable credentials (no cookie auth needed)
@@ -46,6 +67,16 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
     )
+
+    # Defensive Security Response Headers Middleware
+    @app.middleware("http")
+    async def add_security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        return response
 
     # -----------------------------------------------------------------------
     # Exception Handlers
@@ -146,7 +177,7 @@ def create_app() -> FastAPI:
             "version": "1.0.0",
             "environment": settings.environment,
             "status": "running",
-            "docs": "/docs",
+            "docs": None if is_prod else "/docs",
             "health": "/api/health",
             "ui": "/ui",
         }

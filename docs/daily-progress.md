@@ -3756,5 +3756,67 @@ Perform a comprehensive audit of the retraining and version tracking implementat
 ### Next Step
 Continue Phase 16: Perform security and dependency audits, verify production configuration hardening, and assemble final deployment readiness documentation.
 
+---
+
+## Day 40 - Phase 16: Security Audit & Deployment Readiness
+
+### Goal
+Audit application configuration, CORS policies, information disclosure vulnerabilities, defensive response headers, and dependency health in preparation for Phase 16 deployment readiness. Fix confirmed high-priority security defects with automated regression tests.
+
+### Work Completed
+1. **Dependency Security Review**:
+   - Inspected active virtual environment manifests and package dependencies (`requirements.txt`).
+   - Ran `pip check`: confirmed zero broken requirements or incompatible versions across all 56 installed packages.
+   - Identified scanner availability: `pip-audit` is not pre-installed in the execution environment; this limitation is documented without fabricating external CVE databases or upgrading packages prematurely.
+
+2. **API & Deployment Configuration Security Audit**:
+   - Audited [app/core/config.py](file:///d:/Share_market_predictor/app/core/config.py) and [app/api/app.py](file:///d:/Share_market_predictor/app/api/app.py) across 6 deployment readiness dimensions:
+     1. **CORS Origins Policy:** Confirmed defect where setting `APP_CORS_ORIGINS="*"` in production was previously permitted by `Settings.from_env()`, allowing any third-party browser session to execute cross-origin requests.
+     2. **Documentation Exposure:** Confirmed information disclosure defect where `/docs`, `/redoc`, and `/openapi.json` remained active and publicly discoverable in production mode (`APP_ENV=production`).
+     3. **Debug Mode Lockdown:** Confirmed configuration risk where `APP_DEBUG=true` could be passed in production mode.
+     4. **HTTP Security Headers:** Identified absence of OWASP defensive headers on HTTP responses (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`).
+     5. **Administrative Retraining Endpoints:** Verified that no public HTTP route exposes automated retraining execution; feedback route (`POST /api/feedback`) returns explicit HTTP 501 with ADR 10 disclaimer.
+     6. **Database & Artifact File Isolation:** SQLite database and candidate/archive model paths are maintained strictly in dedicated local directories without external network exposure.
+
+3. **Production Hardening Implementation (`app/core/config.py`, `app/api/app.py`)**:
+   - **Production CORS Lockdown:** `Settings.from_env()` and `create_app()` strictly reject wildcard origin `*` with a `ValueError`. In production, origins must be explicit HTTPS URLs (insecure plain HTTP origins for non-localhost domains are rejected).
+   - **Explicit Production CORS Requirement:** In production mode, `create_app()` verifies that `APP_CORS_ORIGINS` has been explicitly configured, preventing accidental fallback to development `localhost:8000` / `localhost:3000` defaults.
+   - **Production Debug Prohibition:** `create_app()` enforces that `APP_DEBUG` cannot be enabled when `APP_ENV=production`.
+   - **OpenAPI Schema Lockdown in Production:** In production (`settings.is_production()`), `docs_url`, `redoc_url`, and `openapi_url` are set to `None` (returning 404 Not Found), and the `/` metadata endpoint omits the `docs` link.
+   - **Defensive HTTP Response Headers Middleware:** Added ASGI response header middleware injecting `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Permissions-Policy: geolocation=(), microphone=(), camera=()` on all responses.
+
+4. **Automated Unit & Regression Test Suite (`tests/test_security_deployment.py`)**:
+   - Added 9 comprehensive security tests:
+     1. `test_production_cors_rejects_wildcard`: verifies `Settings.from_env()` rejects `*` in production.
+     2. `test_production_cors_rejects_insecure_http`: verifies rejection of plain HTTP for public domains in production.
+     3. `test_production_cors_requires_explicit_configuration`: verifies `create_app()` rejects missing `APP_CORS_ORIGINS` in production.
+     4. `test_production_debug_mode_rejected`: verifies `create_app()` rejects `APP_DEBUG=true` in production.
+     5. `test_production_valid_configuration`: verifies valid HTTPS domains are accepted in production.
+     6. `test_production_mode_disables_openapi_and_docs`: verifies 404 Not Found for `/docs`, `/redoc`, and `/openapi.json` in production.
+     7. `test_development_mode_enables_docs`: verifies interactive Swagger docs remain accessible in development mode.
+     8. `test_security_response_headers_present`: verifies presence of defensive headers on API responses.
+     9. `test_effective_cors_runtime_enforcement`: verifies runtime CORS headers are emitted for trusted origins and suppressed for untrusted origins.
+
+### Validation Results
+- **Security & Deployment Test Suite:**
+  ```powershell
+  & .\.venv\Scripts\python -m pytest tests/test_security_deployment.py -v
+  ```
+  *Result:* **9 passed** in 4.97s.
+- **Full Automated Test Suite:**
+  ```powershell
+  & .\.venv\Scripts\python -m pytest
+  ```
+  *Result:* **583 passed**, 0 failed, 1 warning (Starlette testclient deprecation) in 23.42s across 42 test files (expanded from 574 baseline).
+
+### Remaining Risks & Limitations
+- Standalone external vulnerability scanner (`pip-audit`) is not installed in the local environment; external automated CI/CD pipeline scanning should be configured upon deployment.
+- Production deployment will require TLS termination (e.g. reverse proxy via Nginx/Caddy or Cloudflare) with valid SSL certificates, as uvicorn does not manage automated ACME renewal.
+- Passing security unit tests verifies defensive middleware and configuration validation; it does not constitute an exhaustive penetration test or guarantee financial profitability in live markets.
+
+### Next Step
+Assemble final deployment runbook documentation and complete final Phase 16 evaluation review.
+
+
 
 

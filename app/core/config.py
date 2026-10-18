@@ -66,6 +66,17 @@ class Settings:
                 "http://127.0.0.1:3000",
             )
 
+        if env == "production" and cors_env:
+            if any(origin == "*" for origin in cors_list):
+                raise ValueError(
+                    "Wildcard CORS origin '*' is strictly prohibited in production. Specify explicit trusted domain(s)."
+                )
+            for origin in cors_list:
+                if origin.startswith("http://") and not any(h in origin for h in ("localhost", "127.0.0.1")):
+                    raise ValueError(
+                        f"Insecure HTTP origin '{origin}' is strictly prohibited in production CORS settings (must use HTTPS)."
+                    )
+
         return cls(
             app_name=os.getenv("APP_NAME", "Indian Stock Market Prediction System"),
             environment=env,
