@@ -36,7 +36,50 @@ import requests
 import uvicorn
 
 from app.api.app import create_app
+from app.api.dependencies import get_event_providers
 from app.core.config import get_settings
+from app.events.providers.base import BaseEventProvider
+from app.events.schemas import EventCategory, MacroEvent
+from scripts.staging_soak_test import (
+    EndpointStats,
+    classify_http_outcome,
+    compute_percentile,
+)
+
+
+class OfflineStagingEventProvider(BaseEventProvider):
+    """Isolated local event provider ensuring zero external network calls during staging."""
+
+    @property
+    def name(self) -> str:
+        return "offline_staging_provider"
+
+    def fetch_events(
+        self,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        limit: int = 50,
+        ingested_at: Optional[datetime] = None,
+    ) -> List[MacroEvent]:
+        from zoneinfo import ZoneInfo
+        ist = ZoneInfo("Asia/Kolkata")
+        now = ingested_at or datetime.now(timezone.utc).astimezone(ist)
+        return [
+            MacroEvent(
+                title="Staging Isolated Monetary Policy Announcement",
+                category=EventCategory.MONETARY_POLICY,
+                event_type="monetary_policy_statement",
+                source_org="Reserve Bank of India",
+                ingested_at=now,
+                published_at=now,
+                announced_at=now,
+                url="https://rbi.org.in/pressreleases_mock.xml",
+                affected_sectors=("BANKING", "FINANCIAL_SERVICES"),
+                summary="Isolated local staging event (zero external network dependency)",
+                provider=self.name,
+                is_verified=True,
+            )
+        ]
 
 
 @dataclass
@@ -56,17 +99,28 @@ class StagingValidationReport:
     models_unmutated_verified: bool = False
     smoke_tests_passed: bool = False
     load_test_total_requests: int = 0
+    load_test_completed_requests: int = 0
     load_test_successful_requests: int = 0
     load_test_failed_requests: int = 0
+    http_2xx: int = 0
+    http_3xx: int = 0
+    http_4xx: int = 0
+    http_5xx: int = 0
+    timeouts: int = 0
+    network_errors: int = 0
     load_test_duration_seconds: float = 0.0
     load_test_throughput_rps: float = 0.0
     status_codes: Dict[int, int] = field(default_factory=dict)
     latency_min_ms: float = 0.0
     latency_mean_ms: float = 0.0
     latency_p50_ms: float = 0.0
+    latency_p90_ms: float = 0.0
     latency_p95_ms: float = 0.0
     latency_p99_ms: float = 0.0
     latency_max_ms: float = 0.0
+    p95_sample_sufficient: bool = False
+    p99_sample_sufficient: bool = False
+    endpoint_metrics: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     errors: List[str] = field(default_factory=list)
 
 
@@ -160,6 +214,9 @@ def run_local_staging_validation(
         get_settings(reload=True)
         app = create_app()
 
+        # Isolate event provider to prevent outbound network calls during staging
+        app.dependency_overrides[get_event_providers] = lambda: [OfflineStagingEventProvider()]
+
         # Start Uvicorn ASGI server
         config = uvicorn.Config(app=app, host=host, port=port, log_level="warning")
         server = uvicorn.Server(config=config)
@@ -242,12 +299,12 @@ def run_local_staging_validation(
 
         latencies: List[float] = []
         status_counts: Dict[int, int] = {}
-        total_ok = 0
-        total_fail = 0
+        endpoint_stats: Dict[str, EndpointStats] = {}
 
-        def _worker(_: int) -> Tuple[int, float]:
+        def _worker(_: int) -> Tuple[str, int, float, bool]:
             import random
             m, p, data = random.choice(request_pool)
+            ep = p.split("?")[0]
             url = f"{base_url}{p}"
             t0 = time.perf_counter()
             try:
@@ -256,29 +313,61 @@ def run_local_staging_validation(
                 else:
                     r = requests.get(url, timeout=5.0)
                 dur = (time.perf_counter() - t0) * 1000
-                return (r.status_code, dur)
+                return (ep, r.status_code, dur, False)
+            except requests.exceptions.Timeout:
+                dur = (time.perf_counter() - t0) * 1000
+                return (ep, 0, dur, True)
             except Exception:
                 dur = (time.perf_counter() - t0) * 1000
-                return (0, dur)
+                return (ep, 0, dur, False)
 
         load_start = time.perf_counter()
         with ThreadPoolExecutor(max_workers=concurrency) as pool:
             futures = [pool.submit(_worker, i) for i in range(requests_count)]
             for fut in as_completed(futures):
-                sc, dur = fut.result()
+                ep, sc, dur, is_timeout = fut.result()
                 latencies.append(dur)
                 status_counts[sc] = status_counts.get(sc, 0) + 1
-                if 200 <= sc < 500:
-                    total_ok += 1
+
+                if ep not in endpoint_stats:
+                    endpoint_stats[ep] = EndpointStats(endpoint=ep)
+                ep_stat = endpoint_stats[ep]
+                ep_stat.total_requests += 1
+                ep_stat.latencies_ms.append(dur)
+
+                cat = classify_http_outcome(sc, is_timeout=is_timeout)
+                if cat == "2xx":
+                    report.http_2xx += 1
+                    ep_stat.http_2xx += 1
+                    report.load_test_successful_requests += 1
+                elif cat == "3xx":
+                    report.http_3xx += 1
+                    ep_stat.http_3xx += 1
+                    report.load_test_failed_requests += 1
+                elif cat == "4xx":
+                    report.http_4xx += 1
+                    ep_stat.http_4xx += 1
+                    report.load_test_failed_requests += 1
+                elif cat == "5xx":
+                    report.http_5xx += 1
+                    ep_stat.http_5xx += 1
+                    report.load_test_failed_requests += 1
+                elif cat == "timeout":
+                    report.timeouts += 1
+                    ep_stat.timeouts += 1
+                    report.load_test_failed_requests += 1
                 else:
-                    total_fail += 1
+                    report.network_errors += 1
+                    ep_stat.network_errors += 1
+                    report.load_test_failed_requests += 1
 
         load_duration = time.perf_counter() - load_start
         report.load_test_total_requests = requests_count
-        report.load_test_successful_requests = total_ok
-        report.load_test_failed_requests = total_fail
+        report.load_test_completed_requests = len(latencies)
         report.load_test_duration_seconds = round(load_duration, 3)
-        report.load_test_throughput_rps = round(requests_count / max(load_duration, 0.001), 2)
+        report.load_test_throughput_rps = round(
+            report.load_test_completed_requests / max(load_duration, 0.001), 2
+        )
         report.status_codes = status_counts
 
         if latencies:
@@ -287,9 +376,29 @@ def run_local_staging_validation(
             report.latency_min_ms = round(sorted_lat[0], 2)
             report.latency_max_ms = round(sorted_lat[-1], 2)
             report.latency_mean_ms = round(sum(sorted_lat) / n, 2)
-            report.latency_p50_ms = round(sorted_lat[int(round(0.50 * (n - 1)))], 2)
-            report.latency_p95_ms = round(sorted_lat[int(round(0.95 * (n - 1)))], 2)
-            report.latency_p99_ms = round(sorted_lat[int(round(0.99 * (n - 1)))], 2)
+            report.latency_p50_ms = compute_percentile(sorted_lat, 50.0)
+            report.latency_p90_ms = compute_percentile(sorted_lat, 90.0)
+            report.latency_p95_ms = compute_percentile(sorted_lat, 95.0)
+            report.latency_p99_ms = compute_percentile(sorted_lat, 99.0)
+            report.p95_sample_sufficient = (n >= 20)
+            report.p99_sample_sufficient = (n >= 100)
+
+        for ep_name, ep_stat in endpoint_stats.items():
+            ep_stat.compute()
+            report.endpoint_metrics[ep_name] = {
+                "total_requests": ep_stat.total_requests,
+                "http_2xx": ep_stat.http_2xx,
+                "errors": ep_stat.http_4xx + ep_stat.http_5xx + ep_stat.timeouts + ep_stat.network_errors,
+                "latency_min_ms": ep_stat.latency_min_ms,
+                "latency_mean_ms": ep_stat.latency_mean_ms,
+                "latency_p50_ms": ep_stat.latency_p50_ms,
+                "latency_p90_ms": ep_stat.latency_p90_ms,
+                "latency_p95_ms": ep_stat.latency_p95_ms,
+                "latency_p99_ms": ep_stat.latency_p99_ms,
+                "latency_max_ms": ep_stat.latency_max_ms,
+                "p95_sufficient": ep_stat.p95_sample_sufficient,
+                "p99_sufficient": ep_stat.p99_sample_sufficient,
+            }
 
     finally:
         # Shutdown Uvicorn server gracefully
@@ -342,7 +451,7 @@ def main() -> int:
     args = parser.parse_args()
 
     print("=" * 75)
-    print("LOCAL STAGING ENVIRONMENT VALIDATION (DAY 43)")
+    print("LOCAL STAGING ENVIRONMENT VALIDATION (DAY 44)")
     print("=" * 75)
     print(f"Target Host:       {args.host}")
     print(f"Target Port:       {args.port}")
@@ -371,18 +480,35 @@ def main() -> int:
     print("\n[LOCAL LOAD TEST METRICS]")
     print(f"  Duration:         {report.load_test_duration_seconds:.2f} s")
     print(f"  Throughput:       {report.load_test_throughput_rps:.2f} req/s")
-    print(f"  Requests Total:   {report.load_test_total_requests}")
-    print(f"  Success (non-5xx):{report.load_test_successful_requests}")
+    print(f"  Requests Total:   {report.load_test_total_requests} (completed: {report.load_test_completed_requests})")
+    print(f"  Successful (2xx): {report.http_2xx} ({report.http_2xx/max(report.load_test_completed_requests, 1)*100:.1f}%)")
     print(f"  Failed / Errors:  {report.load_test_failed_requests}")
+    print(f"    - HTTP 4xx:     {report.http_4xx}")
+    print(f"    - HTTP 5xx:     {report.http_5xx}")
+    print(f"    - Timeouts:     {report.timeouts}")
+    print(f"    - Net Errors:   {report.network_errors}")
     print(f"  Status Codes:     {report.status_codes}")
 
     print("\n[LATENCY DISTRIBUTION (ms)]")
     print(f"  Min:   {report.latency_min_ms:8.2f} ms")
     print(f"  Mean:  {report.latency_mean_ms:8.2f} ms")
     print(f"  p50:   {report.latency_p50_ms:8.2f} ms")
-    print(f"  p95:   {report.latency_p95_ms:8.2f} ms")
-    print(f"  p99:   {report.latency_p99_ms:8.2f} ms")
+    print(f"  p90:   {report.latency_p90_ms:8.2f} ms")
+    p95_note = "" if report.p95_sample_sufficient else " (sample < 20)"
+    p99_note = "" if report.p99_sample_sufficient else " (sample < 100)"
+    print(f"  p95:   {report.latency_p95_ms:8.2f} ms{p95_note}")
+    print(f"  p99:   {report.latency_p99_ms:8.2f} ms{p99_note}")
     print(f"  Max:   {report.latency_max_ms:8.2f} ms")
+
+    if report.endpoint_metrics:
+        print("\n[ENDPOINT LATENCY BREAKDOWN]")
+        print(f"  {'Endpoint':<22} {'Reqs':>6} {'2xx':>6} {'Errors':>8} {'p50(ms)':>10} {'p95(ms)':>10} {'Max(ms)':>10}")
+        print("  " + "-" * 72)
+        for ep_name, ep in sorted(report.endpoint_metrics.items()):
+            print(
+                f"  {ep_name:<22} {ep['total_requests']:>6d} {ep['http_2xx']:>6d} {ep['errors']:>8d} "
+                f"{ep['latency_p50_ms']:>10.2f} {ep['latency_p95_ms']:>10.2f} {ep['latency_max_ms']:>10.2f}"
+            )
 
     if report.errors:
         print("\n[ERRORS DETECTED]")

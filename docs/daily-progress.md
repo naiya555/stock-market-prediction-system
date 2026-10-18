@@ -4032,4 +4032,98 @@ Create a safe, reproducible local staging environment on Windows for the stock m
 ### Next Step
 Await provisioning of dedicated staging infrastructure, execute the multi-hour live staging soak test, and assemble final Phase 16 completion evaluation.
 
+---
+
+## Day 44 - Phase 16: Local Staging Performance Reliability & Failure-Handling Audit
+
+### Goal
+Investigate tail latency distribution from Day 43, validate soak-test metric calculation correctness, eliminate external network calls during local staging, implement per-endpoint latency tracking, add comprehensive failure-handling regression tests, and propose a controlled 10-minute sustained-load test with explicit local acceptance criteria. Keep Phase 16 marked strictly IN PROGRESS.
+
+### Work Completed
+1. **Tail Latency Root-Cause Analysis & Offline Event Isolation**:
+   - **Investigation:** Analyzed Day 43's latency distribution (p50: 23.15ms, p95: 1051.22ms, max: 1077.39ms).
+   - **Root Cause Confirmed:** The staging load profile included `GET /api/events?limit=5`. In the default configuration, `app/api/dependencies.py` instantiates `RBIEventProvider` and `SEBIEventProvider`, which make live outbound HTTPS network requests via `urllib.request.urlopen` to `https://rbi.org.in` and `https://www.sebi.gov.in`. Each outbound network request took ~1000ms over the public internet, contaminating overall staging metrics and violating the offline isolation rule.
+   - **Fix:** Implemented `OfflineStagingEventProvider` in [`scripts/run_local_staging.py`](file:///d:/Share_market_predictor/scripts/run_local_staging.py) injected via FastAPI `app.dependency_overrides[get_event_providers]`. This completely isolates local staging from external network round-trips while still validating data cleaning, deduplication, and Pydantic serialization.
+   - **Impact:** Mean latency dropped from 208.76ms to 30.73ms (7x faster); p95 latency dropped from 1051.22ms to 64.77ms (16x faster); throughput increased from 19.14 req/s to 119.64 req/s on local loopback.
+
+2. **Metrics Validation & Mathematical Precision (`scripts/staging_soak_test.py`, `scripts/run_local_staging.py`)**:
+   - **Linear Interpolation Percentiles:** Replaced naive rounding (`int(round(p * (n - 1)))`) with continuous linear interpolation (`compute_percentile(sorted_values, p)`), aligning with standard NumPy (`method='linear'`) and Excel PERCENTILE algorithms. Eliminates banker's rounding bias on small sample sizes.
+   - **p90 Percentile & Sample Stability Indicators:** Added calculation for `p90` alongside `p50`, `p95`, and `p99`. Added sample size stability indicators: flagged as unstable when $N < 10$ for p90, $N < 20$ for p95, and $N < 100$ for p99.
+   - **Strict Status Classification:** Implemented `classify_http_outcome(status_code, is_timeout)`. Categorizes requests strictly into `http_2xx`, `http_3xx`, `http_4xx` (client errors), `http_5xx` (server errors), `timeouts`, and `network_errors`. Fixed defect where HTTP 4xx client errors were previously lumped into successful requests (`status_code < 500`).
+   - **Accurate Throughput Denominator:** Fixed throughput calculation on partial or interrupted runs by dividing completed requests (`len(latencies_ms)`) rather than scheduled total requests.
+   - **Endpoint-Level Latency Tracking:** Added `EndpointStats` and `endpoint_metrics` dictionary breaking down request count, status codes, and latency distributions (min, mean, p50, p90, p95, max) per individual route (`/api/health`, `/`, `/api/history`, `/api/events`).
+
+3. **Eight Failure-Handling Scenarios Tested ([`tests/test_local_staging.py`](file:///d:/Share_market_predictor/tests/test_local_staging.py), [`tests/test_staging_soak.py`](file:///d:/Share_market_predictor/tests/test_staging_soak.py))**:
+   - Scenario 1 (Unreachable Endpoint / Connection Refused): Verified client handles connection refused on unassigned port (`127.0.0.1:59997`) cleanly, returning status 0, `error_type="network_error"`, without crashing.
+   - Scenario 2 (Request Timeout): Verified client explicitly catches `requests.exceptions.Timeout`, classifying it as `is_timeout=True` and `error_type="timeout"`.
+   - Scenario 3 (HTTP 5xx Server Error): Verified `execute_request_external` and `run_soak_simulation` classify HTTP 500/503 responses under `http_5xx` and `failed_requests`.
+   - Scenario 4 (Graceful Shutdown While Idle): Verified Uvicorn server started on loopback terminates cleanly and joins server thread within 3 seconds when `server.should_exit = True` is signaled without pending traffic.
+   - Scenario 5 (Graceful Shutdown After Request): Verified server handles HTTP traffic, completes response, and shuts down cleanly upon exit signal.
+   - Scenario 6 (Temporary Directory Cleanup on Success & Failure): Verified temporary staging directories (`tempfile.mkdtemp()`) are cleaned up completely on both normal completion and early aborts.
+   - Scenario 7 (Development DB & Active Models Preservation): Verified that development database (`data/predictions.db`) and active models (`models/*`) remain 100% untouched with matching SHA-256 and metadata fingerprints even under simulated runtime aborts.
+   - Scenario 8 (Occupied Staging Port Detection): Verified runner detects an already-bound port (`socket.bind`), records an error in `report.errors`, and aborts cleanly without unhandled `OSError: [Errno 10048]`.
+
+4. **Proposed 10-Minute Sustained-Load Test Plan (Presented for Review)**:
+   - **Target Host:** `127.0.0.1` (loopback only, port `8899`)
+   - **Target Duration:** 10 minutes (600 seconds)
+   - **Concurrency:** 4 worker threads
+   - **Route Mix:** Verified read-only endpoints only (`GET /api/health` 40%, `GET /` 20%, `GET /api/history?limit=10` 20%, `GET /api/events?limit=5` 20% with offline mock provider)
+   - **Estimated Throughput & Volume:** ~100-120 req/s, resulting in ~60,000 to ~72,000 total requests
+   - **Estimated Resource Impact:** ~10-15% of 1 CPU core, ~60-80 MB memory, 0 bytes development database write, 0 bytes external network transfer
+   - **Explicit Local Staging Acceptance Criteria:**
+     - Success rate (HTTP 2xx): $\ge 99.9\%$
+     - Server error rate (HTTP 5xx): $0.0\%$
+     - Network timeouts / socket drops: 0
+     - Latency (local loopback): p50 $< 50\text{ ms}$, p95 $< 100\text{ ms}$
+     - Non-mutation: Development DB and active models size/mtime change $= 0$ bytes
+
+### Validation Results
+- **Local Staging Validation Runner (Day 44 Execution):**
+  ```powershell
+  & .\.venv\Scripts\python scripts/run_local_staging.py --port 8899 --requests 50 --concurrency 4
+  ```
+  *Result:* All 8 verification checklist items PASSED.
+  - Total requests: 50 (completed: 50)
+  - Successful responses (HTTP 2xx): 50 (100.0%)
+  - Non-2xx / Errors: 0 (HTTP 4xx: 0, HTTP 5xx: 0, Timeouts: 0, Network Errors: 0)
+  - Test duration: 0.42s
+  - Throughput: 119.64 req/s (vs 19.14 req/s in Day 43)
+  - Latency (local staging): Min 6.56ms | Mean 30.73ms | p50 28.62ms | p90 53.01ms | p95 64.77ms | p99 85.26ms | Max 90.93ms
+  - Per-Endpoint Breakdown:
+    - `GET /`: 9 reqs, 9x 2xx, 0 errors, p50 11.52ms, p95 21.53ms, max 24.48ms
+    - `GET /api/events`: 12 reqs, 12x 2xx, 0 errors, p50 17.59ms, p95 26.51ms, max 29.78ms (down from ~1050ms)
+    - `GET /api/health`: 18 reqs, 18x 2xx, 0 errors, p50 38.70ms, p95 70.14ms, max 90.93ms
+    - `GET /api/history`: 11 reqs, 11x 2xx, 0 errors, p50 32.73ms, p95 65.56ms, max 79.35ms
+  - Dev DB & Models: 0 bytes altered, identical fingerprints before and after.
+
+- **Focused Test Suites:**
+  - `tests/test_staging_soak.py`: **9 passed**, 1 warning in 9.83s
+  - `tests/test_local_staging.py`: **10 passed** in 13.17s
+  - `tests/test_deployment_runbook.py`: **4 passed**, 1 warning in 8.88s
+
+- **Full Automated Test Suite:**
+  ```powershell
+  & .\.venv\Scripts\python -m pytest
+  ```
+  *Result:* **606 passed**, 0 failed, 1 warning (Starlette testclient deprecation) in 40.38s across 45 test files (expanded from 595 baseline, +11 new deterministic tests).
+
+- **Dependency Integrity:**
+  ```powershell
+  & .\.venv\Scripts\python -m pip check
+  ```
+  *Result:* `No broken requirements found.`
+
+### Performance Interpretation & Boundaries
+- **Observed Measurements:** Local loopback HTTP latency averages ~30ms with p95 < 65ms when external network calls are properly isolated.
+- **Proposed Acceptance Criteria:** Set at $\ge 99.9\%$ 2xx, 0% 5xx, 0 timeouts, p50 $< 50\text{ms}$, p95 $< 100\text{ms}$ for local staging.
+- **Environmental Limitations:** Single-host loopback does not reflect cross-country internet transit latency, TLS handshakes, or proxy queueing under high concurrent user load.
+- **No Premature Optimization:** Local API server performance is healthy and bottleneck-free; no production application changes were required other than providing test-time event provider isolation.
+
+### Phase 16 Status
+**Phase 16 remains strictly IN PROGRESS.** Local performance reliability and failure-handling audits validate local loopback behavior and metric accuracy, but a genuine multi-hour soak test on production-equivalent external infrastructure remains required for milestone sign-off.
+
+### Next Step
+Await authorization to execute the 10-minute local sustained-load test, review external staging provisioning, and prepare final Phase 16 evaluation.
+
+
 

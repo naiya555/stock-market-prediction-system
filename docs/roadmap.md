@@ -171,7 +171,7 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Atomic promotion protocol copying candidate to active path (`models/{model}_direction.*`) and preserving active models 100% on any gate failure.
   - SQLite model release persistence in `model_releases` table tracking version history, cutoffs, metrics, and gate results.
 
-### Phase 16: Final Testing & Evaluation (In Progress - Day 43)
+### Phase 16: Final Testing & Evaluation (In Progress - Day 44)
 - Comprehensive audit of retraining workflow and model release management (Day 39 complete).
 - Implementation of Gate 0 (Chronological Integrity Gate) eliminating look-ahead bias and inverted cutoffs (ADR 07).
 - Transactional promotion protocol with mandatory archiving, atomic staging (`os.replace`), and automatic rollback from archive on SQLite/filesystem failure.
@@ -198,7 +198,15 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Validated 8-point production checklist (loopback isolation, startup, `/api/health`, defensive headers, OpenAPI 404 suppression, smoke tests, zero dev DB mutation, zero active model mutation).
   - Executed controlled local load test (50 requests, concurrency 4, 100% success, 19.14 req/s, p50 23.15ms).
   - Added automated test suite for local staging runner (`tests/test_local_staging.py`).
+- Local staging performance reliability & failure-handling audit (Day 44 complete):
+  - Isolated tail latency root cause (external RSS HTTP calls in `/api/events`) and implemented `OfflineStagingEventProvider` via `dependency_overrides`.
+  - Upgraded percentile math to standard linear interpolation (`compute_percentile`), added `p90`, and added sample size sufficiency indicators.
+  - Added strict HTTP 2xx success classification (`classify_http_outcome`) and accurate partial-run throughput denominators.
+  - Implemented per-endpoint latency breakdown tracking (`EndpointStats`) across `/api/health`, `/`, `/api/history`, and `/api/events`.
+  - Added automated test suite covering 8 failure-handling scenarios (unreachable port, timeout, 5xx, idle shutdown, request shutdown, tempdir cleanup, DB/models preservation, occupied port).
+  - Formulated proposed 10-minute sustained-load test plan with explicit local acceptance criteria for user approval.
 - Remaining Phase 16 acceptance criteria:
   - Multi-hour soak testing on dedicated production-equivalent staging infrastructure during live exchange market hours once host cluster is provisioned.
   - Final Phase 16 completion and sign-off review.
+
 
