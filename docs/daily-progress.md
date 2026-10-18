@@ -3939,3 +3939,97 @@ Assess existing infrastructure for staging deployment, validate deployment runbo
 ### Next Step
 Await provisioning of dedicated staging infrastructure, execute the 2-hour live staging soak test, and assemble final Phase 16 completion evaluation.
 
+---
+
+## Day 43 - Phase 16: Local Staging Environment & Production-Style Validation
+
+### Goal
+Create a safe, reproducible local staging environment on Windows for the stock market prediction application. Validate production-style startup, configuration, health checks, telemetry, and HTTP behavior without spending money, provisioning external resources, exposing the application publicly, or mutating development database and active model artifacts. Keep Phase 16 marked strictly IN PROGRESS until a real multi-hour soak test passes on production-equivalent staging infrastructure.
+
+### Work Completed
+1. **Isolated Local Staging Launcher (`scripts/run_local_staging.py`)**:
+   - Implemented an automated staging runner enforcing strict loopback binding policy (`127.0.0.1` / `localhost`). Host values exposing external network interfaces (e.g., `0.0.0.0`, LAN IPs) are rejected immediately with `ValueError`.
+   - Dedicated local port selection (default `8899`) with pre-flight TCP socket availability verification.
+   - Isolated ephemeral storage: Sets `APP_DATA_DIR` and `APP_MODEL_DIR` to temporary directories (`tempfile.mkdtemp()`).
+   - Read-only model artifact staging: Safe temporary copies of existing production models (`xgboost_direction.*`, `lightgbm_direction.*`) are staged into the temporary model directory. The real `models/` directory is never modified or used as a writable staging target.
+   - Production configuration hardening: Enforces `APP_ENV=production`, `APP_DEBUG=false`, and explicit CORS origins (`http://127.0.0.1:8899,https://staging.local`), verifying that wildcard CORS (`*`) and insecure non-localhost origins remain rejected.
+   - Non-mutation verification guards: Calculates cryptographic SHA-256 and file metadata fingerprints (`size`, `mtime`) for `data/predictions.db` and active models in `models/` before and after execution to empirically prove zero side-effects or state pollution.
+
+2. **Eight-Point Production-Style Validation Protocol**:
+   - Check 1: Loopback isolation verified (bound strictly to `127.0.0.1`).
+   - Check 2: Clean Uvicorn startup with temporary database and model storage.
+   - Check 3: Health check (`GET /api/health`) responds HTTP 200 with JSON payload (`{"status": "healthy"}`).
+   - Check 4: Defensive OWASP security headers present on responses (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`, `X-Process-Time-Ms`).
+   - Check 5: Production OpenAPI suppression verified (interactive `/docs`, `/redoc`, and `/openapi.json` return HTTP 404).
+   - Check 6: Safe HTTP smoke tests executed across read-only endpoints (`/`, `/api/events`, `/api/history`) without external provider calls or DB writes.
+   - Check 7: Development database non-mutation verified (0 bytes changed, exact SHA-256 and timestamp match).
+   - Check 8: Active model artifacts non-mutation verified (0 files altered, created, or deleted).
+
+3. **Controlled Local Load Test**:
+   - Executed a controlled 50-request, concurrency-4 load test against local staging loopback socket (`http://127.0.0.1:8899`).
+   - Metrics captured: 100% success rate (50 HTTP 200, 0 failures, 0 timeouts), duration 2.61s, throughput 19.14 req/s, p50 latency 23.15ms, p95 latency 1051.22ms, max latency 1077.39ms. All metrics explicitly labeled as LOCAL STAGING results.
+   - Clean shutdown: Uvicorn background server terminated gracefully and temporary staging files cleaned up.
+
+4. **Automated Unit & Regression Tests (`tests/test_local_staging.py`)**:
+   - Added 4 unit and integration tests:
+     1. `test_loopback_binding_restriction`: verifies `run_local_staging_validation(host="0.0.0.0")` and `192.168.1.100` are rejected with `ValueError`.
+     2. `test_is_port_available_logic`: verifies port availability detection for both free high ports and occupied sockets.
+     3. `test_dev_db_fingerprint`: verifies database fingerprinting logic for missing and existing database paths.
+     4. `test_local_staging_lifecycle_and_non_mutation`: launches local staging server on isolated port 8897 with a temporary SQLite database, runs 10 requests, verifies 100% success, and asserts development database remains unmutated.
+
+### Validation Results
+- **Local Staging Validation Runner:**
+  ```powershell
+  & .\.venv\Scripts\python scripts/run_local_staging.py --port 8899 --requests 50 --concurrency 4
+  ```
+  *Result:* All 8 verification checklist items PASSED.
+  - Total requests: 50
+  - Successful responses (HTTP 200): 50 (100.0%)
+  - Non-2xx responses: 0 (0.0%)
+  - 5xx responses: 0 (0.0%)
+  - Timeouts and network errors: 0
+  - Test duration: 2.61s
+  - Throughput: 19.14 req/s
+  - Latency (local staging): Min 13.91ms | Mean 208.76ms | p50 23.15ms | p90 985.34ms | p95 1051.22ms | p99 1077.39ms | Max 1077.39ms
+  - Development DB mutation: 0 bytes altered (fingerprint identical before and after).
+  - Active model mutation: 0 files altered.
+- **Focused Local Staging Test Suite:**
+  ```powershell
+  & .\.venv\Scripts\python -m pytest tests/test_local_staging.py -v
+  ```
+  *Result:* **4 passed**, 1 warning in 9.51s.
+- **Dependency Integrity:**
+  ```powershell
+  & .\.venv\Scripts\python -m pip check
+  ```
+  *Result:* `No broken requirements found.`
+- **Full Automated Test Suite:**
+  ```powershell
+  & .\.venv\Scripts\python -m pytest
+  ```
+  *Result:* **595 passed**, 0 failed, 1 warning (Starlette testclient deprecation) in 39.77s across 45 test files (expanded from 591 baseline).
+
+### Local Staging Architecture & Isolation Guarantees
+- **Loopback Enforcement:** Binds strictly to `127.0.0.1`, guaranteeing that the test server cannot be accessed from the local LAN or the public internet.
+- **Data Isolation:** All database reads and writes during staging are redirected to a temporary SQLite database (`tempfile.mkdtemp()`), leaving `data/predictions.db` completely untouched.
+- **Model Isolation:** Active models in `models/` are copied to a temporary staging folder in read-only fashion. No candidate promotions or retraining workflows are invoked.
+- **Safe Smoke Routes:** Smoke requests target idempotent read-only endpoints (`/api/health`, `/`, `/api/events`, `/api/history`). External Yahoo Finance quote retrieval is bypassed or skipped during load generation.
+
+### Known Limitations
+- Local staging runs on a local Windows loopback socket (`127.0.0.1:8899`) and does NOT evaluate external TLS 1.3 termination, public DNS propagation, reverse proxy buffering (Nginx/Caddy), firewall rules, or cloud provider ingress.
+- Latency and throughput figures represent single-node loopback performance on a local workstation, not multi-user cloud performance.
+- Local tests do not substitute for sustained, multi-hour continuous soak traffic during active Indian market trading hours (09:15 - 15:30 IST).
+
+### Exact Remaining Prerequisites for External Staging
+1. Provisioning of a dedicated Linux staging host or container instance (Ubuntu 22.04 LTS, 4 vCPU, 16GB RAM recommended for Ollama Gemma 3 12B).
+2. Domain / DNS record configuration pointing to the staging host with TLS 1.3 certificate (e.g., Let's Encrypt / ACME).
+3. Reverse proxy deployment (Nginx) configured with production security headers, request rate limiting, and backend proxying to Uvicorn.
+4. Formal execution and evidence capture of the required multi-hour soak test (`scripts/staging_soak_test.py`) with continuous traffic under market conditions.
+
+### Phase 16 Status
+**Phase 16 remains strictly IN PROGRESS.** Local staging validation proves reproducible local startup, configuration hardening, telemetry, and isolation, but does not satisfy the milestone criteria of a genuine production-equivalent staging soak test.
+
+### Next Step
+Await provisioning of dedicated staging infrastructure, execute the multi-hour live staging soak test, and assemble final Phase 16 completion evaluation.
+
+
