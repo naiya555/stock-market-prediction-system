@@ -560,3 +560,169 @@ class PredictionRepository:
                     rec["raw_result"] = None
             records.append(rec)
         return records
+
+    def save_model_release(
+        self,
+        release_id: str,
+        model_name: str,
+        model_version: str,
+        symbol: str,
+        status: str,
+        training_sample_count: int,
+        evaluation_sample_count: int,
+        training_cutoff_date: str,
+        evaluation_cutoff_date: str,
+        metrics: Dict[str, Any],
+        gates: List[Dict[str, Any]],
+        artifact_path: str,
+        rejection_reason: Optional[str] = None,
+        is_active: bool = False,
+    ) -> str:
+        """Persist a model release candidate and its validation audit record."""
+        now_iso = datetime.now(timezone.utc).isoformat()
+        metrics_json = json.dumps(metrics, default=str)
+        gates_json = json.dumps(gates, default=str)
+
+        sql = """
+        INSERT INTO model_releases (
+            release_id, model_name, model_version, symbol, status,
+            is_active, training_sample_count, evaluation_sample_count,
+            training_cutoff_date, evaluation_cutoff_date, metrics_json,
+            gates_json, rejection_reason, artifact_path, created_at, promoted_at
+        ) VALUES (
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        );
+        """
+        if is_active:
+            self._conn.execute(
+                "UPDATE model_releases SET is_active = 0 WHERE model_name = ?;",
+                (model_name.strip().lower(),),
+            )
+
+        promoted_at = now_iso if is_active else None
+        self._conn.execute(
+            sql,
+            (
+                release_id,
+                model_name.strip().lower(),
+                model_version,
+                symbol.strip().upper(),
+                status,
+                1 if is_active else 0,
+                training_sample_count,
+                evaluation_sample_count,
+                training_cutoff_date,
+                evaluation_cutoff_date,
+                metrics_json,
+                gates_json,
+                rejection_reason,
+                str(artifact_path),
+                now_iso,
+                promoted_at,
+            ),
+        )
+        self._conn.commit()
+        return release_id
+
+    def get_model_release(self, release_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve a model release by its unique release_id."""
+        cursor = self._conn.execute(
+            "SELECT * FROM model_releases WHERE release_id = ?;",
+            (release_id,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        rec = dict(row)
+        if rec.get("metrics_json"):
+            try:
+                rec["metrics"] = json.loads(rec["metrics_json"])
+            except Exception:
+                rec["metrics"] = {}
+        if rec.get("gates_json"):
+            try:
+                rec["gates"] = json.loads(rec["gates_json"])
+            except Exception:
+                rec["gates"] = []
+        return rec
+
+    def get_active_model_release(self, model_name: str) -> Optional[Dict[str, Any]]:
+        """Retrieve the currently active model release for a model architecture."""
+        cursor = self._conn.execute(
+            "SELECT * FROM model_releases WHERE model_name = ? AND is_active = 1 ORDER BY id DESC LIMIT 1;",
+            (model_name.strip().lower(),),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        rec = dict(row)
+        if rec.get("metrics_json"):
+            try:
+                rec["metrics"] = json.loads(rec["metrics_json"])
+            except Exception:
+                rec["metrics"] = {}
+        if rec.get("gates_json"):
+            try:
+                rec["gates"] = json.loads(rec["gates_json"])
+            except Exception:
+                rec["gates"] = []
+        return rec
+
+    def list_model_releases(
+        self,
+        model_name: Optional[str] = None,
+        status: Optional[str] = None,
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """List model releases ordered by creation time descending."""
+        query = "SELECT * FROM model_releases WHERE 1=1"
+        params: List[Any] = []
+        if model_name:
+            query += " AND model_name = ?"
+            params.append(model_name.strip().lower())
+        if status:
+            query += " AND status = ?"
+            params.append(status.strip().upper())
+        query += " ORDER BY id DESC LIMIT ?;"
+        params.append(limit)
+
+        cursor = self._conn.execute(query, params)
+        releases = []
+        for row in cursor.fetchall():
+            rec = dict(row)
+            if rec.get("metrics_json"):
+                try:
+                    rec["metrics"] = json.loads(rec["metrics_json"])
+                except Exception:
+                    rec["metrics"] = {}
+            if rec.get("gates_json"):
+                try:
+                    rec["gates"] = json.loads(rec["gates_json"])
+                except Exception:
+                    rec["gates"] = []
+            releases.append(rec)
+        return releases
+
+    def promote_model_release(self, release_id: str) -> None:
+        """Atomically promote a candidate model release to active status.
+
+        Deactivates any currently active release for the same model_name and activates
+        the promoted release with a recorded promotion timestamp.
+        """
+        rec = self.get_model_release(release_id)
+        if rec is None:
+            raise ValueError(f"Model release '{release_id}' does not exist.")
+
+        model_name = rec["model_name"]
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        # Execute in transaction
+        self._conn.execute(
+            "UPDATE model_releases SET is_active = 0 WHERE model_name = ?;",
+            (model_name,),
+        )
+        self._conn.execute(
+            "UPDATE model_releases SET is_active = 1, status = 'PROMOTED', promoted_at = ? WHERE release_id = ?;",
+            (now_iso, release_id),
+        )
+        self._conn.commit()

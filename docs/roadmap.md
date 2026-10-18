@@ -161,11 +161,15 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 - Integrate verified quote context into inference (`QuoteContext`, `PredictionService._fetch_quote_context`) and ensemble target range anchoring (`EnsembleService.synthesize`).
 - End-to-end pipeline validation, temporal isolation (zero look-ahead bias), quote observability, and sensitive error message sanitization (Day 36 complete).
 
-### Phase 15: Model Comparison & Improvement (In Progress - Day 37)
+### Phase 15: Model Comparison & Improvement (Complete - Day 37-38)
 - Comparative evaluation analytics and dashboard evaluating Python ML vs. LLM vs. Combined Ensemble performance side-by-side (`app/history/comparison.py`, `GET /api/history/compare`, Day 37 complete).
 - Pairwise matched session alignment, divergence, win-loss superiority, Brier score probability calibration, and ensemble lift tracking.
 - Interactive side-by-side model comparison dashboard in prediction history web UI.
-- Implement controlled, gated model retraining workflows with version tracking (ADR 10 - Next Objective).
+- Controlled, gated model retraining workflows with version tracking and formal safety gates (ADR 10, Day 38 complete):
+  - File system quarantine: Candidate models quarantined in `models/candidates/` and active models archived to `models/archive/`.
+  - Five formal validation gates: Sample Sufficiency, Class Balance, Baseline Superiority, Minimum Out-of-Sample Performance (50%), and Active Model Non-Degradation (margin 2%).
+  - Atomic promotion protocol copying candidate to active path (`models/{model}_direction.*`) and preserving active models 100% on any gate failure.
+  - SQLite model release persistence in `model_releases` table tracking version history, cutoffs, metrics, and gate results.
 
 ### Phase 16: Final Testing & Evaluation
 - End-to-end integration testing and robustness verification under adverse market regimes.

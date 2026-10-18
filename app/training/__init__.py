@@ -35,6 +35,12 @@ from app.training.error_analysis import (
     render_feature_importance_comparison_table,
     render_fold_error_table,
 )
+from app.training.retraining import (
+    ModelReleaseStatus,
+    ModelRetrainer,
+    RetrainingResult,
+    ValidationGateResult,
+)
 from app.training.walk_forward import (
     WalkForwardFoldEvaluation,
     WalkForwardFoldSplit,
@@ -94,5 +100,9 @@ __all__ = [
     "render_fold_error_table",
     "render_feature_importance_comparison_table",
     "render_collinearity_table",
+    "ModelReleaseStatus",
+    "ValidationGateResult",
+    "RetrainingResult",
+    "ModelRetrainer",
 ]
 

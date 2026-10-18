@@ -76,6 +76,27 @@ CREATE TABLE IF NOT EXISTS actuals (
     FOREIGN KEY (symbol) REFERENCES stocks(symbol) ON DELETE RESTRICT
 );
 
+-- 5. Model Releases & Gated Retraining Audit Table (Phase 15 ADR 10)
+CREATE TABLE IF NOT EXISTS model_releases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    release_id TEXT UNIQUE NOT NULL,
+    model_name TEXT NOT NULL,
+    model_version TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    status TEXT NOT NULL,
+    is_active INTEGER NOT NULL DEFAULT 0,
+    training_sample_count INTEGER NOT NULL,
+    evaluation_sample_count INTEGER NOT NULL,
+    training_cutoff_date TEXT NOT NULL,
+    evaluation_cutoff_date TEXT NOT NULL,
+    metrics_json TEXT NOT NULL,
+    gates_json TEXT NOT NULL,
+    rejection_reason TEXT,
+    artifact_path TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    promoted_at TEXT
+);
+
 -- Performance Indexes
 CREATE INDEX IF NOT EXISTS idx_predictions_symbol_timestamp 
     ON predictions (symbol, prediction_timestamp DESC);
@@ -88,6 +109,12 @@ CREATE INDEX IF NOT EXISTS idx_predictions_latest_bar
 
 CREATE INDEX IF NOT EXISTS idx_actuals_symbol_date 
     ON actuals (symbol, target_date DESC);
+
+CREATE INDEX IF NOT EXISTS idx_model_releases_name_status 
+    ON model_releases (model_name, status);
+
+CREATE INDEX IF NOT EXISTS idx_model_releases_active 
+    ON model_releases (model_name, is_active);
 
 -- Immutability Enforcement Triggers
 CREATE TRIGGER IF NOT EXISTS trg_prevent_prediction_update

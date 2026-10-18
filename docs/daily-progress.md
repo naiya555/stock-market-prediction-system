@@ -3604,3 +3604,83 @@ Implement the first core objective of Phase 15 from `docs/roadmap.md`: create co
 ### Next Step
 Implement Phase 15's second milestone: controlled, gated model retraining workflow with explicit out-of-sample validation gates and version tracking (ADR 10).
 
+---
+
+## Day 38 - Phase 15: Controlled Model Retraining & Version Tracking
+
+### Goal
+Implement controlled, gated model retraining workflows with version tracking and formal safety gates adhering strictly to ADR 10 (Controlled, Gated Model Retraining):
+- Ensure retraining never starts automatically from an unverified, empty, or insufficient dataset.
+- Enforce strict chronological separation and embargo between training and out-of-sample evaluation data.
+- Prevent unverified candidates from overwriting active production models before passing all validation gates.
+- Preserve existing active production models untouched whenever candidate training or validation fails.
+- Persist comprehensive model release audit trails (versions, cutoffs, metrics, and gate results) in SQLite.
+- Maintain zero-fabrication guarantees, no automatic live trading, and no unsupervised online training loops.
+
+### Work Completed
+1. **Database Schema Extension (`app/database/schema.py`)**:
+   - Added `model_releases` table to SQLite schema with complete audit columns:
+     - `release_id` (UUID primary key text), `model_name` (e.g., `xgboost`, `lightgbm`), `model_version`, `symbol`.
+     - `status` (`CANDIDATE`, `PROMOTED`, `REJECTED`, `ARCHIVED`), `is_active` (boolean flag 0 or 1).
+     - `training_sample_count`, `evaluation_sample_count`, `training_cutoff_date`, `evaluation_cutoff_date`.
+     - `metrics_json` (serialized accuracy, precision, recall, F1 for UP/DOWN classes, Brier calibration, baselines).
+     - `gates_json` (serialized individual gate pass/fail status, observed values, and thresholds).
+     - `rejection_reason` (detailed diagnostic explanation upon gate failure), `artifact_path`, `created_at`, `promoted_at`.
+   - Added composite indexes `idx_model_releases_name_status` and `idx_model_releases_active` for fast lookups.
+
+2. **Repository Layer Extension (`app/database/repository.py`)**:
+   - Implemented `save_model_release()`: records release audit entries, automatically deactivating prior active models when a new active release is inserted.
+   - Implemented `get_model_release(release_id)`: retrieves full release records with parsed JSON metrics and gates.
+   - Implemented `get_active_model_release(model_name)`: queries the currently active production release.
+   - Implemented `list_model_releases(model_name, status, limit)`: retrieves release history ordered chronologically descending.
+   - Implemented `promote_model_release(release_id)`: atomic transactional promotion transitioning previous models to inactive and marking the new release as `PROMOTED` with `promoted_at` timestamp.
+
+3. **Controlled Retraining & Validation Gating Service (`app/training/retraining.py`, `app/training/__init__.py`)**:
+   - Implemented dataclasses `ModelReleaseStatus`, `ValidationGateResult`, and `RetrainingResult`.
+   - Implemented `ModelRetrainer`:
+     - File system quarantine: Candidate models are saved strictly to `models/candidates/` and never directly to active paths.
+     - Five formal safety gates evaluated on out-of-sample validation partitions:
+       1. **Sample Sufficiency Gate**: requires minimum 50 training samples and 15 validation samples.
+       2. **Class Balance Gate**: requires non-degenerate binary representation (`{0, 1}`) in both training and evaluation partitions.
+       3. **Baseline Superiority Gate**: candidate directional accuracy must meet or exceed majority-class baseline (within 0.01 margin).
+       4. **Minimum Performance Gate**: candidate out-of-sample directional accuracy must meet or exceed 50.0%.
+       5. **Active Model Non-Degradation Gate**: candidate accuracy must not degrade active production model accuracy by more than 0.02 (2.0%).
+     - Atomic promotion protocol:
+       - Archives existing active model to `models/archive/{model}_archived_{timestamp}.*`.
+       - Copies verified candidate to canonical production path (`models/{model}_direction.*`).
+       - Updates release state in database to `PROMOTED` and active.
+     - Rejection protocol:
+       - On any gate failure or invalid data, candidate is marked `REJECTED` with specific failure reason.
+       - Production active model is left 100% untouched and preserved.
+
+4. **Automated Unit & Integration Test Suite (`tests/test_model_retraining.py`)**:
+   - Added 7 comprehensive test cases:
+     1. `test_brier_score_computation`: tests probability error calibration under perfect, inverted, empty, and length-mismatched conditions.
+     2. `test_retraining_success_and_atomic_promotion`: verifies successful candidate training, all gates passing, artifact promotion, active path update, and repository tracking.
+     3. `test_retraining_rejection_on_insufficient_samples`: verifies Gate 1 failure, candidate rejection, and active model preservation when sample size is below threshold.
+     4. `test_retraining_rejection_on_degenerate_class_distribution`: verifies Gate 2 failure when training set lacks class diversity.
+     5. `test_active_model_preserved_when_candidate_degrades_performance`: verifies Gate 5 rejection and byte-for-byte active model preservation when a new candidate performs worse than the active model.
+     6. `test_empty_dataset_handling`: verifies clean handling and rejection of empty feature sets without unhandled crashes.
+     7. `test_repository_model_release_lifecycle`: verifies release saving, deactivation of prior active models, and querying history.
+
+### Validation Results
+- **Focused Retraining Tests:**
+  ```powershell
+  & .\.venv\Scripts\python -m pytest tests/test_model_retraining.py -v
+  ```
+  *Result:* **7 passed** in 6.00s.
+- **Full Automated Test Suite:**
+  ```powershell
+  & .\.venv\Scripts\python -m pytest
+  ```
+  *Result:* **566 passed**, 0 failed, 1 warning (Starlette testclient deprecation) in 23.10s across 40 test files (expanded from 559 baseline).
+
+### Remaining Limitations
+- Retraining triggers are manual or programmatically scheduled through external workflows; continuous unsupervised retraining loops remain strictly prohibited per ADR 10.
+- Out-of-sample validation gates evaluate directional accuracy and Brier calibration on historical sessions; real-world market regime shifts, execution slippage, and liquidity changes cannot be simulated by offline metrics alone.
+- Passing automated tests validate deterministic gating contracts and software integrity, not financial market profitability or production readiness under real trading capital.
+
+### Next Step
+Proceed to Phase 16: Final Testing & Evaluation (end-to-end multi-regime robustness testing, security audit, and deployment readiness review).
+
+
