@@ -9,6 +9,7 @@ from app.prediction.contract import (
     PredictionRequest,
     PredictionResult,
     PredictionStatus,
+    QuoteContext,
 )
 from app.prediction.ensemble import (
     ENSEMBLE_DISCLAIMER,
@@ -54,6 +55,7 @@ __all__ = [
     "PredictionRequest",
     "PredictionDataQuality",
     "PredictionResult",
+    "QuoteContext",
     "PredictionService",
     "train_and_persist_baseline_model",
     "MIN_WARMUP_BARS",

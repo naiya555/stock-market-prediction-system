@@ -5,7 +5,7 @@ acquisition via YFinanceProvider, freshness metrics, delay disclosures, and zero
 """
 
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -153,14 +153,78 @@ def verify_error_handling_and_zero_fabrication() -> None:
     print(f" [PASS] fetch_live_quote('INFY.NS') succeeded via pipeline: ₹ {quote.price:,.2f}")
 
 
+def verify_quote_inference_integration() -> None:
+    """Verify live quote integration into PredictionService inference and Ensemble synthesis."""
+    print("\n" + "=" * 70)
+    print("STEP 4: Verifying Live Quote Integration into Prediction Inference")
+    print("=" * 70)
+
+    import numpy as np
+    import pandas as pd
+    from app.prediction.contract import PredictionRequest, PredictionStatus
+    from app.prediction.ensemble import EnsembleService
+    from app.prediction.service import PredictionService
+    from app.training.feature_matrix import FEATURE_COLUMNS
+    from app.training.xgboost_classifier import XGBoostConfig, XGBoostDirectionClassifier
+
+    provider = YFinanceProvider()
+    service = PredictionService(provider=provider)
+
+    # Register in-memory fitted model
+    X_syn = pd.DataFrame(np.random.randn(50, len(FEATURE_COLUMNS)), columns=FEATURE_COLUMNS)
+    y_syn = pd.Series((X_syn["close"] > 0).astype(int))
+    xgb_clf = XGBoostDirectionClassifier(XGBoostConfig(n_estimators=3, max_depth=2))
+    xgb_clf.fit(X_syn, y_syn)
+    service.register_model("xgboost", xgb_clf)
+
+    # 1. Live inference on real ticker (RELIANCE.NS)
+    req = PredictionRequest(symbol="RELIANCE.NS", model_name="xgboost")
+    res = service.predict(req)
+    assert res.status == PredictionStatus.SUCCESS
+    assert res.quote_context is not None
+    assert res.quote_context.last_price is not None and res.quote_context.last_price > 0
+    assert res.quote_context.price_type == "LAST_TRADED_PRICE"
+    assert res.quote_context.is_delayed is True
+    print(" [PASS] Live inference for RELIANCE succeeded:")
+    print(f"        - Observed Quote:      ₹ {res.quote_context.last_price:,.2f} ({res.quote_context.freshness_status}, session={res.quote_context.session_state})")
+    print(f"        - Predicted Direction: {res.predicted_direction} (P(UP)={res.probability_up:.2%})")
+    print(f"        - Delay Disclosure:    {res.quote_context.delay_minutes} min delay via {res.quote_context.source}")
+    print(f"        - Clear Distinction:   Price type is '{res.quote_context.price_type}' (NOT predicted open/close)")
+
+    # 2. Historical isolation check (look-ahead bias prevention)
+    hist_date = datetime(2026, 2, 1, tzinfo=timezone.utc)
+    req_hist = PredictionRequest(
+        symbol="RELIANCE.NS",
+        model_name="xgboost",
+        as_of_date=hist_date,
+    )
+    res_hist = service.predict(req_hist)
+    assert res_hist.quote_context is not None
+    assert res_hist.quote_context.freshness_status == "NOT_APPLICABLE"
+    assert res_hist.quote_context.last_price is None
+    print(f" [PASS] Historical inference ({hist_date.date()}): Live quotes strictly excluded ({res_hist.quote_context.freshness_status})")
+
+    # 3. Ensemble target range anchoring
+    ensemble_service = EnsembleService(prediction_service=service)
+    ens_res = ensemble_service.synthesize(
+        ml_result=res,
+        atr_value=35.0,
+    )
+    assert ens_res.target_range is not None
+    assert ens_res.target_range.reference_price == res.quote_context.last_price
+    print(f" [PASS] Ensemble target range anchored to verified quote price ₹ {ens_res.target_range.reference_price:,.2f}:")
+    print(f"        [{ens_res.target_range.lower_bound:,.2f} - {ens_res.target_range.upper_bound:,.2f}]")
+
+
 def main() -> None:
     """Run all Day 35 verification steps."""
     try:
         verify_market_session_engine()
         verify_live_quote_adapter()
         verify_error_handling_and_zero_fabrication()
+        verify_quote_inference_integration()
         print("\n" + "=" * 70)
-        print("Day 35 Phase 14 Live Data Pipeline Increment: SUCCESS")
+        print("Day 35 Phase 14 Live Quote Inference Integration: ALL STEPS PASSED")
         print("=" * 70)
         sys.exit(0)
     except Exception as exc:

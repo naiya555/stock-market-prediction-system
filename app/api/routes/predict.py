@@ -20,6 +20,7 @@ from app.api.schemas import (
     EnsembleDetailsResponse,
     PredictionResponse,
     PredictRequest,
+    QuoteContextResponse,
     TargetRangeResponse,
 )
 from app.database.repository import PredictionRepository
@@ -28,6 +29,7 @@ from app.prediction.contract import (
     PredictionRequest as DomainPredictionRequest,
     PredictionResult,
     PredictionStatus,
+    QuoteContext,
 )
 from app.prediction.ensemble import (
     EnsemblePredictionResult,
@@ -39,6 +41,26 @@ from app.prediction.service import PredictionService
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _map_quote_context(qc: Optional[QuoteContext]) -> Optional[QuoteContextResponse]:
+    """Map domain QuoteContext to API QuoteContextResponse schema."""
+    if not qc:
+        return None
+    return QuoteContextResponse(
+        symbol=qc.symbol,
+        last_price=qc.last_price,
+        price_timestamp=qc.price_timestamp,
+        retrieved_at=qc.retrieved_at,
+        source=qc.source,
+        session_state=qc.session_state,
+        freshness_status=qc.freshness_status,
+        is_delayed=qc.is_delayed,
+        delay_minutes=qc.delay_minutes,
+        price_type=qc.price_type,
+        note=qc.note,
+        error_message=qc.error_message,
+    )
 
 
 def _map_data_quality(dq: Optional[PredictionDataQuality]) -> Optional[DataQualityResponse]:
@@ -156,6 +178,7 @@ def predict(
             lookback_days=payload.lookback_days,
             max_stale_days=payload.max_stale_days,
             allow_stale_data=payload.allow_stale_data,
+            include_live_quote=payload.include_live_quote,
         )
 
         try:
@@ -181,6 +204,10 @@ def predict(
         if ensemble_res.ml_prediction and ensemble_res.ml_prediction.data_quality:
             dq_api = _map_data_quality(ensemble_res.ml_prediction.data_quality)
 
+        ens_quote_ctx = ensemble_res.quote_context or (
+            ensemble_res.ml_prediction.quote_context if ensemble_res.ml_prediction else None
+        )
+
         return PredictionResponse(
             prediction_id=pred_id,
             symbol=ensemble_res.symbol,
@@ -197,6 +224,7 @@ def predict(
             probability_calibration="uncalibrated",
             data_quality=dq_api,
             ensemble=_map_ensemble_details(ensemble_res),
+            quote_context=_map_quote_context(ens_quote_ctx),
             error_message=_sanitize_public_error_message(ensemble_res.error_message, "ensemble"),
             disclaimer=ensemble_res.disclaimer,
         )
@@ -209,6 +237,7 @@ def predict(
         lookback_days=payload.lookback_days,
         max_stale_days=payload.max_stale_days,
         allow_stale_data=payload.allow_stale_data,
+        include_live_quote=payload.include_live_quote,
     )
 
     try:
@@ -243,6 +272,7 @@ def predict(
         probability_calibration=ml_res.probability_calibration,
         data_quality=_map_data_quality(ml_res.data_quality),
         ensemble=None,
+        quote_context=_map_quote_context(ml_res.quote_context),
         error_message=_sanitize_public_error_message(ml_res.error_message, payload.model_name),
         disclaimer=ml_res.disclaimer,
     )

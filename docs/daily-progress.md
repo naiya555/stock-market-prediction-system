@@ -3427,4 +3427,71 @@ Implement the first safe, testable increment of Phase 14: connect near-real-time
 
 ### Known Limitations & Next Steps
 - Near-real-time quotes currently use Yahoo Finance free tier with inherent ~15-minute exchange delay during continuous trading hours.
-- Next scheduled increment in Phase 14: Connect near-real-time quote retrieval into prediction inference pipelines (`PredictionService` / `EnsembleService`) to dynamically anchor next-session volatility bands and current price references during active trading sessions.
+- Connected near-real-time quote retrieval into prediction inference pipelines (`PredictionService` / `EnsembleService`) to dynamically anchor next-session volatility bands and current price references during active trading sessions.
+
+
+## Day 35 (Continuation) - Phase 14: Connect Verified Quotes to Prediction Inference
+
+### Goal
+Connect verified near-real-time quotes into directional prediction inference (`PredictionService`, `EnsembleService`, and `/api/predict`), improving current-price context and target range volatility anchoring while strictly distinguishing observed market prices from forecasts, preventing look-ahead bias in historical training/backtesting, and enforcing safe zero-fabrication behavior on failures or delays.
+
+### Work Completed
+
+1. **Quote Context Contract & Boundary Transparency (`app/prediction/contract.py`, `app/prediction/__init__.py`)**:
+   - Created `QuoteContext` frozen dataclass capturing `last_price`, `price_timestamp`, `retrieved_at`, `source`, `session_state`, `freshness_status`, `is_delayed`, `delay_minutes`, `price_type`, `note`, and `error_message`.
+   - Distinct price semantics: marked `price_type="LAST_TRADED_PRICE"`, with explicit disclosure that last traded price reflects observed exchange data and is NOT a predicted opening or closing price.
+   - Built helper constructors: `QuoteContext.from_live_quote()` for verified quotes and `QuoteContext.unavailable()` for safe zero-fabrication fallbacks.
+   - Extended `PredictionRequest` with `include_live_quote: bool = True`.
+   - Extended `PredictionResult` with optional `quote_context: Optional[QuoteContext] = None`, fully serialized in `.to_dict()` and formatted in `.format_summary()`.
+
+2. **PredictionService Quote Context & Temporal Isolation Guard (`app/prediction/service.py`)**:
+   - Implemented `_fetch_quote_context(symbol, request)` in `PredictionService`.
+   - **Look-Ahead Bias Prevention:** When `request.as_of_date` is specified (historical replay or backtest mode), quote fetching is strictly bypassed, setting `freshness_status="NOT_APPLICABLE"` and `last_price=None` to ensure point-in-time integrity.
+   - **Zero-Fabrication Safety:** If quote fetching encounters network failure, HTTP 404, or an unsupported provider, prediction inference proceeds uninterrupted, setting `freshness_status="UNAVAILABLE"` and `last_price=None` without fabricating a price.
+   - Wired `quote_context` cleanly across all successful and error results in `PredictionService.predict()`.
+
+3. **Multi-Agent Ensemble Target Range Price Anchoring (`app/prediction/ensemble.py`)**:
+   - Extended `EnsemblePredictionResult` with optional `quote_context: Optional[QuoteContext] = None` and updated `.to_dict()`, `.to_prediction_result()`, and `.format_summary()`.
+   - Updated `EnsembleService.synthesize()`: when `current_price` is not explicitly provided, it automatically anchors to verified quote `quote_context.last_price` to calculate ATR-based `target_range` boundaries.
+   - Wired `predict_ensemble()` to synthesize using `ml_result.quote_context`.
+
+4. **API Schema & Route Integration (`app/api/schemas.py`, `app/api/routes/predict.py`)**:
+   - Added `QuoteContextResponse` Pydantic model with delay disclosure and price distinction notes.
+   - Added `include_live_quote: bool = True` to `PredictRequest`.
+   - Added optional `quote_context: Optional[QuoteContextResponse] = None` to `PredictionResponse`, maintaining 100% backward compatibility for all existing API clients.
+   - Implemented `_map_quote_context()` and wired into both standalone ML and ensemble prediction response paths in `app/api/routes/predict.py`.
+
+5. **Focused Unit Tests & Verification (`tests/test_inference_quote_integration.py`, `scripts/verify_day35.py`)**:
+   - Created `tests/test_inference_quote_integration.py` (10 unit & integration tests):
+     1. Fresh quote integration into prediction inference.
+     2. Delayed quote integration with ~15m delay disclosure.
+     3. Stale quote handling with explicit status and zero price fabrication.
+     4. Failed quote retrieval handling without aborting inference.
+     5. Unsupported quote provider graceful fallback.
+     6. Point-in-time isolation and zero look-ahead bias in historical mode (`as_of_date`).
+     7. Caller opt-out via `include_live_quote=False`.
+     8. Backward compatibility of `PredictionResult`, `EnsemblePredictionResult`, and `PredictionResponse`.
+     9. Ensemble target range anchoring using verified quote prices.
+     10. FastAPI route serialization of `quote_context`.
+   - Extended `scripts/verify_day35.py` with STEP 4: verified live inference on `RELIANCE.NS` (₹1,211.20 last price, 15m delay disclosure, directional prediction), historical isolation test, and ensemble target range anchoring.
+
+### Validation Results
+- **Focused Quote Inference Tests:**
+  ```powershell
+  & .\.venv\Scripts\python -m pytest tests/test_inference_quote_integration.py -v
+  ```
+  *Result:* **10 passed** in 6.74s.
+- **Full Automated Test Suite:**
+  ```powershell
+  & .\.venv\Scripts\python -m pytest
+  ```
+  *Result:* **550 passed**, 0 failed, 1 warning (Starlette testclient deprecation) in 22.42s across 38 test files (expanded from 540 baseline).
+- **Day 35 Comprehensive Verification Script:**
+  ```powershell
+  & .\.venv\Scripts\python scripts/verify_day35.py
+  ```
+  *Result:* Exited with code `0` (`ALL STEPS PASSED`). Verified session engine, quote adapter, zero-fabrication rejection, and live quote inference integration.
+
+### Remaining Limitations
+- Near-real-time quotes provided by Yahoo Finance remain subject to a free-tier exchange delay (~15 minutes during active continuous trading hours); all response payloads and summaries explicitly disclose this limitation and clarify that observed quotes are not predicted opening or closing prices.
+

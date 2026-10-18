@@ -40,6 +40,7 @@ from app.prediction.contract import (
     PredictionRequest,
     PredictionResult,
     PredictionStatus,
+    QuoteContext,
 )
 
 logger = logging.getLogger(__name__)
@@ -137,6 +138,7 @@ class EnsemblePredictionResult:
     model_version: str = "ensemble_v1"
     disclaimer: str = ENSEMBLE_DISCLAIMER
     error_message: Optional[str] = None
+    quote_context: Optional[QuoteContext] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert ensemble result to serializable dictionary."""
@@ -159,6 +161,7 @@ class EnsemblePredictionResult:
             "downside_risks": list(self.downside_risks),
             "source_references": list(self.source_references),
             "target_range": self.target_range.to_dict() if self.target_range else None,
+            "quote_context": self.quote_context.to_dict() if self.quote_context else None,
             "model_name": self.model_name,
             "model_version": self.model_version,
             "disclaimer": self.disclaimer,
@@ -223,6 +226,7 @@ class EnsemblePredictionResult:
             expected_movement=expected_move,
             expected_movement_status=expected_status,
             error_message=self.error_message,
+            quote_context=self.quote_context or (self.ml_prediction.quote_context if self.ml_prediction else None),
             disclaimer=self.disclaimer,
         )
 
@@ -236,6 +240,18 @@ class EnsemblePredictionResult:
             f"  Agreement Status:     {self.agreement_status.value}",
             f"  Weights:              ML={self.weights_used.get('ml', 0):.0%}, LLM={self.weights_used.get('llm', 0):.0%}",
         ]
+        if self.quote_context:
+            if self.quote_context.last_price is not None:
+                lines.append(
+                    f"  Last Quoted Price:    ₹ {self.quote_context.last_price:,.2f} "
+                    f"({self.quote_context.freshness_status}, session={self.quote_context.session_state}, "
+                    f"delayed={self.quote_context.is_delayed}) [OBSERVED, not predicted]"
+                )
+            else:
+                lines.append(
+                    f"  Quote Context:         {self.quote_context.freshness_status} "
+                    f"({self.quote_context.error_message or self.quote_context.note})"
+                )
         if self.status == PredictionStatus.SUCCESS:
             p_up = f"{self.combined_probability_up * 100:.2f}%" if self.combined_probability_up is not None else "N/A"
             p_dn = f"{self.combined_probability_down * 100:.2f}%" if self.combined_probability_down is not None else "N/A"
@@ -368,6 +384,7 @@ class EnsembleService:
         current_price: Optional[float] = None,
         atr_value: Optional[float] = None,
         weights: Optional[EnsembleWeights] = None,
+        quote_context: Optional[QuoteContext] = None,
     ) -> EnsemblePredictionResult:
         """Synthesize pre-computed ML prediction and qualitative LLM reasoning.
 
@@ -380,6 +397,7 @@ class EnsembleService:
             current_price: Optional closing price of latest input bar in INR.
             atr_value: Optional 14-period Average True Range value in INR.
             weights: Optional custom weights overriding default.
+            quote_context: Optional verified current market quote context.
 
         Returns:
             Validated EnsemblePredictionResult.
@@ -387,6 +405,11 @@ class EnsembleService:
         active_weights = weights or self.weights
         now_iso = datetime.now(timezone.utc).isoformat()
         symbol = ml_result.symbol
+        resolved_quote = quote_context or getattr(ml_result, "quote_context", None)
+
+        # Anchor current_price to verified quote if not explicitly supplied
+        if current_price is None and resolved_quote and resolved_quote.last_price is not None:
+            current_price = resolved_quote.last_price
 
         # If quantitative ML prediction failed, ensemble cannot synthesize probabilities
         if ml_result.status != PredictionStatus.SUCCESS:
@@ -404,6 +427,7 @@ class EnsembleService:
                 ml_prediction=ml_result,
                 llm_reasoning=llm_result,
                 sentiment_summary=sentiment_summary,
+                quote_context=resolved_quote,
                 error_message=f"ML prediction failed: {ml_result.error_message}",
             )
 
@@ -504,6 +528,7 @@ class EnsembleService:
             downside_risks=tuple(dict.fromkeys(downside)),
             source_references=tuple(dict.fromkeys(sources)),
             target_range=target_range,
+            quote_context=resolved_quote,
             model_name="ensemble",
             model_version="ensemble_v1",
         )
@@ -572,6 +597,7 @@ class EnsembleService:
             current_price=current_price,
             atr_value=atr_value,
             weights=weights,
+            quote_context=ml_result.quote_context,
         )
 
         # Step 4: Optional Persistence

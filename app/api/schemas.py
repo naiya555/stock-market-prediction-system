@@ -110,6 +110,10 @@ class PredictRequest(BaseModel):
         le=1.0,
         description="Custom qualitative LLM weight for ensemble synthesis (default 0.30)",
     )
+    include_live_quote: bool = Field(
+        default=True,
+        description="Whether to query current verified quote data for price context during live inference",
+    )
 
     @field_validator("symbol")
     @classmethod
@@ -146,6 +150,27 @@ class TargetRangeResponse(BaseModel):
     upper_bound: float
     reference_price: float
     method: str
+
+
+class QuoteContextResponse(BaseModel):
+    """Observed market quote context distinguishing observed prices from forecasts."""
+
+    symbol: str
+    last_price: Optional[float] = None
+    price_timestamp: Optional[str] = None
+    retrieved_at: Optional[str] = None
+    source: str = "none"
+    session_state: str = "UNKNOWN"
+    freshness_status: str = "UNAVAILABLE"
+    is_delayed: bool = True
+    delay_minutes: int = 15
+    price_type: str = "LAST_TRADED_PRICE"
+    note: str = (
+        "Last traded price reflects observed exchange/provider market data and is NOT a predicted "
+        "opening or closing price. The directional model forecasts return direction (UP/DOWN), "
+        "not explicit price targets. Quotes from Yahoo Finance are delayed by ~15 minutes."
+    )
+    error_message: Optional[str] = None
 
 
 class EnsembleDetailsResponse(BaseModel):
@@ -186,6 +211,7 @@ class PredictionResponse(BaseModel):
     probability_calibration: str = "uncalibrated"
     data_quality: Optional[DataQualityResponse] = None
     ensemble: Optional[EnsembleDetailsResponse] = None
+    quote_context: Optional[QuoteContextResponse] = None
     error_message: Optional[str] = None
     disclaimer: str
 

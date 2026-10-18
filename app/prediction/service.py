@@ -25,6 +25,7 @@ from app.prediction.contract import (
     PredictionRequest,
     PredictionResult,
     PredictionStatus,
+    QuoteContext,
 )
 from app.training.feature_matrix import (
     FEATURE_COLUMNS,
@@ -139,6 +140,50 @@ class PredictionService:
             logger.error("Failed to load model artifact '%s': %s", artifact_path, exc)
             return None, f"Failed to deserialize model artifact '{artifact_path}': {exc}"
 
+    def _fetch_quote_context(
+        self,
+        symbol: str,
+        request: PredictionRequest,
+    ) -> Optional[QuoteContext]:
+        """Acquire verified current price quote context for inference.
+
+        Enforces strict point-in-time isolation: if request.as_of_date is set,
+        live quotes are bypassed with a safe NOT_APPLICABLE status to prevent
+        look-ahead bias. If live quotes fail or are unsupported, returns safe
+        UNAVAILABLE status without fabricating prices.
+        """
+        if not getattr(request, "include_live_quote", True):
+            return None
+
+        clean_symbol = symbol.strip().upper()
+        if request.as_of_date is not None:
+            return QuoteContext.unavailable(
+                symbol=clean_symbol,
+                reason="Point-in-time historical inference: live quotes excluded to prevent look-ahead bias.",
+                is_historical=True,
+            )
+
+        try:
+            if hasattr(self.provider, "fetch_quote"):
+                live_q = self.provider.fetch_quote(clean_symbol)
+                return QuoteContext.from_live_quote(live_q)
+            return QuoteContext.unavailable(
+                symbol=clean_symbol,
+                reason=f"Provider '{getattr(self.provider, 'name', type(self.provider).__name__)}' does not support live quotes.",
+                is_historical=False,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Live quote acquisition failed for '%s': %s. Safe zero-fabrication fallback applied.",
+                clean_symbol,
+                exc,
+            )
+            return QuoteContext.unavailable(
+                symbol=clean_symbol,
+                reason=f"Live quote retrieval failed: {exc}",
+                is_historical=False,
+            )
+
     def predict(
         self,
         request: PredictionRequest,
@@ -175,6 +220,8 @@ class PredictionService:
                 model_name=request.model_name,
             )
 
+        quote_context = self._fetch_quote_context(clean_symbol, request)
+
         ref_time = request.as_of_date or datetime.now(timezone.utc)
         start_date = ref_time - timedelta(days=request.lookback_days)
 
@@ -194,6 +241,7 @@ class PredictionService:
                 status=PredictionStatus.FAILED,
                 error_message=f"Market data pipeline error: {exc}",
                 model_name=request.model_name,
+                quote_context=quote_context,
             )
 
         cleaned_records = pipeline_result.cleaned_records
@@ -223,6 +271,7 @@ class PredictionService:
                 error_message=f"No market data found for symbol '{clean_symbol}' in range {start_date.date()} to {ref_time.date()}.",
                 model_name=request.model_name,
                 data_quality=quality,
+                quote_context=quote_context,
             )
 
         latest_bar = cleaned_records[-1]
@@ -256,6 +305,7 @@ class PredictionService:
                 ),
                 model_name=request.model_name,
                 data_quality=quality,
+                quote_context=quote_context,
             )
 
         if is_stale and not request.allow_stale_data:
@@ -280,6 +330,7 @@ class PredictionService:
                 ),
                 model_name=request.model_name,
                 data_quality=quality,
+                quote_context=quote_context,
             )
 
         # Step 3: Feature Matrix Assembly & Isolation Guard
@@ -293,6 +344,7 @@ class PredictionService:
                 status=PredictionStatus.FEATURE_ERROR,
                 error_message=f"Feature matrix assembly failed: {exc}",
                 model_name=request.model_name,
+                quote_context=quote_context,
             )
 
         # Extract the latest feature row (t = N - 1)
@@ -330,6 +382,7 @@ class PredictionService:
                 ),
                 model_name=request.model_name,
                 data_quality=quality,
+                quote_context=quote_context,
             )
 
         # Step 4: Model Resolution (Strictly No Automatic Retraining)
@@ -347,6 +400,7 @@ class PredictionService:
                 error_message=model_err or "Model resolution failed.",
                 model_name=request.model_name,
                 data_quality=quality,
+                quote_context=quote_context,
             )
 
         # Step 5: Feature Schema Parity Check
@@ -365,6 +419,7 @@ class PredictionService:
                     ),
                     model_name=request.model_name,
                     data_quality=quality,
+                    quote_context=quote_context,
                 )
 
         # Step 6: Model Inference Execution
@@ -383,6 +438,7 @@ class PredictionService:
                 error_message=f"Model inference failed: {exc}",
                 model_name=request.model_name,
                 data_quality=quality,
+                quote_context=quote_context,
             )
 
         # Step 7: Build Successful PredictionResult
@@ -408,6 +464,7 @@ class PredictionService:
             model_metadata=model_meta,
             data_quality=quality,
             error_message=None,
+            quote_context=quote_context,
         )
 
         if persist and self.repository is not None:
@@ -423,6 +480,7 @@ class PredictionService:
         error_message: str,
         model_name: str,
         data_quality: Optional[PredictionDataQuality] = None,
+        quote_context: Optional[QuoteContext] = None,
     ) -> PredictionResult:
         """Construct standard error result container."""
         if data_quality is None:
@@ -455,6 +513,7 @@ class PredictionService:
             model_metadata={},
             data_quality=data_quality,
             error_message=error_message,
+            quote_context=quote_context,
         )
 
 

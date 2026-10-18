@@ -44,6 +44,7 @@ class PredictionRequest:
     lookback_days: int = 5 * 365
     max_stale_days: int = 7
     allow_stale_data: bool = True
+    include_live_quote: bool = True
 
     def __post_init__(self) -> None:
         """Validate request parameters."""
@@ -57,6 +58,104 @@ class PredictionRequest:
             raise ValueError(
                 f"lookback_days ({self.lookback_days}) is insufficient for feature warmup (min 35 days)."
             )
+
+
+@dataclass(frozen=True)
+class QuoteContext:
+    """Current market quote context associated with prediction inference.
+
+    Provides observed market price diagnostics while strictly distinguishing observed
+    market prices (last traded price) from forecast outputs (direction/probability).
+    Explicitly discloses provider delays (~15 min on free Yahoo Finance feeds)
+    and enforces zero-fabrication safety under missing or stale conditions.
+    """
+
+    symbol: str
+    last_price: Optional[float]
+    price_timestamp: Optional[str]
+    retrieved_at: Optional[str]
+    source: str
+    session_state: str
+    freshness_status: str
+    is_delayed: bool = True
+    delay_minutes: int = 15
+    price_type: str = "LAST_TRADED_PRICE"
+    note: str = (
+        "Last traded price reflects observed exchange/provider market data and is NOT a predicted "
+        "opening or closing price. The directional model forecasts return direction (UP/DOWN), "
+        "not explicit price targets. Quotes from Yahoo Finance are delayed by ~15 minutes."
+    )
+    error_message: Optional[str] = None
+
+    @classmethod
+    def from_live_quote(cls, quote: Any) -> "QuoteContext":
+        """Construct QuoteContext from a verified LiveQuote contract."""
+        session_val = (
+            quote.session_state.value
+            if hasattr(quote.session_state, "value")
+            else str(quote.session_state)
+        )
+        fresh_val = (
+            quote.freshness_status.value
+            if hasattr(quote.freshness_status, "value")
+            else str(quote.freshness_status)
+        )
+        ts_iso = (
+            quote.timestamp.isoformat()
+            if hasattr(quote.timestamp, "isoformat")
+            else str(quote.timestamp)
+        )
+        retrieved_iso = (
+            quote.retrieved_at.isoformat()
+            if hasattr(quote.retrieved_at, "isoformat")
+            else str(quote.retrieved_at)
+        )
+        return cls(
+            symbol=quote.symbol,
+            last_price=float(quote.price),
+            price_timestamp=ts_iso,
+            retrieved_at=retrieved_iso,
+            source=quote.source,
+            session_state=session_val,
+            freshness_status=fresh_val,
+            is_delayed=getattr(quote, "is_delayed", True),
+            delay_minutes=getattr(quote, "delay_minutes", 15),
+            price_type="LAST_TRADED_PRICE",
+            error_message=None,
+        )
+
+    @classmethod
+    def unavailable(
+        cls,
+        symbol: str,
+        reason: str,
+        is_historical: bool = False,
+    ) -> "QuoteContext":
+        """Construct safe zero-fabrication quote context when quotes cannot be provided."""
+        status = "NOT_APPLICABLE" if is_historical else "UNAVAILABLE"
+        note = (
+            "Point-in-time historical inference: live quotes excluded to prevent look-ahead bias."
+            if is_historical
+            else "Live market quote currently unavailable. Price was not fabricated."
+        )
+        return cls(
+            symbol=symbol,
+            last_price=None,
+            price_timestamp=None,
+            retrieved_at=None,
+            source="none",
+            session_state="UNKNOWN",
+            freshness_status=status,
+            is_delayed=False,
+            delay_minutes=0,
+            price_type="NONE",
+            note=note,
+            error_message=reason,
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize quote context to dictionary."""
+        return asdict(self)
 
 
 @dataclass(frozen=True)
@@ -111,6 +210,7 @@ class PredictionResult:
         expected_movement: Expected return magnitude or price move (None if unsupported).
         expected_movement_status: Status of expected movement calculation ("UNSUPPORTED" for binary direction classifiers).
         error_message: Detailed diagnostic error message if status is not SUCCESS.
+        quote_context: Optional observed market quote context distinguishing market price from predictions.
         disclaimer: Explicit disclosure of model capabilities and boundaries.
     """
 
@@ -131,6 +231,7 @@ class PredictionResult:
     expected_movement: Optional[float] = None
     expected_movement_status: str = "UNSUPPORTED"
     error_message: Optional[str] = None
+    quote_context: Optional[QuoteContext] = None
     disclaimer: str = (
         "The directional forecast predicts the binary sign of next-session close-to-close return "
         "(UP if Close_{t+1} > Close_t else DOWN). It does NOT predict target prices, percentage return "
@@ -141,6 +242,7 @@ class PredictionResult:
         """Serialize prediction result to dictionary."""
         data = asdict(self)
         data["status"] = self.status.value
+        data["quote_context"] = self.quote_context.to_dict() if self.quote_context else None
         return data
 
     def format_summary(self) -> str:
@@ -152,6 +254,18 @@ class PredictionResult:
             f"  Latest Input Bar:       {self.latest_input_timestamp or 'N/A'}",
             f"  Model:                  {self.model_name} ({self.model_version})",
         ]
+        if self.quote_context:
+            if self.quote_context.last_price is not None:
+                lines.append(
+                    f"  Last Quoted Price:     ₹ {self.quote_context.last_price:,.2f} "
+                    f"({self.quote_context.freshness_status}, session={self.quote_context.session_state}, "
+                    f"delayed={self.quote_context.is_delayed}) [OBSERVED, not predicted]"
+                )
+            else:
+                lines.append(
+                    f"  Quote Context:          {self.quote_context.freshness_status} "
+                    f"({self.quote_context.error_message or self.quote_context.note})"
+                )
         if self.status == PredictionStatus.SUCCESS:
             p_up_str = f"{self.probability_up * 100:.2f}%" if self.probability_up is not None else "N/A"
             p_dn_str = f"{self.probability_down * 100:.2f}%" if self.probability_down is not None else "N/A"
