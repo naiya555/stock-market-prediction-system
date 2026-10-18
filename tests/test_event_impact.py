@@ -24,6 +24,7 @@ Validates:
 
 from datetime import date, datetime, time, timedelta
 import math
+from typing import Optional
 import pytest
 from zoneinfo import ZoneInfo
 

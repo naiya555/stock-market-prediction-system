@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 import math
+from typing import Optional
 import pytest
 from zoneinfo import ZoneInfo
 

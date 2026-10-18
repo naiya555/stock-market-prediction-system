@@ -20,6 +20,7 @@ Validates:
 
 from datetime import datetime, timedelta, timezone
 import sqlite3
+from typing import Optional
 import pytest
 
 from app.core.schemas import MarketOHLCV
