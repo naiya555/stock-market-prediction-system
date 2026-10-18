@@ -4,6 +4,12 @@ Provides prediction outcome verification, realized market outcome persistence,
 and post-hoc directional accuracy and error evaluation.
 """
 
+from app.history.comparison import (
+    ComparativeEvaluationReport,
+    ModelComparator,
+    ModelPerformanceRow,
+    PairwiseComparison,
+)
 from app.history.contract import (
     ActualOutcome,
     EvaluationMetrics,
@@ -21,4 +27,8 @@ __all__ = [
     "OutcomeVerifier",
     "PredictionEvaluator",
     "parse_session_date",
+    "ModelComparator",
+    "ComparativeEvaluationReport",
+    "ModelPerformanceRow",
+    "PairwiseComparison",
 ]

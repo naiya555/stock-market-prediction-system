@@ -3541,3 +3541,66 @@ Audit and validate the complete prediction flow from market data retrieval to pr
 - Yahoo Finance quotes remain subject to free-tier provider delay (~15 minutes); exchange-grade low-latency feeds (e.g., direct NSE broadcast or paid broker WebSockets) are out of scope for the current local architecture.
 - Passing tests validate deterministic software contracts and safeguards, not financial market profitability or production readiness under real financial risk.
 
+---
+
+## Day 37 - Phase 15: Comparative Model Evaluation and Performance Dashboards
+
+### Goal
+Implement the first core objective of Phase 15 from `docs/roadmap.md`: create comparative evaluation analytics and dashboards evaluating Python ML vs. LLM vs. Combined Ensemble performance side-by-side across verified historical market outcomes.
+
+### Work Completed
+1. **Comparative Model Evaluation Engine (`app/history/comparison.py`, `app/history/__init__.py`)**:
+   - Implemented typed dataclass contracts:
+     - `ModelPerformanceRow`: captures `total_predictions`, `verified_sessions`, `directional_accuracy`, symmetrical class precision/recall/F1 (UP and DOWN), and `brier_score`.
+     - `PairwiseComparison`: evaluates matched trading sessions where both models forecast direction; computes `agreement_rate`, `agreement_accuracy`, `divergence_rate`, `divergence_accuracy_a`, `divergence_accuracy_b`, superiority win-loss counts (`model_a_superior_count`, `model_b_superior_count`), and `accuracy_delta`.
+     - `ComparativeEvaluationReport`: captures aggregated models, pairwise comparisons, `ensemble_lift_over_ml`, `ensemble_lift_over_llm`, explicit compliance disclaimers, and human-readable text audit formatting (`format_summary()`).
+   - Implemented `ModelComparator`:
+     - Reads verified prediction-actual records from `PredictionRepository`.
+     - Deconstructs standalone predictions and constituent ensemble components (`ml_prediction`, `llm_reasoning` from ensemble `raw_result`) into unified model evaluation streams.
+     - Computes Brier scores ($\frac{1}{N}\sum (p - y)^2$) for probability calibration assessment.
+     - Strictly guards against zero-division errors when no verified outcomes exist.
+
+2. **REST API Endpoint & Schemas (`app/api/schemas.py`, `app/api/routes/history.py`)**:
+   - Added Pydantic schemas: `ModelPerformanceResponse`, `PairwiseComparisonResponse`, and `ModelComparisonResponse`.
+   - Implemented `GET /api/history/compare` endpoint supporting optional `symbol` filtering and `min_verified` threshold.
+   - Preserves 100% backward compatibility for all existing prediction and history routes.
+
+3. **Interactive Web Dashboard Integration (`app/api/static/index.html`, `app/api/static/js/app.js`)**:
+   - Added a dedicated "Comparative Model Performance (ML vs. LLM vs. Ensemble)" card inside the Prediction History tab.
+   - Extended `ApiService` with `fetchComparison()`.
+   - Implemented `loadComparison()` to dynamically render comparison table rows, directional accuracy %, Brier scores, ensemble lift badges, and pairwise agreement summaries.
+
+4. **Automated Unit & Integration Test Suite (`tests/test_model_comparison.py`)**:
+   - Created 6 comprehensive unit and integration tests:
+     1. `test_model_comparator_basic_metrics`: verifies directional accuracy, symmetrical F1, and exact Brier score computation.
+     2. `test_model_comparator_pairwise_alignment`: verifies matched session agreement rate, divergence accuracy, and win/loss counts.
+     3. `test_ensemble_constituent_extraction`: verifies decomposition of ensemble results into constituent ML and LLM signals.
+     4. `test_model_comparator_zero_division_safety`: verifies unverified/empty data handling without exceptions.
+     5. `test_comparative_report_formatting`: verifies text table formatting with required disclaimers.
+     6. `test_api_history_compare_route`: verifies FastAPI `GET /api/history/compare` endpoint serialization and filtering.
+
+### Validation Results
+- **Focused Comparison Tests:**
+  ```powershell
+  & .\.venv\Scripts\python -m pytest tests/test_model_comparison.py -v
+  ```
+  *Result:* **6 passed**, 1 warning in 6.13s.
+- **Related Test Suites:**
+  ```powershell
+  & .\.venv\Scripts\python -m pytest tests/test_outcome_verification.py tests/test_api.py tests/test_frontend.py -v
+  ```
+  *Result:* **48 passed**, 1 warning in 5.55s.
+- **Full Automated Test Suite:**
+  ```powershell
+  & .\.venv\Scripts\python -m pytest
+  ```
+  *Result:* **559 passed**, 0 failed, 1 warning (Starlette testclient deprecation) in 23.18s across 39 test files (expanded from 553 baseline).
+
+### Remaining Limitations
+- Comparative metrics reflect realized historical sessions in the local SQLite database; small sample sizes may exhibit high variance until sufficient trading sessions complete.
+- Phase 15 second objective (controlled, gated model retraining workflows with version tracking per ADR 10) remains for subsequent increments.
+- Passing tests validate deterministic software contracts and safeguards, not financial market profitability or production readiness under real financial risk.
+
+### Next Step
+Implement Phase 15's second milestone: controlled, gated model retraining workflow with explicit out-of-sample validation gates and version tracking (ADR 10).
+

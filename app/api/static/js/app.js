@@ -169,6 +169,21 @@
       return await res.json();
     },
 
+    async fetchComparison(params = {}) {
+      const query = new URLSearchParams();
+      if (params.symbol) query.set('symbol', params.symbol);
+      query.set('min_verified', String(params.min_verified || 1));
+
+      const res = await fetch(`${API_BASE}/history/compare?${query.toString()}`, {
+        headers: { 'Accept': 'application/json' },
+      });
+
+      if (!res.ok) {
+        throw new Error(`Comparison API error: status ${res.status}`);
+      }
+      return await res.json();
+    },
+
     async fetchEvents(params) {
       const query = new URLSearchParams();
       if (params.category) query.set('category', params.category);
@@ -697,12 +712,93 @@
       if (btnPrev) btnPrev.disabled = data.offset <= 0;
       if (btnNext) btnNext.disabled = data.offset + data.limit >= data.total;
 
+      // Concurrently load comparative model metrics (Phase 15)
+      loadComparison();
+
     } catch (err) {
       if (tbody) {
         tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-rose">Error loading history: ${escapeHtml(err.message)}</td></tr>`;
       }
     } finally {
       AppState.history.isLoading = false;
+    }
+  }
+
+  async function loadComparison() {
+    const tbody = document.getElementById('comparison-table-body');
+    const badgeEl = document.getElementById('comparison-lift-badge');
+    const pairwiseEl = document.getElementById('comparison-pairwise-text');
+    if (!tbody) return;
+
+    try {
+      const data = await ApiService.fetchComparison({
+        symbol: AppState.history.symbolFilter,
+      });
+
+      if (!data || !data.models || data.models.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">No verified comparison sessions available yet.</td></tr>';
+        if (badgeEl) {
+          badgeEl.textContent = 'Awaiting Verified Sessions';
+          badgeEl.className = 'badge badge-info';
+        }
+        if (pairwiseEl) pairwiseEl.textContent = '';
+        return;
+      }
+
+      tbody.innerHTML = data.models.map((m) => {
+        const accStr = m.directional_accuracy !== null && m.directional_accuracy !== undefined
+          ? `${(m.directional_accuracy * 100).toFixed(1)}%`
+          : '--';
+        const f1Up = m.f1_up !== null && m.f1_up !== undefined ? m.f1_up.toFixed(2) : '--';
+        const f1Dn = m.f1_down !== null && m.f1_down !== undefined ? m.f1_down.toFixed(2) : '--';
+        const brierStr = m.brier_score !== null && m.brier_score !== undefined ? m.brier_score.toFixed(4) : '--';
+
+        const modelLabel = m.model_name === 'ensemble'
+          ? '<strong>Ensemble (ML+LLM)</strong>'
+          : escapeHtml(m.model_name.toUpperCase());
+
+        return `
+          <tr>
+            <td>${modelLabel}</td>
+            <td class="font-mono">${m.total_predictions}</td>
+            <td class="font-mono">${m.verified_sessions}</td>
+            <td class="font-mono text-bold">${accStr}</td>
+            <td class="font-mono">${f1Up} / ${f1Dn}</td>
+            <td class="font-mono">${brierStr}</td>
+          </tr>
+        `;
+      }).join('');
+
+      if (badgeEl) {
+        if (data.ensemble_lift_over_ml !== null && data.ensemble_lift_over_ml !== undefined) {
+          const liftPct = (data.ensemble_lift_over_ml * 100).toFixed(1);
+          const sign = data.ensemble_lift_over_ml >= 0 ? '+' : '';
+          badgeEl.textContent = `Ensemble Lift vs ML: ${sign}${liftPct}%`;
+          badgeEl.className = data.ensemble_lift_over_ml >= 0 ? 'badge badge-success' : 'badge badge-warning';
+        } else {
+          badgeEl.textContent = `${data.models.length} Models Tracked`;
+          badgeEl.className = 'badge badge-info';
+        }
+      }
+
+      if (pairwiseEl && data.pairwise_comparisons && data.pairwise_comparisons.length > 0) {
+        pairwiseEl.innerHTML = data.pairwise_comparisons.map((pw) => {
+          const agrStr = pw.agreement_rate !== null && pw.agreement_rate !== undefined
+            ? `${(pw.agreement_rate * 100).toFixed(1)}%`
+            : 'N/A';
+          const deltaStr = pw.accuracy_delta !== null && pw.accuracy_delta !== undefined
+            ? `${pw.accuracy_delta >= 0 ? '+' : ''}${(pw.accuracy_delta * 100).toFixed(1)}%`
+            : 'N/A';
+          return `<strong>${escapeHtml(pw.model_a.toUpperCase())} vs ${escapeHtml(pw.model_b.toUpperCase())}:</strong> ` +
+            `Matched: ${pw.matched_sessions} | Agreement: ${agrStr} | Wins: ${escapeHtml(pw.model_a.toUpperCase())}=${pw.model_a_superior_count}, ${escapeHtml(pw.model_b.toUpperCase())}=${pw.model_b_superior_count} | Delta: ${deltaStr}`;
+        }).join('<br>');
+      } else if (pairwiseEl) {
+        pairwiseEl.textContent = '';
+      }
+    } catch (e) {
+      if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-rose">Comparison data error: ${escapeHtml(e.message)}</td></tr>`;
+      }
     }
   }
 

@@ -332,3 +332,59 @@ class EventsResponse(BaseModel):
     events: List[EventItemResponse]
     count: int
     providers_queried: List[str]
+
+
+# ---------------------------------------------------------------------------
+# Model Comparison & Evaluation Schemas (Phase 15)
+# ---------------------------------------------------------------------------
+
+
+class ModelPerformanceResponse(BaseModel):
+    """Aggregated performance metrics for a specific model architecture."""
+
+    model_name: str
+    total_predictions: int
+    verified_sessions: int
+    pending_sessions: int
+    correct_predictions: int
+    incorrect_predictions: int
+    directional_accuracy: Optional[float] = None
+    precision_up: Optional[float] = None
+    recall_up: Optional[float] = None
+    f1_up: Optional[float] = None
+    precision_down: Optional[float] = None
+    recall_down: Optional[float] = None
+    f1_down: Optional[float] = None
+    brier_score: Optional[float] = None
+
+
+class PairwiseComparisonResponse(BaseModel):
+    """Side-by-side performance comparison on identical trading sessions."""
+
+    model_a: str
+    model_b: str
+    matched_sessions: int
+    agreement_count: int
+    agreement_rate: Optional[float] = None
+    agreement_accuracy: Optional[float] = None
+    divergence_count: int
+    divergence_rate: Optional[float] = None
+    divergence_accuracy_a: Optional[float] = None
+    divergence_accuracy_b: Optional[float] = None
+    model_a_superior_count: int
+    model_b_superior_count: int
+    both_correct_count: int
+    both_incorrect_count: int
+    accuracy_delta: Optional[float] = None
+
+
+class ModelComparisonResponse(BaseModel):
+    """Response containing comparative metrics across Python ML, LLM, and Ensemble."""
+
+    symbol: Optional[str] = None
+    total_records_analyzed: int
+    models: List[ModelPerformanceResponse]
+    pairwise_comparisons: List[PairwiseComparisonResponse]
+    ensemble_lift_over_ml: Optional[float] = None
+    ensemble_lift_over_llm: Optional[float] = None
+    disclaimer: str

@@ -18,11 +18,11 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 | **8** | **NIFTY & Sector Context** | Broader market indicators, benchmark relative strength, and sector mapping. | Complete (Day 26) |
 | **9** | **News & Financial Sentiment** | Financial news ingestion and FinBERT sentiment extraction pipeline. | Complete (Day 27-28) |
 | **10** | **Regulatory & Global Events** | Macroeconomic, RBI, governmental, event parser & session impact. | **Complete (Day 29-30)** |
-| **11** | **LLM Integration** | Dual-role LLM setup: contextual entity extraction and independent forecasting. | **Current Phase (Next Objective)** |
-| **12** | **ML + LLM Combination** | Ensemble layer combining numerical ML and LLM predictions transparently. | Future |
+| **11** | **LLM Integration** | Dual-role LLM setup: contextual entity extraction and independent forecasting. | Complete (Day 31-32) |
+| **12** | **ML + LLM Combination** | Ensemble layer combining numerical ML and LLM predictions transparently. | Complete (Day 32) |
 | **13** | **Web Application** | Interactive FastAPI endpoints and user-facing presentation dashboard. | Complete (Day 33-34) |
-| **14** | **Live Data Pipeline** | Point-in-time current price, breadth, session intake, and prediction quote integration. | **Complete (Day 35-36)** |
-| **15** | **Model Comparison & Improvement**| Comparative metrics (ML vs. LLM vs. Ensemble) and controlled retraining. | **Current Phase (Next Objective)** |
+| **14** | **Live Data Pipeline** | Point-in-time current price, breadth, session intake, and prediction quote integration. | Complete (Day 35-36) |
+| **15** | **Model Comparison & Improvement**| Comparative metrics (ML vs. LLM vs. Ensemble) and controlled retraining. | **In Progress (Day 37)** |
 | **16** | **Final Testing & Evaluation** | Comprehensive end-to-end audit, load testing, and production hardening. | Future |
 
 ---
@@ -161,9 +161,11 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 - Integrate verified quote context into inference (`QuoteContext`, `PredictionService._fetch_quote_context`) and ensemble target range anchoring (`EnsembleService.synthesize`).
 - End-to-end pipeline validation, temporal isolation (zero look-ahead bias), quote observability, and sensitive error message sanitization (Day 36 complete).
 
-### Phase 15: Model Comparison & Improvement
-- Create comparative dashboards evaluating Python ML vs. LLM vs. Combined performance.
-- Implement controlled, gated model retraining workflows with version tracking.
+### Phase 15: Model Comparison & Improvement (In Progress - Day 37)
+- Comparative evaluation analytics and dashboard evaluating Python ML vs. LLM vs. Combined Ensemble performance side-by-side (`app/history/comparison.py`, `GET /api/history/compare`, Day 37 complete).
+- Pairwise matched session alignment, divergence, win-loss superiority, Brier score probability calibration, and ensemble lift tracking.
+- Interactive side-by-side model comparison dashboard in prediction history web UI.
+- Implement controlled, gated model retraining workflows with version tracking (ADR 10 - Next Objective).
 
 ### Phase 16: Final Testing & Evaluation
 - End-to-end integration testing and robustness verification under adverse market regimes.

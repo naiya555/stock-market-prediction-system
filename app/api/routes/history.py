@@ -13,8 +13,12 @@ from app.api.schemas import (
     ActualOutcomeResponse,
     HistoryItemResponse,
     HistoryResponse,
+    ModelComparisonResponse,
+    ModelPerformanceResponse,
+    PairwiseComparisonResponse,
 )
 from app.database.repository import PredictionRepository
+from app.history.comparison import ModelComparator
 
 logger = logging.getLogger(__name__)
 
@@ -118,4 +122,84 @@ def get_history(
         total=total_count,
         limit=limit,
         offset=offset,
+    )
+
+
+@router.get(
+    "/compare",
+    response_model=ModelComparisonResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Compare Python ML vs. LLM vs. Combined Performance",
+    description=(
+        "Computes comparative evaluation metrics (accuracy, precision, recall, F1, Brier score, "
+        "pairwise alignment, and ensemble lift) across model architectures on verified historical outcomes."
+    ),
+)
+def compare_models(
+    symbol: Optional[str] = Query(
+        None,
+        min_length=1,
+        max_length=20,
+        description="Optional stock ticker symbol filter (e.g. 'RELIANCE')",
+    ),
+    min_verified: int = Query(
+        1,
+        ge=1,
+        description="Minimum verified sessions required to include pairwise comparison (default 1)",
+    ),
+    repository: PredictionRepository = Depends(get_prediction_repository),
+) -> ModelComparisonResponse:
+    """Compare model performance metrics across verified sessions."""
+    comparator = ModelComparator(repository=repository)
+    report = comparator.compare_from_repository(symbol=symbol, min_verified=min_verified)
+
+    models_resp = [
+        ModelPerformanceResponse(
+            model_name=m.model_name,
+            total_predictions=m.total_predictions,
+            verified_sessions=m.verified_sessions,
+            pending_sessions=m.pending_sessions,
+            correct_predictions=m.correct_predictions,
+            incorrect_predictions=m.incorrect_predictions,
+            directional_accuracy=m.directional_accuracy,
+            precision_up=m.precision_up,
+            recall_up=m.recall_up,
+            f1_up=m.f1_up,
+            precision_down=m.precision_down,
+            recall_down=m.recall_down,
+            f1_down=m.f1_down,
+            brier_score=m.brier_score,
+        )
+        for m in report.models
+    ]
+
+    pw_resp = [
+        PairwiseComparisonResponse(
+            model_a=p.model_a,
+            model_b=p.model_b,
+            matched_sessions=p.matched_sessions,
+            agreement_count=p.agreement_count,
+            agreement_rate=p.agreement_rate,
+            agreement_accuracy=p.agreement_accuracy,
+            divergence_count=p.divergence_count,
+            divergence_rate=p.divergence_rate,
+            divergence_accuracy_a=p.divergence_accuracy_a,
+            divergence_accuracy_b=p.divergence_accuracy_b,
+            model_a_superior_count=p.model_a_superior_count,
+            model_b_superior_count=p.model_b_superior_count,
+            both_correct_count=p.both_correct_count,
+            both_incorrect_count=p.both_incorrect_count,
+            accuracy_delta=p.accuracy_delta,
+        )
+        for p in report.pairwise_comparisons
+    ]
+
+    return ModelComparisonResponse(
+        symbol=report.symbol,
+        total_records_analyzed=report.total_records_analyzed,
+        models=models_resp,
+        pairwise_comparisons=pw_resp,
+        ensemble_lift_over_ml=report.ensemble_lift_over_ml,
+        ensemble_lift_over_llm=report.ensemble_lift_over_llm,
+        disclaimer=report.disclaimer,
     )

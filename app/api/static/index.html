@@ -471,6 +471,36 @@
             </button>
           </div>
 
+          <!-- Phase 15 Comparative Model Performance Summary -->
+          <div class="card mb-4" id="model-comparison-card" style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+              <h3 style="font-size: 1rem; font-weight: 600; color: #f8fafc; margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                <span>⚖️</span> Comparative Model Performance (ML vs. LLM vs. Ensemble)
+              </h3>
+              <span id="comparison-lift-badge" class="badge badge-info" style="font-size: 0.75rem;">Awaiting Verified Sessions</span>
+            </div>
+            <div class="table-container" style="margin-bottom: 0.5rem;">
+              <table class="data-table" id="comparison-table" style="font-size: 0.85rem;" aria-label="Comparative Model Evaluation Table">
+                <thead>
+                  <tr>
+                    <th scope="col">Model Architecture</th>
+                    <th scope="col">Total Predictions</th>
+                    <th scope="col">Verified Sessions</th>
+                    <th scope="col">Directional Accuracy</th>
+                    <th scope="col">F1 Score (UP / DN)</th>
+                    <th scope="col">Brier Score</th>
+                  </tr>
+                </thead>
+                <tbody id="comparison-table-body">
+                  <tr>
+                    <td colspan="6" class="text-center py-4 text-muted">No verified comparison sessions available yet.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div id="comparison-pairwise-text" style="font-size: 0.75rem; color: #94a3b8; line-height: 1.5;"></div>
+          </div>
+
           <!-- History Filter Bar -->
           <div class="filter-bar">
             <div class="filter-group">
