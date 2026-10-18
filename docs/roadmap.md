@@ -171,7 +171,7 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Atomic promotion protocol copying candidate to active path (`models/{model}_direction.*`) and preserving active models 100% on any gate failure.
   - SQLite model release persistence in `model_releases` table tracking version history, cutoffs, metrics, and gate results.
 
-### Phase 16: Final Testing & Evaluation (In Progress - Day 40)
+### Phase 16: Final Testing & Evaluation (In Progress - Day 41)
 - Comprehensive audit of retraining workflow and model release management (Day 39 complete).
 - Implementation of Gate 0 (Chronological Integrity Gate) eliminating look-ahead bias and inverted cutoffs (ADR 07).
 - Transactional promotion protocol with mandatory archiving, atomic staging (`os.replace`), and automatic rollback from archive on SQLite/filesystem failure.
@@ -182,6 +182,11 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Production OpenAPI/Swagger docs exposure lockdown (`docs_url=None`, `openapi_url=None` returning 404 in production).
   - Defensive OWASP response headers middleware (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`).
   - Production startup guard rejecting `APP_DEBUG=true` in production mode.
+- CI/CD security scanning, deployment runbook & staging readiness (Day 41 complete):
+  - Automated CI/CD dependency vulnerability scanning and multi-version test suite (`.github/workflows/ci.yml`).
+  - Production operations and deployment runbook covering env defaults, Nginx TLS termination, WAL hot backup, model rollback, and triage (`docs/deployment-runbook.md`).
+  - Request latency telemetry middleware emitting `X-Process-Time-Ms` and non-sensitive operational access logs.
+  - Reproducible staging soak simulation framework (`scripts/staging_soak_test.py`).
 - Remaining Phase 16 acceptance criteria:
-  - Long-running staging deployment soak testing and real-world system telemetry integration.
-  - Periodic CI/CD automated CVE dependency scanner pipeline.
+  - Multi-hour soak testing on dedicated production-equivalent staging infrastructure during live exchange market hours once host cluster is provisioned.
+  - Final Phase 16 completion and sign-off review.

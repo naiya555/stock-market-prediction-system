@@ -6,6 +6,7 @@ Configures FastAPI application instance, exception handling, logging, and route 
 import logging
 import os
 from pathlib import Path
+import time
 from typing import Any, Dict
 
 from fastapi import FastAPI, HTTPException, Request, status
@@ -68,14 +69,26 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Defensive Security Response Headers Middleware
+    # Defensive Security Response Headers & Operational Telemetry Middleware
     @app.middleware("http")
-    async def add_security_headers(request: Request, call_next):
+    async def add_security_headers_and_telemetry(request: Request, call_next):
+        start_time = time.perf_counter()
         response = await call_next(request)
+        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        response.headers["X-Process-Time-Ms"] = str(duration_ms)
+        # Operational telemetry: request method, path, HTTP status, and duration (ms)
+        # Avoid logging query parameters, authorization headers, or request body to prevent data leaks
+        logger.info(
+            "HTTP %s %s -> %d (%.2fms)",
+            request.method,
+            request.url.path,
+            response.status_code,
+            duration_ms,
+        )
         return response
 
     # -----------------------------------------------------------------------

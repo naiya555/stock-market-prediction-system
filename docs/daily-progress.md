@@ -3817,6 +3817,71 @@ Audit application configuration, CORS policies, information disclosure vulnerabi
 ### Next Step
 Assemble final deployment runbook documentation and complete final Phase 16 evaluation review.
 
+---
 
+## Day 41 - Phase 16: Deployment Runbook, CI/CD Security Scanning & Staging Readiness
 
+### Goal
+Establish automated CI/CD dependency vulnerability scanning, compile a production deployment & operations runbook, integrate operational request latency telemetry, and provide a reproducible staging soak/load simulation framework.
 
+### Work Completed
+1. **CI/CD Security Scanning (`.github/workflows/ci.yml`)**:
+   - Proposed and implemented GitHub Actions workflow executing on push, pull request, and weekly schedule (Monday 06:00 UTC).
+   - Job 1 (`test`): Multi-version Python (3.11, 3.12) matrix running dependency check (`pip check`) and full pytest suite (`pytest -v`).
+   - Job 2 (`security-audit`): Automated dependency vulnerability scanner utilizing `pip-audit -r requirements.txt --desc on --format json`. Configured failure policy for vulnerable dependencies without silently upgrading packages.
+   - Created local dependency audit utility ([scripts/run_dependency_audit.py](file:///d:/Share_market_predictor/scripts/run_dependency_audit.py)) executing `pip check` and reporting `pip-audit` availability and instructions.
+
+2. **Production Deployment Runbook ([docs/deployment-runbook.md](file:///d:/Share_market_predictor/docs/deployment-runbook.md))**:
+   - Documented the end-to-end production deployment architecture (FastAPI/Uvicorn, SQLite WAL, filesystem model registry, local Ollama Gemma 3 12B service).
+   - Comprehensive inventory of environment variables and mandatory production defaults (`APP_ENV=production`, `APP_DEBUG=false`, `APP_CORS_ORIGINS`).
+   - Reverse proxy configuration with complete Nginx template (TLS 1.3 termination, proxy header forwarding, buffer limits).
+   - Database operations: automatic schema migrations, online hot backup command (`sqlite3 ".backup ..."`), and disaster recovery protocol.
+   - Model lifecycle: candidate quarantine, 6-gate promotion criteria (Chronological Integrity, Sample Sufficiency, Class Balance, Baseline Superiority, Minimum Accuracy, Non-Degradation), atomic staging (`os.replace`), and automatic archive rollback.
+   - Monitoring & incident response: health check endpoint (`GET /api/health`), log signatures, triage matrix, and systemd service unit file.
+
+3. **Operational Telemetry Middleware ([app/api/app.py](file:///d:/Share_market_predictor/app/api/app.py))**:
+   - Injected operational telemetry and latency tracking into ASGI middleware:
+     - Measures request execution duration with high-precision `time.perf_counter()`.
+     - Appends `X-Process-Time-Ms` response header.
+     - Emits structured operational access log: `HTTP {method} {path} -> {status_code} ({duration_ms}ms)`.
+     - Preserves privacy and security: Query strings, authorization headers, and request bodies are strictly omitted from access logs to prevent credential leakage.
+
+4. **Staging Soak Test Simulation ([scripts/staging_soak_test.py](file:///d:/Share_market_predictor/scripts/staging_soak_test.py))**:
+   - Verified that no external staging cluster or synthetic load generator existed in the repository.
+   - Implemented a reproducible load test runner capable of executing concurrent multi-threaded requests against `/api/health`, `/`, `/api/history`, `/api/events`, and `/api/predict`.
+   - Aggregates throughput (req/s), status breakdown, and latency distribution (min, mean, p50, p95, p99, max).
+   - Added explicit disclaimers: Local simulation validates endpoint stability and error isolation under concurrency; a multi-hour soak test on a production-equivalent staging cluster during live exchange hours remains a documented, pending Phase 16 acceptance criterion.
+
+5. **Automated Unit & Regression Tests ([tests/test_staging_soak.py](file:///d:/Share_market_predictor/tests/test_staging_soak.py), [tests/test_security_deployment.py](file:///d:/Share_market_predictor/tests/test_security_deployment.py))**:
+   - Added 4 unit tests covering `perform_dependency_audit()`, `SoakSummary` percentile computation, empty metric safety, and bounded in-process soak test execution.
+   - Added `X-Process-Time-Ms` telemetry header assertion to security deployment suite.
+
+### Validation Results
+- **Focused Staging Soak & Security Tests:**
+  ```powershell
+  & .\.venv\Scripts\python -m pytest tests/test_staging_soak.py tests/test_security_deployment.py -v
+  ```
+  *Result:* **13 passed**, 1 warning in 11.86s.
+- **In-Process Soak Simulation:**
+  ```powershell
+  & .\.venv\Scripts\python scripts/staging_soak_test.py --requests 50 --concurrency 4 --in-process
+  ```
+  *Result:* **50 requests completed**, 100% success (non-5xx), 0 errors, 15.85 req/s, mean latency 222.11ms, p50 30.02ms.
+- **Local Dependency Audit Runner:**
+  ```powershell
+  & .\.venv\Scripts\python scripts/run_dependency_audit.py
+  ```
+  *Result:* `pip check` PASSED. `pip-audit` notice logged with CI workflow reference.
+- **Full Automated Test Suite:**
+  ```powershell
+  & .\.venv\Scripts\python -m pytest
+  ```
+  *Result:* **587 passed**, 0 failed, 1 warning (Starlette testclient deprecation) in 25.46s across 43 test files (expanded from 583 baseline).
+
+### Remaining Risks & Limitations
+- While local concurrency and simulation tests passed cleanly, a live multi-hour soak test on dedicated production-equivalent staging infrastructure during NSE market hours remains pending deployment infrastructure provisioning.
+- Live exchange quotes depend on external Yahoo Finance availability and are subject to potential network latency or third-party rate limits.
+- Automated tests verify deterministic software behavior and error handling; they do not establish financial profitability or eliminate market risk.
+
+### Next Step
+Execute live staging deployment soak test once staging infrastructure is provisioned, finalize Phase 16 completion audit, and prepare production launch review.

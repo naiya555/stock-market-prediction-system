@@ -112,11 +112,13 @@ def test_security_response_headers_present():
     res = client.get("/api/health")
     assert res.status_code == 200
 
-    # Verify OWASP defensive response headers
+    # Verify OWASP defensive response headers and operational telemetry
     assert res.headers.get("X-Content-Type-Options") == "nosniff"
     assert res.headers.get("X-Frame-Options") == "DENY"
     assert res.headers.get("Referrer-Policy") == "strict-origin-when-cross-origin"
     assert "geolocation=()" in res.headers.get("Permissions-Policy", "")
+    assert "X-Process-Time-Ms" in res.headers
+    assert float(res.headers["X-Process-Time-Ms"]) >= 0.0
 
 
 def test_effective_cors_runtime_enforcement():
