@@ -20,9 +20,9 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 | **10** | **Regulatory & Global Events** | Macroeconomic, RBI, governmental, event parser & session impact. | **Complete (Day 29-30)** |
 | **11** | **LLM Integration** | Dual-role LLM setup: contextual entity extraction and independent forecasting. | **Current Phase (Next Objective)** |
 | **12** | **ML + LLM Combination** | Ensemble layer combining numerical ML and LLM predictions transparently. | Future |
-| **13** | **Web Application** | Interactive FastAPI endpoints and user-facing presentation dashboard. | Future |
-| **14** | **Live Data Pipeline** | Point-in-time current price, breadth, and market session intake. | Future |
-| **15** | **Model Comparison & Improvement**| Comparative metrics (ML vs. LLM vs. Ensemble) and controlled retraining. | Future |
+| **13** | **Web Application** | Interactive FastAPI endpoints and user-facing presentation dashboard. | Complete (Day 33-34) |
+| **14** | **Live Data Pipeline** | Point-in-time current price, breadth, session intake, and prediction quote integration. | **Complete (Day 35-36)** |
+| **15** | **Model Comparison & Improvement**| Comparative metrics (ML vs. LLM vs. Ensemble) and controlled retraining. | **Current Phase (Next Objective)** |
 | **16** | **Final Testing & Evaluation** | Comprehensive end-to-end audit, load testing, and production hardening. | Future |
 
 ---
@@ -155,9 +155,11 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Financial display compliance: strictly separates quantitative ML metrics from qualitative LLM reasoning, prominently disclaims uncalibrated 70/30 heuristic weights, renders volatility target ranges ($Close \pm ATR$) and agreement badges only when provided by API responses, never substitutes 50% for missing probabilities, validates event link protocols strictly to HTTP(S), and never displays hardcoded demo prices or synthetic outcomes.
   - FastAPI integration: mounted static directory (`/static`), `/ui` HTML route, browser content-negotiation on `/`, and Starlette CORS middleware restricted to trusted local origin whitelists with credentials disabled to prevent credential leakage.
 
-### Phase 14: Live Data Pipeline
-- Connect near-real-time market data providers with strict timestamp preservation.
-- Handle market session states (pre-open, market hours, post-close).
+### Phase 14: Live Data Pipeline (Complete - Day 35-36)
+- Connect near-real-time market data providers with strict timestamp preservation (`YFinanceProvider.fetch_quote()`).
+- Handle Indian market session states (pre-open, regular hours, post-close, closed, holidays, weekends via `MarketSessionStateEngine`).
+- Integrate verified quote context into inference (`QuoteContext`, `PredictionService._fetch_quote_context`) and ensemble target range anchoring (`EnsembleService.synthesize`).
+- End-to-end pipeline validation, temporal isolation (zero look-ahead bias), quote observability, and sensitive error message sanitization (Day 36 complete).
 
 ### Phase 15: Model Comparison & Improvement
 - Create comparative dashboards evaluating Python ML vs. LLM vs. Combined performance.

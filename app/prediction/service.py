@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 
+from app.core.logging_config import sanitize_log_field
 from app.core.schemas import MarketOHLCV
 from app.market.pipeline import (
     MarketDataPipelineResult,
@@ -175,7 +176,7 @@ class PredictionService:
         except Exception as exc:
             logger.warning(
                 "Live quote acquisition failed for '%s': %s. Safe zero-fabrication fallback applied.",
-                clean_symbol,
+                sanitize_log_field(clean_symbol),
                 exc,
             )
             return QuoteContext.unavailable(
@@ -234,7 +235,7 @@ class PredictionService:
                 provider=self.provider,
             )
         except Exception as exc:
-            logger.error("Market data pipeline failed for symbol '%s': %s", clean_symbol, exc)
+            logger.error("Market data pipeline failed for symbol '%s': %s", sanitize_log_field(clean_symbol), exc)
             return self._build_error_result(
                 symbol=clean_symbol,
                 prediction_timestamp=pred_time_str,
@@ -337,7 +338,7 @@ class PredictionService:
         try:
             dataset = assemble_feature_matrix(pipeline_result, only_latest=True)
         except Exception as exc:
-            logger.error("Feature assembly failed for symbol '%s': %s", clean_symbol, exc)
+            logger.error("Feature assembly failed for symbol '%s': %s", sanitize_log_field(clean_symbol), exc)
             return self._build_error_result(
                 symbol=clean_symbol,
                 prediction_timestamp=pred_time_str,

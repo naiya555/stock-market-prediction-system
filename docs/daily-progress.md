@@ -3495,3 +3495,49 @@ Connect verified near-real-time quotes into directional prediction inference (`P
 ### Remaining Limitations
 - Near-real-time quotes provided by Yahoo Finance remain subject to a free-tier exchange delay (~15 minutes during active continuous trading hours); all response payloads and summaries explicitly disclose this limitation and clarify that observed quotes are not predicted opening or closing prices.
 
+---
+
+## Day 36 - Prediction Pipeline Validation and Observability
+
+### Goal
+Audit and validate the complete prediction flow from market data retrieval to prediction response, verify price semantic distinctions, test edge-case handling across quote states and historical modes, harden logging and error schemas against sensitive data leakage, and ensure zero look-ahead bias and zero price fabrication.
+
+### Audit & Implementation Completed
+1. **End-to-End Pipeline Audit (`app/market/`, `app/prediction/`, `app/api/`)**:
+   - Audited data path from market data ingestion (`run_market_data_pipeline`) to feature assembly (37 canonical features), model inference (`XGBoostDirectionClassifier`/`LightGBMDirectionClassifier`), ensemble synthesis, and HTTP serialization.
+   - **Semantic Distinction Verified:** Verified that observed quotes (`price_type="LAST_TRADED_PRICE"`, timestamp, source) remain quarantined inside `quote_context`. The directional models output only class direction (`UP`/`DOWN`) and uncalibrated probabilities (`probability_up`, `probability_down`). Confirmed that neither the ML models nor the API fabricate predicted opening or closing prices.
+   - **Target Range Anchoring:** Verified that ATR-based volatility bounds in multi-agent ensemble synthesis are properly calculated relative to verified quote prices without conflating them with directional forecasts.
+
+2. **Temporal Isolation and Point-in-Time Integrity Audit**:
+   - Verified that historical-mode requests (`as_of_date is not None`) bypass live quote acquisition completely, returning `freshness_status="NOT_APPLICABLE"` and `last_price=None` without calling provider network endpoints.
+   - Confirmed point-in-time integrity in historical backtesting and training routines, preventing look-ahead bias.
+
+3. **Resilience & Zero-Fabrication Under Failure**:
+   - Verified handling across quote states: `FRESH`, `DELAYED`, `STALE`, and `UNAVAILABLE`.
+   - Confirmed that quote network timeouts, HTTP 404s, or provider errors safely fall back to `UNAVAILABLE` without aborting inference or synthesizing false prices or false confidence.
+
+4. **Security & Sensitive Data Leakage Hardening (`app/api/routes/predict.py`, `app/prediction/service.py`)**:
+   - **Error Message Sanitization (`app/api/routes/predict.py`)**: Implemented `_sanitize_public_quote_error(msg)` to ensure that internal diagnostics, filesystem paths (`\`, `/`), line numbers, or Python tracebacks inside `qc.error_message` are sanitized to `"Quote retrieval failed. Check server logs."` before returning to API clients.
+   - **Log Injection Hardening (`app/prediction/service.py`)**: Applied `sanitize_log_field()` across `PredictionService` log calls (`_fetch_quote_context`, pipeline failure, feature assembly failure) to ensure control characters and CRLF sequences cannot forge log entries.
+
+5. **Targeted Tests Added (`tests/test_inference_quote_integration.py`)**:
+   - `test_quote_context_error_message_sanitizes_internal_paths`: Verifies that internal server paths and tracebacks in quote error messages are masked in API responses.
+   - `test_quote_acquisition_crlf_log_sanitization`: Verifies that `PredictionService` neutralizes CRLF characters when logging quote acquisition failures.
+   - `test_prediction_pipeline_distinguishes_observed_price_and_direction`: Verifies that observed quote prices are strictly quarantined in `quote_context` while response roots contain only directional probabilities with zero fabricated price targets.
+
+### Validation Results
+- **Full Automated Test Suite:**
+  ```powershell
+  & .\.venv\Scripts\python -m pytest
+  ```
+  *Result:* **553 passed**, 0 failed, 1 warning (Starlette testclient deprecation) in 22.50s across 38 test files (expanded from 550 baseline).
+- **Day 35 Verification Script:**
+  ```powershell
+  & .\.venv\Scripts\python scripts/verify_day35.py
+  ```
+  *Result:* Exited with code `0` (`ALL STEPS PASSED`).
+
+### Remaining Limitations
+- Yahoo Finance quotes remain subject to free-tier provider delay (~15 minutes); exchange-grade low-latency feeds (e.g., direct NSE broadcast or paid broker WebSockets) are out of scope for the current local architecture.
+- Passing tests validate deterministic software contracts and safeguards, not financial market profitability or production readiness under real financial risk.
+

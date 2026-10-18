@@ -43,6 +43,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _sanitize_public_quote_error(msg: Optional[str]) -> Optional[str]:
+    """Sanitize internal diagnostics in quote error messages to prevent leakage."""
+    if not msg:
+        return None
+    if any(sep in msg for sep in ("\\", "/", "Traceback", "line ", "Exception")):
+        return "Quote retrieval failed. Check server logs."
+    return msg
+
+
 def _map_quote_context(qc: Optional[QuoteContext]) -> Optional[QuoteContextResponse]:
     """Map domain QuoteContext to API QuoteContextResponse schema."""
     if not qc:
@@ -59,7 +68,7 @@ def _map_quote_context(qc: Optional[QuoteContext]) -> Optional[QuoteContextRespo
         delay_minutes=qc.delay_minutes,
         price_type=qc.price_type,
         note=qc.note,
-        error_message=qc.error_message,
+        error_message=_sanitize_public_quote_error(qc.error_message),
     )
 
 

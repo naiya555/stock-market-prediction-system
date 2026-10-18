@@ -496,3 +496,154 @@ def test_api_predict_route_quote_context_serialization() -> None:
         assert data["quote_context"]["freshness_status"] == "DELAYED"
         assert data["quote_context"]["price_type"] == "LAST_TRADED_PRICE"
         assert "NOT a predicted opening or closing price" in data["quote_context"]["note"]
+
+
+def test_quote_context_error_message_sanitizes_internal_paths() -> None:
+    """Verify quote error messages with filesystem paths or tracebacks are sanitized in API response."""
+    quote_ctx = QuoteContext(
+        symbol="RELIANCE",
+        last_price=None,
+        price_timestamp=None,
+        retrieved_at=None,
+        source="yfinance",
+        session_state="UNKNOWN",
+        freshness_status="UNAVAILABLE",
+        error_message="Traceback (most recent call last):\n  File 'C:\\Users\\admin\\app\\provider.py', line 42, in fetch\nException: timeout",
+    )
+    quality = PredictionDataQuality(
+        total_bars_fetched=50,
+        cleaned_bars=50,
+        warmup_bars_required=34,
+        warmup_complete=True,
+        latest_bar_timestamp="2026-10-15T00:00:00Z",
+        missing_feature_count=0,
+        missing_features=[],
+        is_stale=False,
+        stale_days=0,
+    )
+    dummy_res = PredictionResult(
+        symbol="RELIANCE",
+        prediction_timestamp="2026-10-16T11:00:00Z",
+        latest_input_timestamp="2026-10-15T00:00:00Z",
+        status=PredictionStatus.SUCCESS,
+        predicted_direction="UP",
+        predicted_label=1,
+        probability_up=0.60,
+        probability_down=0.40,
+        model_name="xgboost",
+        model_version="xgb_v1",
+        model_metadata={},
+        data_quality=quality,
+        quote_context=quote_ctx,
+    )
+
+    app = create_app()
+    mock_pred_svc = MagicMock()
+    mock_pred_svc.predict.return_value = dummy_res
+    mock_repo = MagicMock()
+    mock_repo.save_prediction.return_value = "mock_pred_456"
+
+    app.dependency_overrides[get_prediction_service] = lambda: mock_pred_svc
+    app.dependency_overrides[get_prediction_repository] = lambda: mock_repo
+
+    with TestClient(app) as client:
+        res = client.post("/api/predict", json={"symbol": "RELIANCE", "model_name": "xgboost"})
+        assert res.status_code == 200
+        data = res.json()
+        qc = data["quote_context"]
+        assert qc is not None
+        assert qc["freshness_status"] == "UNAVAILABLE"
+        # Must NOT leak Windows or Unix filesystem path or Python traceback
+        assert "C:\\Users" not in qc["error_message"]
+        assert "Traceback" not in qc["error_message"]
+        assert "line 42" not in qc["error_message"]
+        assert qc["error_message"] == "Quote retrieval failed. Check server logs."
+
+
+def test_quote_acquisition_crlf_log_sanitization(caplog: pytest.LogCaptureFixture) -> None:
+    """Verify PredictionService sanitizes CRLF characters when logging quote acquisition failures."""
+    mock_provider = MagicMock()
+    mock_provider.fetch_quote.side_effect = RuntimeError("Simulated network timeout")
+    service = PredictionService(provider=mock_provider)
+
+    req = PredictionRequest(symbol="RELIANCE", model_name="xgboost")
+    with caplog.at_level("WARNING"):
+        ctx = service._fetch_quote_context("RELIANCE\r\nINJECTED_LOG:root", req)
+
+    assert ctx is not None
+    assert ctx.freshness_status == "UNAVAILABLE"
+    # caplog records must not contain unescaped CRLF in log messages
+    for record in caplog.records:
+        assert "\r" not in record.message
+        assert "\n" not in record.message
+        if "Live quote acquisition failed" in record.message:
+            assert "\\r" in record.message or "\\n" in record.message
+
+
+def test_prediction_pipeline_distinguishes_observed_price_and_direction() -> None:
+    """Verify observed quote price is strictly isolated from directional forecasts."""
+    quote_ctx = QuoteContext(
+        symbol="TCS",
+        last_price=3500.0,
+        price_timestamp="2026-10-16T11:00:00+05:30",
+        retrieved_at="2026-10-16T11:00:00+05:30",
+        source="yfinance",
+        session_state="REGULAR_HOURS",
+        freshness_status="DELAYED",
+    )
+    res = PredictionResult(
+        symbol="TCS",
+        prediction_timestamp="2026-10-16T11:00:00Z",
+        latest_input_timestamp="2026-10-15T00:00:00Z",
+        status=PredictionStatus.SUCCESS,
+        predicted_direction="DOWN",
+        predicted_label=0,
+        probability_up=0.35,
+        probability_down=0.65,
+        model_name="xgboost",
+        model_version="xgb_v1",
+        model_metadata={},
+        data_quality=None,
+        quote_context=quote_ctx,
+    )
+    api_resp = PredictionResponse(
+        symbol=res.symbol,
+        prediction_timestamp=res.prediction_timestamp,
+        latest_input_timestamp=res.latest_input_timestamp,
+        status=res.status.value,
+        predicted_direction=res.predicted_direction,
+        predicted_label=res.predicted_label,
+        probability_up=res.probability_up,
+        probability_down=res.probability_down,
+        model_name=res.model_name,
+        model_version=res.model_version,
+        model_metadata=res.model_metadata,
+        data_quality=None,
+        quote_context=QuoteContextResponse(
+            symbol=quote_ctx.symbol,
+            last_price=quote_ctx.last_price,
+            price_timestamp=quote_ctx.price_timestamp,
+            retrieved_at=quote_ctx.retrieved_at,
+            source=quote_ctx.source,
+            session_state=quote_ctx.session_state,
+            freshness_status=quote_ctx.freshness_status,
+            is_delayed=quote_ctx.is_delayed,
+            delay_minutes=quote_ctx.delay_minutes,
+            price_type=quote_ctx.price_type,
+            note=quote_ctx.note,
+            error_message=quote_ctx.error_message,
+        ),
+        disclaimer=res.disclaimer,
+    )
+
+    resp_dict = api_resp.model_dump()
+    # Direction is binary UP / DOWN with uncalibrated probabilities
+    assert resp_dict["predicted_direction"] == "DOWN"
+    assert resp_dict["probability_down"] == 0.65
+    # Response root must not fabricate a predicted opening or closing price
+    assert "predicted_price" not in resp_dict
+    assert "predicted_open" not in resp_dict
+    assert "predicted_close" not in resp_dict
+    # Observed market quote is strictly quarantined inside quote_context
+    assert resp_dict["quote_context"]["last_price"] == 3500.0
+    assert resp_dict["quote_context"]["price_type"] == "LAST_TRADED_PRICE"
