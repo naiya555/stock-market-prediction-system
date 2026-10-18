@@ -171,7 +171,7 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Atomic promotion protocol copying candidate to active path (`models/{model}_direction.*`) and preserving active models 100% on any gate failure.
   - SQLite model release persistence in `model_releases` table tracking version history, cutoffs, metrics, and gate results.
 
-### Phase 16: Final Testing & Evaluation (In Progress - Day 41)
+### Phase 16: Final Testing & Evaluation (In Progress - Day 42)
 - Comprehensive audit of retraining workflow and model release management (Day 39 complete).
 - Implementation of Gate 0 (Chronological Integrity Gate) eliminating look-ahead bias and inverted cutoffs (ADR 07).
 - Transactional promotion protocol with mandatory archiving, atomic staging (`os.replace`), and automatic rollback from archive on SQLite/filesystem failure.
@@ -187,6 +187,11 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Production operations and deployment runbook covering env defaults, Nginx TLS termination, WAL hot backup, model rollback, and triage (`docs/deployment-runbook.md`).
   - Request latency telemetry middleware emitting `X-Process-Time-Ms` and non-sensitive operational access logs.
   - Reproducible staging soak simulation framework (`scripts/staging_soak_test.py`).
+- Live staging readiness & deployment runbook automated validation (Day 42 complete):
+  - Verified local Ollama Gemma 3 12B service readiness and conducted infrastructure inventory.
+  - Validated deployment runbook protocols with automated tests (`tests/test_deployment_runbook.py`).
+  - Verified real TCP socket HTTP execution of `staging_soak_test.py` with zero database mutation.
+  - Documented staging infrastructure blocker and concrete external provisioning prerequisites.
 - Remaining Phase 16 acceptance criteria:
   - Multi-hour soak testing on dedicated production-equivalent staging infrastructure during live exchange market hours once host cluster is provisioned.
   - Final Phase 16 completion and sign-off review.
