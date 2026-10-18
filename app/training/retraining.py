@@ -14,8 +14,10 @@ from datetime import datetime, timezone
 from enum import Enum
 import json
 import math
+import os
 from pathlib import Path
 import shutil
+import threading
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import uuid
 
@@ -111,6 +113,7 @@ class ModelRetrainer:
         self.models_dir = Path(models_dir) if models_dir else Path("models")
         self.candidates_dir = self.models_dir / "candidates"
         self.archive_dir = self.models_dir / "archive"
+        self._promotion_lock = threading.Lock()
 
         # Ensure directories exist
         self.models_dir.mkdir(parents=True, exist_ok=True)
@@ -125,6 +128,56 @@ class ModelRetrainer:
         if clean_name == "lightgbm":
             return self.models_dir / "lightgbm_direction.txt"
         return self.models_dir / f"{clean_name}_direction.bin"
+
+    @staticmethod
+    def validate_chronological_ordering(
+        training_cutoff_date: str,
+        evaluation_cutoff_date: str,
+        X_train: Optional[pd.DataFrame] = None,
+        X_val: Optional[pd.DataFrame] = None,
+    ) -> Tuple[bool, str]:
+        """Validate chronological integrity and absence of future-data leakage (ADR 07, ADR 10)."""
+        try:
+            dt_train = datetime.fromisoformat(str(training_cutoff_date).replace("Z", "+00:00"))
+            dt_eval = datetime.fromisoformat(str(evaluation_cutoff_date).replace("Z", "+00:00"))
+        except Exception as exc:
+            return False, f"Invalid date format for cutoffs: train='{training_cutoff_date}', eval='{evaluation_cutoff_date}' ({exc})."
+
+        t_naive = dt_train.replace(tzinfo=None)
+        e_naive = dt_eval.replace(tzinfo=None)
+        if t_naive >= e_naive:
+            return False, (
+                f"Chronological inversion detected: training_cutoff_date ({training_cutoff_date}) "
+                f">= evaluation_cutoff_date ({evaluation_cutoff_date}). Future data cannot precede evaluation."
+            )
+
+        if X_train is not None and X_val is not None and len(X_train) > 0 and len(X_val) > 0:
+            train_dates = None
+            if isinstance(X_train.index, pd.DatetimeIndex):
+                train_dates = X_train.index
+            elif "Date" in X_train.columns:
+                train_dates = pd.to_datetime(X_train["Date"], errors="coerce")
+            elif "timestamp" in X_train.columns:
+                train_dates = pd.to_datetime(X_train["timestamp"], errors="coerce")
+
+            val_dates = None
+            if isinstance(X_val.index, pd.DatetimeIndex):
+                val_dates = X_val.index
+            elif "Date" in X_val.columns:
+                val_dates = pd.to_datetime(X_val["Date"], errors="coerce")
+            elif "timestamp" in X_val.columns:
+                val_dates = pd.to_datetime(X_val["timestamp"], errors="coerce")
+
+            if train_dates is not None and val_dates is not None:
+                max_train = train_dates.max()
+                min_val = val_dates.min()
+                if pd.notna(max_train) and pd.notna(min_val):
+                    mt = max_train.tz_localize(None) if hasattr(max_train, "tz_localize") and getattr(max_train, "tzinfo", None) else max_train
+                    mv = min_val.tz_localize(None) if hasattr(min_val, "tz_localize") and getattr(min_val, "tzinfo", None) else min_val
+                    if mt >= mv:
+                        return False, f"Temporal overlap/leakage detected: max train date ({max_train}) >= min eval date ({min_val})."
+
+        return True, "Chronological integrity verified: zero look-ahead leakage."
 
     @staticmethod
     def compute_brier_score(y_true: Sequence[int], y_prob_up: Sequence[float]) -> Optional[float]:
@@ -147,9 +200,22 @@ class ModelRetrainer:
         n_eval: int = 0,
         y_train: Optional[Sequence[int]] = None,
         y_val: Optional[Sequence[int]] = None,
+        chronological_valid: bool = True,
+        chronological_message: str = "Chronological integrity verified: zero look-ahead leakage.",
     ) -> Tuple[bool, List[ValidationGateResult], Optional[str]]:
         """Evaluate formal validation gates required for model promotion under ADR 10."""
         gates: List[ValidationGateResult] = []
+
+        # Gate 0: Chronological Integrity Gate
+        gates.append(
+            ValidationGateResult(
+                gate_name="CHRONOLOGICAL_INTEGRITY_GATE",
+                passed=chronological_valid,
+                observed_value="valid" if chronological_valid else "inverted_or_leaked",
+                threshold="training_cutoff_date < evaluation_cutoff_date (zero look-ahead leakage)",
+                message=chronological_message,
+            )
+        )
 
         # Gate 1: Minimum Sample Size Gate
         pass_samples = (n_train >= self.MIN_TRAIN_SAMPLES and n_eval >= self.MIN_EVAL_SAMPLES)
@@ -300,7 +366,10 @@ class ModelRetrainer:
         else:
             raise ValueError(f"Unsupported model architecture '{model_name}'. Must be 'xgboost' or 'lightgbm'.")
 
-        # Pre-training validation: check sample sufficiency and class balance before fitting
+        # Pre-training validation: Chronological Integrity, Sample Sufficiency, Class Balance
+        is_chrono_valid, chrono_msg = self.validate_chronological_ordering(
+            training_cutoff_date, evaluation_cutoff_date, X_train, X_val
+        )
         n_train = len(X_train) if X_train is not None else 0
         n_eval = len(X_val) if X_val is not None else 0
         y_train_list = list(y_train) if y_train is not None else []
@@ -313,8 +382,15 @@ class ModelRetrainer:
         pass_samples = (n_train >= self.MIN_TRAIN_SAMPLES and n_eval >= self.MIN_EVAL_SAMPLES)
         pass_balance = bool(has_both_train and has_both_val)
 
-        if not pass_samples or not pass_balance:
+        if not is_chrono_valid or not pass_samples or not pass_balance:
             gates = [
+                ValidationGateResult(
+                    gate_name="CHRONOLOGICAL_INTEGRITY_GATE",
+                    passed=is_chrono_valid,
+                    observed_value={"training_cutoff": training_cutoff_date, "evaluation_cutoff": evaluation_cutoff_date},
+                    threshold="training_cutoff_date < evaluation_cutoff_date (zero look-ahead leakage)",
+                    message=chrono_msg,
+                ),
                 ValidationGateResult(
                     gate_name="SAMPLE_SUFFICIENCY_GATE",
                     passed=pass_samples,
@@ -420,6 +496,8 @@ class ModelRetrainer:
             n_eval=len(X_val),
             y_train=list(y_train),
             y_val=list(y_val),
+            chronological_valid=is_chrono_valid,
+            chronological_message=chrono_msg,
         )
 
         metrics_dict = {
@@ -438,46 +516,89 @@ class ModelRetrainer:
         should_promote = passed or force_promote
         status = ModelReleaseStatus.PROMOTED if should_promote else ModelReleaseStatus.REJECTED
 
-        # 6. Atomic Promotion Protocol
-        if should_promote:
-            # Step A: Archive currently active model if present
-            if active_path.is_file():
-                archive_name = f"{clean_model}_archived_{date_str}.{ext}"
-                archive_path = self.archive_dir / archive_name
-                try:
-                    shutil.copy2(active_path, archive_path)
-                    logger.info("Archived active model to %s", archive_path)
-                except Exception as exc:
-                    logger.warning("Failed to archive active model: %s", exc)
+        # 6. Atomic Promotion and Rollback Protocol
+        with self._promotion_lock:
+            archived_backup_path: Optional[Path] = None
+            if should_promote:
+                # Step A: Archive currently active model if present
+                if active_path.is_file():
+                    archive_name = f"{clean_model}_archived_{date_str}_{release_id[:6]}.{ext}"
+                    archived_backup_path = self.archive_dir / archive_name
+                    try:
+                        shutil.copy2(active_path, archived_backup_path)
+                        logger.info("Archived active model to %s", archived_backup_path)
+                    except Exception as exc:
+                        logger.error(
+                            "Failed to archive active model before promotion: %s. Aborting promotion to protect active model.",
+                            exc,
+                        )
+                        should_promote = False
+                        status = ModelReleaseStatus.REJECTED
+                        fail_reason = f"Archive failure: could not create safe backup of active model ({exc})."
 
-            # Step B: Atomically copy candidate to active path
-            shutil.copy2(candidate_path, active_path)
-            logger.info("Promoted candidate model %s to active path %s", version, active_path)
-        else:
-            logger.warning(
-                "Candidate model %s failed validation gates and was REJECTED: %s. Active model preserved.",
-                version,
-                fail_reason,
-            )
+                if should_promote:
+                    # Step B: Atomically stage candidate and replace active path
+                    temp_staging_path = active_path.with_suffix(".tmp")
+                    try:
+                        shutil.copy2(candidate_path, temp_staging_path)
+                        os.replace(temp_staging_path, active_path)
+                        logger.info("Promoted candidate model %s to active path %s", version, active_path)
 
-        # 7. Record Model Release in Repository
-        if self.repository:
-            self.repository.save_model_release(
-                release_id=release_id,
-                model_name=clean_model,
-                model_version=version,
-                symbol=clean_sym,
-                status=status.value,
-                training_sample_count=len(X_train),
-                evaluation_sample_count=len(X_val),
-                training_cutoff_date=training_cutoff_date,
-                evaluation_cutoff_date=evaluation_cutoff_date,
-                metrics=metrics_dict,
-                gates=[g.to_dict() for g in gates],
-                artifact_path=str(active_path if should_promote else candidate_path),
-                rejection_reason=fail_reason if not should_promote else None,
-                is_active=should_promote,
-            )
+                        # Step C: Record Model Release in Repository
+                        if self.repository:
+                            self.repository.save_model_release(
+                                release_id=release_id,
+                                model_name=clean_model,
+                                model_version=version,
+                                symbol=clean_sym,
+                                status=status.value,
+                                training_sample_count=len(X_train),
+                                evaluation_sample_count=len(X_val),
+                                training_cutoff_date=training_cutoff_date,
+                                evaluation_cutoff_date=evaluation_cutoff_date,
+                                metrics=metrics_dict,
+                                gates=[g.to_dict() for g in gates],
+                                artifact_path=str(active_path),
+                                rejection_reason=None,
+                                is_active=True,
+                            )
+                    except Exception as exc:
+                        logger.error("Promotion or repository release save failed: %s. Executing automatic rollback.", exc)
+                        if temp_staging_path.is_file():
+                            try:
+                                temp_staging_path.unlink()
+                            except Exception:
+                                pass
+                        if archived_backup_path and archived_backup_path.is_file():
+                            try:
+                                shutil.copy2(archived_backup_path, active_path)
+                                logger.warning("Rolled back active model from archive %s.", archived_backup_path)
+                            except Exception as rb_exc:
+                                logger.critical("CRITICAL: Failed to rollback active model: %s", rb_exc)
+                        raise
+            else:
+                logger.warning(
+                    "Candidate model %s failed validation gates and was REJECTED: %s. Active model preserved.",
+                    version,
+                    fail_reason,
+                )
+                if self.repository:
+                    self.repository.save_model_release(
+                        release_id=release_id,
+                        model_name=clean_model,
+                        model_version=version,
+                        symbol=clean_sym,
+                        status=status.value,
+                        training_sample_count=len(X_train),
+                        evaluation_sample_count=len(X_val),
+                        training_cutoff_date=training_cutoff_date,
+                        evaluation_cutoff_date=evaluation_cutoff_date,
+                        metrics=metrics_dict,
+                        gates=[g.to_dict() for g in gates],
+                        artifact_path=str(candidate_path),
+                        rejection_reason=fail_reason,
+                        is_active=False,
+                    )
 
         return RetrainingResult(
             release_id=release_id,

@@ -3683,4 +3683,78 @@ Implement controlled, gated model retraining workflows with version tracking and
 ### Next Step
 Proceed to Phase 16: Final Testing & Evaluation (end-to-end multi-regime robustness testing, security audit, and deployment readiness review).
 
+---
+
+## Day 39 - Phase 16: Final Testing & Evaluation — Audit, Multi-Regime Stress Testing & Hardening
+
+### Goal
+Perform a comprehensive audit of the retraining and version tracking implementation before adding features, empirically reproduce any defects, implement atomic filesystem/database rollback guarantees, enforce chronological integrity gates (zero look-ahead leakage), and conduct multi-regime market stress testing.
+
+### Work Completed
+1. **Repository Audit & Empirical Defect Confirmation**:
+   - Audited [app/training/retraining.py](file:///d:/Share_market_predictor/app/training/retraining.py) and [app/database/repository.py](file:///d:/Share_market_predictor/app/database/repository.py) across 8 critical dimensions:
+     1. Temporal leakage and chronological integrity in training and evaluation cutoffs.
+     2. Correct use of verified historical outcomes.
+     3. Candidate rejection and active-model preservation on every failure path.
+     4. Filesystem and SQLite consistency during promotion (archive or copy failures).
+     5. Concurrent retraining or promotion behavior.
+     6. Model artifact/version metadata consistency.
+     7. API input validation, error sanitization, secret handling, and logging.
+     8. Existing API and historical-mode backward compatibility.
+   - **Confirmed Defect 1 (High Severity - Missing Chronological Gate):** Inverted or overlapping cutoffs (e.g. `training_cutoff_date="2025-06-01"`, `evaluation_cutoff_date="2025-01-01"`) were accepted without gate failure, allowing look-ahead bias and future data leakage into the training set.
+   - **Confirmed Defect 2 (High Severity - Missing Promotion Rollback):** During promotion, candidate models were directly copied over the active model file (`shutil.copy2`) before saving the release in SQLite. If repository saving failed or archiving threw an error, the active model file was left modified/overwritten in an inconsistent state without automatic rollback.
+
+2. **Chronological Integrity Enforcement (`app/training/retraining.py`)**:
+   - Implemented `ModelRetrainer.validate_chronological_ordering()`: validates that `training_cutoff_date < evaluation_cutoff_date` and verifies that sample timestamps in the training partition strictly precede evaluation samples (`max(train_dates) < min(val_dates)`).
+   - Added formal **`CHRONOLOGICAL_INTEGRITY_GATE`** (Gate 0): immediately fails and rejects candidates when temporal inversion or look-ahead overlap is detected, preserving active models untouched.
+
+3. **Atomic Promotion, Safe Archiving, and Automatic Rollback Protocol**:
+   - Added `threading.Lock()` (`_promotion_lock`) on `ModelRetrainer` to serialize concurrent promotion workflows.
+   - **Mandatory Archiving:** Promotion is immediately aborted and candidate rejected if creating a backup in `models/archive/` fails, preventing unbacked overwrites.
+   - **Atomic Staging:** Uses temporary file staging (`.tmp`) and `os.replace` for atomic replacement, ensuring concurrent inference readers never encounter partially written model artifacts.
+   - **Transactional Rollback:** Wrapped promotion and repository release saves in a guarded `try...except` block; if SQLite release persistence or filesystem operations fail, the active model is automatically restored from the archived backup byte-for-byte.
+
+4. **Multi-Regime Market Stress & Audit Regression Suite (`tests/test_multi_regime_evaluation.py`)**:
+   - Created 8 comprehensive regression and stress tests:
+     1. `test_chronological_integrity_gate_inverted_cutoffs`: verifies Gate 0 rejection on inverted cutoff dates.
+     2. `test_chronological_integrity_gate_temporal_overlap_in_dates`: verifies Gate 0 rejection on DatetimeIndex overlap.
+     3. `test_promotion_rollback_on_repository_failure`: verifies byte-for-byte rollback of active model when database release save fails.
+     4. `test_promotion_aborted_when_archiving_fails`: verifies promotion is safely aborted when archive creation fails.
+     5. `test_multi_regime_bull_market_evaluation`: evaluates model performance under sustained upward drift.
+     6. `test_multi_regime_bear_market_evaluation`: evaluates model performance under sustained downward trend.
+     7. `test_multi_regime_shock_transition_rejection`: simulates a regime shock (training on bull momentum, evaluating on bear crash); confirms candidate collapse is caught and rejected by Gate 4 / Gate 3, protecting production.
+     8. `test_concurrent_retraining_promotion_thread_safety`: verifies thread serialization and artifact integrity under concurrent promotion attempts.
+
+### Validation Results
+- **Multi-Regime Test Suite:**
+  ```powershell
+  & .\.venv\Scripts\python -m pytest tests/test_multi_regime_evaluation.py -v
+  ```
+  *Result:* **8 passed** in 4.82s.
+- **Model Retraining Test Suite:**
+  ```powershell
+  & .\.venv\Scripts\python -m pytest tests/test_model_retraining.py -v
+  ```
+  *Result:* **7 passed** in 5.33s.
+- **Project Verification Script (Real Historical YFinance Pipeline):**
+  ```powershell
+  & .\.venv\Scripts\python scripts/verify_baselines.py
+  ```
+  *Result:* Successfully fetched and normalized 124 real MarketOHLCV bars for BHARTIARTL; verified feature matrix, temporal holdout, and baseline strategy comparisons without errors.
+- **Full Automated Test Suite:**
+  ```powershell
+  & .\.venv\Scripts\python -m pytest
+  ```
+  *Result:* **574 passed**, 0 failed, 1 warning (Starlette testclient deprecation) in 22.77s across 41 test files (expanded from 566 baseline).
+
+### Remaining Risks & Limitations
+- While chronological separation, atomic replacement, and rollback guarantees are now strictly enforced, real financial markets experience non-stationary regime shifts (liquidity dry-ups, regulatory intervention, macroeconomic shocks) that historical backtests and synthetic regimes cannot fully capture.
+- Retraining remains strictly a manual or batch administrative action; unsupervised automated live retraining loops remain prohibited per ADR 10.
+- Automated tests prove deterministic software correctness, data integrity, and failure containment; they do NOT imply financial profitability or immunity to capital loss in live trading.
+- Phase 16 remains in progress for end-to-end security audits, full deployment readiness reviews, and documentation finalization.
+
+### Next Step
+Continue Phase 16: Perform security and dependency audits, verify production configuration hardening, and assemble final deployment readiness documentation.
+
+
 

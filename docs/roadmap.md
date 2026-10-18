@@ -171,6 +171,9 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Atomic promotion protocol copying candidate to active path (`models/{model}_direction.*`) and preserving active models 100% on any gate failure.
   - SQLite model release persistence in `model_releases` table tracking version history, cutoffs, metrics, and gate results.
 
-### Phase 16: Final Testing & Evaluation
-- End-to-end integration testing and robustness verification under adverse market regimes.
-- Security audit, documentation finalization, and deployment readiness review.
+### Phase 16: Final Testing & Evaluation (In Progress - Day 39)
+- Comprehensive audit of retraining workflow and model release management (Day 39 complete).
+- Implementation of Gate 0 (Chronological Integrity Gate) eliminating look-ahead bias and inverted cutoffs (ADR 07).
+- Transactional promotion protocol with mandatory archiving, atomic staging (`os.replace`), and automatic rollback from archive on SQLite/filesystem failure.
+- Multi-regime market stress testing across Bull, Bear, Choppy, and Shock Transition regimes (`tests/test_multi_regime_evaluation.py`).
+- Security audit, documentation finalization, and deployment readiness review (Next Objective).
