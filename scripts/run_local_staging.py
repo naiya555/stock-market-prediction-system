@@ -16,6 +16,7 @@ Key Isolation Guarantees:
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import contextlib
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 import json
@@ -44,7 +45,32 @@ from scripts.staging_soak_test import (
     EndpointStats,
     classify_http_outcome,
     compute_percentile,
+    create_worker_session,
 )
+
+
+@contextlib.contextmanager
+def prevent_windows_sleep():
+    """Temporarily prevent Windows from entering idle sleep during test execution.
+
+    Uses thread-scoped kernel32.SetThreadExecutionState. Safe, temporary, and
+    automatically releases upon process exit or context exit without altering
+    persistent system power settings.
+    """
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ES_CONTINUOUS = 0x80000000
+            ES_SYSTEM_REQUIRED = 0x00000001
+            ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
+            try:
+                yield True
+            finally:
+                ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
+        except Exception:
+            yield False
+    else:
+        yield False
 
 
 class OfflineStagingEventProvider(BaseEventProvider):
@@ -121,6 +147,22 @@ class StagingValidationReport:
     p95_sample_sufficient: bool = False
     p99_sample_sufficient: bool = False
     endpoint_metrics: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    dev_db_sha256_before: str = ""
+    dev_db_sha256_after: str = ""
+    models_sha256_before: Dict[str, str] = field(default_factory=dict)
+    models_sha256_after: Dict[str, str] = field(default_factory=dict)
+    cpu_process_time_seconds: float = 0.0
+    cpu_utilization_pct: float = 0.0
+    start_time_iso: str = ""
+    end_time_iso: str = ""
+    monotonic_start: float = 0.0
+    monotonic_end: float = 0.0
+    target_duration_seconds: Optional[float] = None
+    active_duration_seconds: float = 0.0
+    suspension_detected: bool = False
+    suspension_gap_seconds: float = 0.0
+    is_interrupted: bool = False
+    interruption_reason: str = ""
     errors: List[str] = field(default_factory=list)
 
 
@@ -130,6 +172,18 @@ def is_port_available(host: str, port: int) -> bool:
         sock.settimeout(1.0)
         result = sock.connect_ex((host, port))
         return result != 0
+
+
+def get_file_sha256(path: Path) -> str:
+    """Compute SHA-256 hash of a file if it exists."""
+    import hashlib
+    if not path.exists():
+        return ""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while chunk := f.read(65536):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def get_dev_db_fingerprint(project_root: Path) -> Tuple[int, float]:
@@ -144,8 +198,9 @@ def get_dev_db_fingerprint(project_root: Path) -> Tuple[int, float]:
 def run_local_staging_validation(
     host: str = "127.0.0.1",
     port: int = 8899,
-    requests_count: int = 50,
+    requests_count: Optional[int] = 50,
     concurrency: int = 4,
+    duration_seconds: Optional[float] = None,
     custom_staging_dir: Optional[Path] = None,
 ) -> StagingValidationReport:
     """Execute complete production-style local staging lifecycle and verification."""
@@ -163,6 +218,14 @@ def run_local_staging_validation(
 
     # Record development database fingerprint prior to test
     dev_db_size_before, dev_db_mtime_before = get_dev_db_fingerprint(project_root)
+    report.dev_db_sha256_before = get_file_sha256(project_root / "data" / "predictions.db")
+
+    real_models_dir = project_root / "models"
+    report.models_sha256_before = {
+        item.name: get_file_sha256(item)
+        for item in real_models_dir.glob("*")
+        if item.is_file()
+    }
 
     # Check port availability
     if not is_port_available(host, port):
@@ -186,7 +249,6 @@ def run_local_staging_validation(
     staging_models_dir.mkdir(parents=True, exist_ok=True)
 
     # Safe read-only copy of existing models into staging directory if any exist
-    real_models_dir = project_root / "models"
     for item in real_models_dir.glob("*"):
         if item.is_file() and item.name != ".gitkeep":
             shutil.copy2(item, staging_models_dir / item.name)
@@ -286,7 +348,7 @@ def run_local_staging_validation(
                 f"Smoke test failed: root={root_res.status_code}, events={events_res.status_code}, history={history_res.status_code}"
             )
 
-        # 6. Execute bounded local load test
+        # 6. Execute bounded or duration-based local load test
         scenarios = [
             ("GET", "/api/health", None, 40),
             ("GET", "/", None, 20),
@@ -300,73 +362,239 @@ def run_local_staging_validation(
         latencies: List[float] = []
         status_counts: Dict[int, int] = {}
         endpoint_stats: Dict[str, EndpointStats] = {}
+        results_lock = threading.Lock()
 
-        def _worker(_: int) -> Tuple[str, int, float, bool]:
-            import random
-            m, p, data = random.choice(request_pool)
-            ep = p.split("?")[0]
-            url = f"{base_url}{p}"
-            t0 = time.perf_counter()
-            try:
-                if m == "POST":
-                    r = requests.post(url, json=data, timeout=5.0)
-                else:
-                    r = requests.get(url, timeout=5.0)
-                dur = (time.perf_counter() - t0) * 1000
-                return (ep, r.status_code, dur, False)
-            except requests.exceptions.Timeout:
-                dur = (time.perf_counter() - t0) * 1000
-                return (ep, 0, dur, True)
-            except Exception:
-                dur = (time.perf_counter() - t0) * 1000
-                return (ep, 0, dur, False)
-
+        report.start_time_iso = datetime.now(timezone.utc).isoformat()
+        report.monotonic_start = time.monotonic()
+        report.target_duration_seconds = duration_seconds
+        process_time_start = time.process_time()
         load_start = time.perf_counter()
-        with ThreadPoolExecutor(max_workers=concurrency) as pool:
-            futures = [pool.submit(_worker, i) for i in range(requests_count)]
-            for fut in as_completed(futures):
-                ep, sc, dur, is_timeout = fut.result()
-                latencies.append(dur)
-                status_counts[sc] = status_counts.get(sc, 0) + 1
 
-                if ep not in endpoint_stats:
-                    endpoint_stats[ep] = EndpointStats(endpoint=ep)
-                ep_stat = endpoint_stats[ep]
-                ep_stat.total_requests += 1
-                ep_stat.latencies_ms.append(dur)
+        if duration_seconds is not None and duration_seconds > 0:
+            # Continuous sustained load test for duration_seconds
+            stop_time = load_start + duration_seconds
+            stop_mono = report.monotonic_start + duration_seconds
 
-                cat = classify_http_outcome(sc, is_timeout=is_timeout)
-                if cat == "2xx":
-                    report.http_2xx += 1
-                    ep_stat.http_2xx += 1
-                    report.load_test_successful_requests += 1
-                elif cat == "3xx":
-                    report.http_3xx += 1
-                    ep_stat.http_3xx += 1
-                    report.load_test_failed_requests += 1
-                elif cat == "4xx":
-                    report.http_4xx += 1
-                    ep_stat.http_4xx += 1
-                    report.load_test_failed_requests += 1
-                elif cat == "5xx":
-                    report.http_5xx += 1
-                    ep_stat.http_5xx += 1
-                    report.load_test_failed_requests += 1
-                elif cat == "timeout":
-                    report.timeouts += 1
-                    ep_stat.timeouts += 1
-                    report.load_test_failed_requests += 1
-                else:
-                    report.network_errors += 1
-                    ep_stat.network_errors += 1
-                    report.load_test_failed_requests += 1
+            def _duration_worker(worker_id: int) -> None:
+                import random
+                session = create_worker_session(pool_size=10)
+                try:
+                    while time.perf_counter() < stop_time and time.monotonic() < stop_mono:
+                        m, p, data = random.choice(request_pool)
+                        ep = p.split("?")[0]
+                        url = f"{base_url}{p}"
+                        t0 = time.perf_counter()
+                        r = None
+                        try:
+                            if m == "POST":
+                                r = session.post(url, json=data, timeout=(2.0, 5.0))
+                            else:
+                                r = session.get(url, timeout=(2.0, 5.0))
+                            _ = r.content
+                            dur = (time.perf_counter() - t0) * 1000
+                            sc = r.status_code
+                            is_to = False
+                        except requests.exceptions.Timeout:
+                            dur = (time.perf_counter() - t0) * 1000
+                            sc = 0
+                            is_to = True
+                        except Exception:
+                            dur = (time.perf_counter() - t0) * 1000
+                            sc = 0
+                            is_to = False
+                        finally:
+                            if r is not None:
+                                r.close()
 
-        load_duration = time.perf_counter() - load_start
-        report.load_test_total_requests = requests_count
+                        with results_lock:
+                            latencies.append(dur)
+                            status_counts[sc] = status_counts.get(sc, 0) + 1
+
+                            if ep not in endpoint_stats:
+                                endpoint_stats[ep] = EndpointStats(endpoint=ep)
+                            ep_stat = endpoint_stats[ep]
+                            ep_stat.total_requests += 1
+                            ep_stat.latencies_ms.append(dur)
+
+                            cat = classify_http_outcome(sc, is_timeout=is_to)
+                            if cat == "2xx":
+                                report.http_2xx += 1
+                                ep_stat.http_2xx += 1
+                                report.load_test_successful_requests += 1
+                            elif cat == "3xx":
+                                report.http_3xx += 1
+                                ep_stat.http_3xx += 1
+                                report.load_test_failed_requests += 1
+                            elif cat == "4xx":
+                                report.http_4xx += 1
+                                ep_stat.http_4xx += 1
+                                report.load_test_failed_requests += 1
+                            elif cat == "5xx":
+                                report.http_5xx += 1
+                                ep_stat.http_5xx += 1
+                                report.load_test_failed_requests += 1
+                            elif cat == "timeout":
+                                report.timeouts += 1
+                                ep_stat.timeouts += 1
+                                report.load_test_failed_requests += 1
+                            else:
+                                report.network_errors += 1
+                                ep_stat.network_errors += 1
+                                report.load_test_failed_requests += 1
+                finally:
+                    session.close()
+
+            threads = []
+            for i in range(concurrency):
+                t = threading.Thread(target=_duration_worker, args=(i,), daemon=True)
+                t.start()
+                threads.append(t)
+
+            last_tick = time.monotonic()
+            next_log = load_start + 30.0
+            while any(t.is_alive() for t in threads):
+                now_mono = time.monotonic()
+                tick_delta = now_mono - last_tick
+                # 1.0s heartbeat; tick_delta > 4.0s indicates host OS suspension/sleep gap
+                if tick_delta > 4.0:
+                    report.suspension_detected = True
+                    report.suspension_gap_seconds += round(tick_delta - 1.0, 3)
+                last_tick = now_mono
+
+                now = time.perf_counter()
+                if now >= next_log:
+                    elapsed = now - load_start
+                    with results_lock:
+                        req_count = len(latencies)
+                        rate = req_count / max(elapsed - report.suspension_gap_seconds, 0.001)
+                    print(
+                        f"  [SOAK PROGRESS] Elapsed: {elapsed:6.1f}s / {duration_seconds:.0f}s | "
+                        f"Requests: {req_count:6d} | Rate: {rate:6.1f} req/s | "
+                        f"2xx: {report.http_2xx:6d} | Errors: {report.load_test_failed_requests}"
+                    )
+                    next_log += 30.0
+                time.sleep(1.0)
+
+            for t in threads:
+                t.join(timeout=5.0)
+
+            report.load_test_total_requests = len(latencies)
+        else:
+            # Fixed requests_count load test
+            actual_count = requests_count or 50
+            thread_sessions: Dict[int, requests.Session] = {}
+            thread_sessions_lock = threading.Lock()
+
+            def _get_worker_session() -> requests.Session:
+                tid = threading.get_ident()
+                with thread_sessions_lock:
+                    if tid not in thread_sessions:
+                        thread_sessions[tid] = create_worker_session(pool_size=10)
+                    return thread_sessions[tid]
+
+            def _worker(_: int) -> Tuple[str, int, float, bool]:
+                import random
+                m, p, data = random.choice(request_pool)
+                ep = p.split("?")[0]
+                url = f"{base_url}{p}"
+                session = _get_worker_session()
+                t0 = time.perf_counter()
+                r = None
+                try:
+                    if m == "POST":
+                        r = session.post(url, json=data, timeout=(2.0, 5.0))
+                    else:
+                        r = session.get(url, timeout=(2.0, 5.0))
+                    _ = r.content
+                    dur = (time.perf_counter() - t0) * 1000
+                    return (ep, r.status_code, dur, False)
+                except requests.exceptions.Timeout:
+                    dur = (time.perf_counter() - t0) * 1000
+                    return (ep, 0, dur, True)
+                except Exception:
+                    dur = (time.perf_counter() - t0) * 1000
+                    return (ep, 0, dur, False)
+                finally:
+                    if r is not None:
+                        r.close()
+
+            try:
+                with ThreadPoolExecutor(max_workers=concurrency) as pool:
+                    futures = [pool.submit(_worker, i) for i in range(actual_count)]
+                    for fut in as_completed(futures):
+                        ep, sc, dur, is_timeout = fut.result()
+                        latencies.append(dur)
+                        status_counts[sc] = status_counts.get(sc, 0) + 1
+
+                        if ep not in endpoint_stats:
+                            endpoint_stats[ep] = EndpointStats(endpoint=ep)
+                        ep_stat = endpoint_stats[ep]
+                        ep_stat.total_requests += 1
+                        ep_stat.latencies_ms.append(dur)
+
+                        cat = classify_http_outcome(sc, is_timeout=is_timeout)
+                        if cat == "2xx":
+                            report.http_2xx += 1
+                            ep_stat.http_2xx += 1
+                            report.load_test_successful_requests += 1
+                        elif cat == "3xx":
+                            report.http_3xx += 1
+                            ep_stat.http_3xx += 1
+                            report.load_test_failed_requests += 1
+                        elif cat == "4xx":
+                            report.http_4xx += 1
+                            ep_stat.http_4xx += 1
+                            report.load_test_failed_requests += 1
+                        elif cat == "5xx":
+                            report.http_5xx += 1
+                            ep_stat.http_5xx += 1
+                            report.load_test_failed_requests += 1
+                        elif cat == "timeout":
+                            report.timeouts += 1
+                            ep_stat.timeouts += 1
+                            report.load_test_failed_requests += 1
+                        else:
+                            report.network_errors += 1
+                            ep_stat.network_errors += 1
+                            report.load_test_failed_requests += 1
+            finally:
+                with thread_sessions_lock:
+                    for s in thread_sessions.values():
+                        s.close()
+                    thread_sessions.clear()
+
+            report.load_test_total_requests = actual_count
+
+        report.monotonic_end = time.monotonic()
+        report.end_time_iso = datetime.now(timezone.utc).isoformat()
+        total_elapsed = report.monotonic_end - report.monotonic_start
+        report.load_test_duration_seconds = round(total_elapsed, 3)
+        active_duration = max(total_elapsed - report.suspension_gap_seconds, 0.001)
+        report.active_duration_seconds = round(active_duration, 3)
+
+        if report.suspension_detected:
+            report.is_interrupted = True
+            report.interruption_reason = (
+                f"Host suspension detected: {report.suspension_gap_seconds:.1f}s sleep gap"
+            )
+            report.errors.append(f"INCOMPLETE RUN: {report.interruption_reason}")
+        elif duration_seconds is not None:
+            if total_elapsed < (duration_seconds - 5.0):
+                report.is_interrupted = True
+                report.interruption_reason = (
+                    f"Run terminated early: measured {total_elapsed:.1f}s vs target {duration_seconds:.0f}s"
+                )
+                report.errors.append(f"INCOMPLETE RUN: {report.interruption_reason}")
+
+        cpu_process_elapsed = time.process_time() - process_time_start
+        report.cpu_process_time_seconds = round(cpu_process_elapsed, 2)
+        report.cpu_utilization_pct = round(
+            (cpu_process_elapsed / max(active_duration, 0.001)) * 100, 1
+        )
+
         report.load_test_completed_requests = len(latencies)
-        report.load_test_duration_seconds = round(load_duration, 3)
         report.load_test_throughput_rps = round(
-            report.load_test_completed_requests / max(load_duration, 0.001), 2
+            report.load_test_completed_requests / max(active_duration, 0.001), 2
         )
         report.status_codes = status_counts
 
@@ -422,20 +650,28 @@ def run_local_staging_validation(
             except Exception:
                 pass
 
-    # Verify Development Database was NOT mutated
+    # Verify Development Database was NOT mutated (Size, mtime, and SHA-256)
     dev_db_size_after, dev_db_mtime_after = get_dev_db_fingerprint(project_root)
-    if dev_db_size_before == dev_db_size_after and dev_db_mtime_before == dev_db_mtime_after:
+    report.dev_db_sha256_after = get_file_sha256(project_root / "data" / "predictions.db")
+    if (
+        dev_db_size_before == dev_db_size_after
+        and dev_db_mtime_before == dev_db_mtime_after
+        and report.dev_db_sha256_before == report.dev_db_sha256_after
+    ):
         report.dev_db_unmutated_verified = True
     else:
         report.errors.append("CRITICAL: Development database was mutated during staging validation!")
 
-    # Verify Active Models directory was NOT mutated
-    models_unmutated = True
-    for item in real_models_dir.glob("*"):
-        if item.is_file() and item.name != ".gitkeep":
-            # Models must remain read-only
-            pass
-    report.models_unmutated_verified = models_unmutated
+    # Verify Active Models directory was NOT mutated (Files and SHA-256)
+    report.models_sha256_after = {
+        item.name: get_file_sha256(item)
+        for item in real_models_dir.glob("*")
+        if item.is_file()
+    }
+    if report.models_sha256_before == report.models_sha256_after:
+        report.models_unmutated_verified = True
+    else:
+        report.errors.append("CRITICAL: Active models directory was mutated during staging validation!")
 
     return report
 
@@ -447,16 +683,20 @@ def main() -> int:
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Host interface (must be 127.0.0.1)")
     parser.add_argument("--requests", type=int, default=50, help="Load test request count (default: 50)")
     parser.add_argument("--concurrency", type=int, default=4, help="Load test concurrency (default: 4)")
+    parser.add_argument("--duration", type=float, default=None, help="Sustained load test duration in seconds (e.g. 600)")
 
     args = parser.parse_args()
 
     print("=" * 75)
-    print("LOCAL STAGING ENVIRONMENT VALIDATION (DAY 44)")
+    print("LOCAL STAGING ENVIRONMENT VALIDATION (DAY 45)")
     print("=" * 75)
     print(f"Target Host:       {args.host}")
     print(f"Target Port:       {args.port}")
     print(f"Binding Policy:    Strict loopback only (127.0.0.1)")
-    print(f"Load Profile:      {args.requests} requests @ concurrency {args.concurrency}")
+    if args.duration:
+        print(f"Load Profile:      Sustained load for {args.duration:.1f}s @ concurrency {args.concurrency}")
+    else:
+        print(f"Load Profile:      {args.requests} requests @ concurrency {args.concurrency}")
     print(f"Environment Mode:  production (APP_DEBUG=false, explicit CORS)")
     print("=" * 75)
 
@@ -465,6 +705,7 @@ def main() -> int:
         port=args.port,
         requests_count=args.requests,
         concurrency=args.concurrency,
+        duration_seconds=args.duration,
     )
 
     print("\n[VALIDATION CHECKLIST]")
@@ -477,17 +718,37 @@ def main() -> int:
     print(f"  [7] Dev Database Untouched:   {'PASS' if report.dev_db_unmutated_verified else 'FAIL'}")
     print(f"  [8] Models Storage Untouched: {'PASS' if report.models_unmutated_verified else 'FAIL'}")
 
+    print("\n[DATA INTEGRITY FINGERPRINTS]")
+    print(f"  Dev DB SHA-256 Before: {report.dev_db_sha256_before}")
+    print(f"  Dev DB SHA-256 After:  {report.dev_db_sha256_after}")
+    print(f"  Dev DB Match Verified: {report.dev_db_unmutated_verified}")
+    print(f"  Models Tracked:        {len(report.models_sha256_before)} items")
+    print(f"  Models Match Verified: {report.models_unmutated_verified}")
+
+    print("\n[TIMING & RUN HEALTH]")
+    print(f"  Wall-Clock Start:       {report.start_time_iso}")
+    print(f"  Wall-Clock End:         {report.end_time_iso}")
+    if report.target_duration_seconds:
+        print(f"  Target Duration:        {report.target_duration_seconds:.1f} s")
+    print(f"  Monotonic Elapsed:      {report.load_test_duration_seconds:.2f} s")
+    print(f"  Active Duration:        {report.active_duration_seconds:.2f} s")
+    print(f"  Suspension Gap:         {report.suspension_gap_seconds:.2f} s ({'DETECTED' if report.suspension_detected else 'None detected'})")
+    print(f"  Run Integrity:          {'INCOMPLETE / INTERRUPTED' if report.is_interrupted else 'COMPLETE (Uninterrupted)'}")
+    if report.is_interrupted:
+        print(f"  Interruption Reason:    {report.interruption_reason}")
+
     print("\n[LOCAL LOAD TEST METRICS]")
     print(f"  Duration:         {report.load_test_duration_seconds:.2f} s")
     print(f"  Throughput:       {report.load_test_throughput_rps:.2f} req/s")
     print(f"  Requests Total:   {report.load_test_total_requests} (completed: {report.load_test_completed_requests})")
-    print(f"  Successful (2xx): {report.http_2xx} ({report.http_2xx/max(report.load_test_completed_requests, 1)*100:.1f}%)")
+    print(f"  Successful (2xx): {report.http_2xx} ({report.http_2xx/max(report.load_test_completed_requests, 1)*100:.2f}%)")
     print(f"  Failed / Errors:  {report.load_test_failed_requests}")
     print(f"    - HTTP 4xx:     {report.http_4xx}")
     print(f"    - HTTP 5xx:     {report.http_5xx}")
     print(f"    - Timeouts:     {report.timeouts}")
     print(f"    - Net Errors:   {report.network_errors}")
     print(f"  Status Codes:     {report.status_codes}")
+    print(f"  CPU Process Time: {report.cpu_process_time_seconds:.2f} s ({report.cpu_utilization_pct:.1f}% load-thread process utilization)")
 
     print("\n[LATENCY DISTRIBUTION (ms)]")
     print(f"  Min:   {report.latency_min_ms:8.2f} ms")
@@ -530,6 +791,8 @@ def main() -> int:
         and report.smoke_tests_passed
         and report.dev_db_unmutated_verified
         and report.models_unmutated_verified
+        and not report.is_interrupted
+        and not report.suspension_detected
         and report.load_test_failed_requests == 0
     )
     return 0 if all_passed else 1

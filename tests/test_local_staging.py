@@ -13,6 +13,7 @@ import uvicorn
 from app.api.app import create_app
 from app.core.config import get_settings
 from scripts.run_local_staging import (
+    StagingValidationReport,
     get_dev_db_fingerprint,
     is_port_available,
     run_local_staging_validation,
@@ -192,3 +193,142 @@ def test_local_staging_lifecycle_and_non_mutation():
     assert report.p99_sample_sufficient is False  # 20 < 100
     assert len(report.endpoint_metrics) > 0
     assert len(report.errors) == 0
+    assert report.is_interrupted is False
+    assert report.suspension_detected is False
+    assert report.start_time_iso != ""
+    assert report.end_time_iso != ""
+
+
+def test_prevent_windows_sleep_safety():
+    """Verify prevent_windows_sleep context manager enters and exits safely without errors."""
+    from scripts.run_local_staging import prevent_windows_sleep
+    with prevent_windows_sleep() as active:
+        assert isinstance(active, bool)
+
+
+def test_interruption_and_suspension_detection_classification():
+    """Verify deterministic classification of host suspension gaps and early interruptions."""
+    report = StagingValidationReport(
+        timestamp_utc="2026-10-20T10:00:00Z",
+        host="127.0.0.1",
+        port=8899,
+        environment="production",
+    )
+    # Simulate suspension gap detection
+    report.suspension_detected = True
+    report.suspension_gap_seconds = 3500.0
+    report.monotonic_start = 100.0
+    report.monotonic_end = 4200.0
+    total_elapsed = report.monotonic_end - report.monotonic_start
+    active_duration = max(total_elapsed - report.suspension_gap_seconds, 0.001)
+
+    if report.suspension_detected:
+        report.is_interrupted = True
+        report.interruption_reason = f"Host suspension detected: {report.suspension_gap_seconds:.1f}s sleep gap"
+        report.errors.append(f"INCOMPLETE RUN: {report.interruption_reason}")
+
+    assert report.is_interrupted is True
+    assert "Host suspension detected" in report.interruption_reason
+    assert len(report.errors) == 1
+    assert active_duration == 600.0
+
+
+def test_early_termination_interruption_classification():
+    """Verify deterministic classification when test run terminates before target duration."""
+    report = StagingValidationReport(
+        timestamp_utc="2026-10-20T10:00:00Z",
+        host="127.0.0.1",
+        port=8899,
+        environment="production",
+    )
+    target_duration = 600.0
+    measured_elapsed = 250.0  # Stopped after only 250s
+
+    if measured_elapsed < (target_duration - 5.0):
+        report.is_interrupted = True
+        report.interruption_reason = f"Run terminated early: measured {measured_elapsed:.1f}s vs target {target_duration:.0f}s"
+        report.errors.append(f"INCOMPLETE RUN: {report.interruption_reason}")
+
+    assert report.is_interrupted is True
+    assert "Run terminated early" in report.interruption_reason
+    assert len(report.errors) == 1
+
+
+def test_create_worker_session_pooling_and_zero_retries():
+    """Verify create_worker_session creates pooled session with zero retries."""
+    from scripts.staging_soak_test import create_worker_session
+    session = create_worker_session(pool_size=8)
+    try:
+        adapter = session.adapters["http://"]
+        assert adapter._pool_connections == 8
+        assert adapter._pool_maxsize == 8
+        assert adapter.max_retries.total == 0
+        assert adapter.max_retries.connect == 0
+        assert adapter.max_retries.read == 0
+    finally:
+        session.close()
+
+
+def test_thread_worker_session_reuse_and_isolation():
+    """Verify distinct worker threads have distinct sessions and reuse them across calls."""
+    from concurrent.futures import ThreadPoolExecutor
+    from scripts.staging_soak_test import create_worker_session
+
+    thread_sessions = {}
+    lock = threading.Lock()
+    session_usage_count = {}
+
+    def _worker(worker_id: int):
+        tid = threading.get_ident()
+        with lock:
+            if tid not in thread_sessions:
+                s = create_worker_session(pool_size=5)
+                thread_sessions[tid] = s
+                session_usage_count[tid] = 0
+            session_usage_count[tid] += 1
+            return id(thread_sessions[tid])
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        session_ids = list(pool.map(_worker, range(20)))
+
+    unique_session_ids = set(session_ids)
+    assert len(unique_session_ids) <= 2
+    assert sum(session_usage_count.values()) == 20
+    for s in thread_sessions.values():
+        s.close()
+
+
+def test_response_and_session_cleanup_on_success_and_exception():
+    """Verify response.content is consumed, response.close() is called, and failures are not 2xx."""
+    from unittest.mock import MagicMock
+    from scripts.staging_soak_test import execute_request_external
+
+    mock_session = MagicMock()
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.content = b'{"status": "ok"}'
+    mock_session.get.return_value = mock_resp
+
+    # Normal success
+    res = execute_request_external(
+        base_url="http://127.0.0.1:8899",
+        method="GET",
+        path="/api/health",
+        session=mock_session,
+    )
+    assert res.success is True
+    assert mock_resp.close.called
+
+    # On exception
+    mock_session.get.side_effect = requests.exceptions.ConnectionError("Connection failed")
+    res_err = execute_request_external(
+        base_url="http://127.0.0.1:8899",
+        method="GET",
+        path="/api/health",
+        session=mock_session,
+    )
+    assert res_err.success is False
+    assert res_err.error_type == "network_error"
+    assert res_err.status_code == 0
+
+

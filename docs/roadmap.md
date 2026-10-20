@@ -171,7 +171,7 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Atomic promotion protocol copying candidate to active path (`models/{model}_direction.*`) and preserving active models 100% on any gate failure.
   - SQLite model release persistence in `model_releases` table tracking version history, cutoffs, metrics, and gate results.
 
-### Phase 16: Final Testing & Evaluation (In Progress - Day 44)
+### Phase 16: Final Testing & Evaluation (In Progress - Day 45)
 - Comprehensive audit of retraining workflow and model release management (Day 39 complete).
 - Implementation of Gate 0 (Chronological Integrity Gate) eliminating look-ahead bias and inverted cutoffs (ADR 07).
 - Transactional promotion protocol with mandatory archiving, atomic staging (`os.replace`), and automatic rollback from archive on SQLite/filesystem failure.
@@ -205,8 +205,20 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Implemented per-endpoint latency breakdown tracking (`EndpointStats`) across `/api/health`, `/`, `/api/history`, and `/api/events`.
   - Added automated test suite covering 8 failure-handling scenarios (unreachable port, timeout, 5xx, idle shutdown, request shutdown, tempdir cleanup, DB/models preservation, occupied port).
   - Formulated proposed 10-minute sustained-load test plan with explicit local acceptance criteria for user approval.
+- Local staging sustained soak test, connection pooling & data integrity audit (Day 45 complete):
+  - Upgraded runner with process-scoped Windows sleep prevention (`SetThreadExecutionState`), monotonic timing, and heartbeat suspension detection.
+  - Implemented persistent HTTP Keep-Alive connection pooling with thread-confined `requests.Session()` (`HTTPAdapter(pool_connections=10, pool_maxsize=10, max_retries=Retry(0))`), bounded timeouts `(2.0, 5.0)`, and explicit response/session cleanup in `finally` blocks.
+  - Executed clean 600-second sustained soak test retry (`scripts/run_local_staging.py --duration 600`): confirmed 0.0s sleep gap and uninterrupted run (600.42s elapsed).
+  - Captured complete telemetry: 156,895 completed requests (261.31 req/s), 156,895 HTTP 2xx (100.00%), 0 HTTP 4xx, 0 HTTP 5xx, 0 timeouts, 0 network errors.
+  - Latency verified well within limits: p50 14.99 ms (< 50 ms), p90 24.99 ms, p95 29.02 ms (< 100 ms), p99 39.02 ms.
+  - Verified 100% data immutability with identical SHA-256 hashes before and after for `data/predictions.db` and active `models/` (0 bytes mutated).
+  - Verified graceful Uvicorn shutdown on loopback, immediate port 8899 release, and ephemeral directory cleanup.
+  - Passed all 25 focused staging tests (+6 new deterministic tests) and 612 full regression tests with clean `pip check`.
+  - Maintained Phase 16 as IN PROGRESS; local staging validation complete, awaiting dedicated cloud/cluster staging infrastructure for multi-hour production-equivalent soak testing.
 - Remaining Phase 16 acceptance criteria:
-  - Multi-hour soak testing on dedicated production-equivalent staging infrastructure during live exchange market hours once host cluster is provisioned.
-  - Final Phase 16 completion and sign-off review.
+  - Multi-hour soak testing on dedicated production-equivalent staging infrastructure during live exchange market hours once external host cluster is provisioned.
+  - Final Phase 16 completion and milestone sign-off review.
+
+
 
 

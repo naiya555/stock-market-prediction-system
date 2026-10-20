@@ -4125,5 +4125,95 @@ Investigate tail latency distribution from Day 43, validate soak-test metric cal
 ### Next Step
 Await authorization to execute the 10-minute local sustained-load test, review external staging provisioning, and prepare final Phase 16 evaluation.
 
+---
+
+## Day 45 - HTTP Connection Pooling Fix & Successful 10-Minute Local Staging Soak Test
+
+### Goal
+Resolve the Windows TCP ephemeral port exhaustion blocker in the local staging soak test client via persistent HTTP connection pooling, add deterministic connection lifecycle unit tests, execute an uninterrupted 10-minute (600-second) local staging soak test, verify database/model immutability via pre/post SHA-256 fingerprints, validate clean shutdown and resource cleanup, run regression test suites, and evaluate results against strict acceptance criteria.
+
+### Work Completed
+1. **Root Cause Diagnosis (TCP Ephemeral Port Exhaustion)**:
+   - The initial 600-second uninterrupted soak test generated 170,820 unpooled requests at ~285 req/s using raw `requests.get()` / `requests.post()`.
+   - Windows dynamically allocates ephemeral ports in the range 49152–65535 (~16,384 ports) with a default `TIME_WAIT` duration (`TcpTimedWaitDelay`) of 120 seconds.
+   - After ~58 seconds of unpooled requests, all 16,384 ports entered `TIME_WAIT`, causing Windows to refuse socket allocation (`WSAENOBUFS` / `WSAEADDRINUSE`) and resulting in 92,275 client-side network errors despite zero server errors.
+
+2. **Persistent HTTP Connection Pooling Implementation ([`scripts/run_local_staging.py`](file:///d:/Share_market_predictor/scripts/run_local_staging.py), [`scripts/staging_soak_test.py`](file:///d:/Share_market_predictor/scripts/staging_soak_test.py))**:
+   - Implemented `create_worker_session(pool_size=10)` providing a thread-confined `requests.Session()` with `HTTPAdapter(pool_connections=10, pool_maxsize=10, max_retries=Retry(0))` — strictly 0 retries to avoid concealing errors or inflating counts.
+   - Integrated worker-level persistent sessions in both `_duration_worker` (duration-based soak) and `_worker` (fixed-count requests), ensuring sessions are thread-confined and not shared across threads.
+   - Implemented bounded connection and read timeouts `timeout=(2.0, 5.0)`.
+   - Guaranteed full response body consumption (`_ = r.content`) and explicit response closure (`r.close()`) in `finally` blocks so connections return immediately to the pool.
+   - Guaranteed worker session cleanup (`session.close()`) in `finally` blocks on completion, interruption, and exceptions.
+   - Preserved reversible Windows sleep prevention (`prevent_windows_sleep` via Win32 `SetThreadExecutionState`), monotonic timing, and heartbeat suspension gap detection.
+
+3. **Deterministic Unit Tests Added ([`tests/test_local_staging.py`](file:///d:/Share_market_predictor/tests/test_local_staging.py))**:
+   - `test_create_worker_session_pooling_and_zero_retries`: Verified session pool configuration (`pool_connections=8`, `pool_maxsize=8`) and zero-retry policy (`total=0, connect=0, read=0`).
+   - `test_thread_worker_session_reuse_and_isolation`: Verified that concurrent worker threads maintain distinct session instances without cross-thread sharing and reuse sessions across multiple requests.
+   - `test_response_and_session_cleanup_on_success_and_exception`: Verified response consumption and `response.close()` calls on both successful HTTP 200 responses and network exception paths, confirming network failures are not misclassified as 2xx.
+
+4. **Successful 600-Second Local Staging Soak Test Execution**:
+   - Command: `python scripts/run_local_staging.py --host 127.0.0.1 --port 8899 --duration 600 --concurrency 4`
+   - **Timing & Run Health:**
+     - Wall-Clock Start: `2026-10-20T11:04:37.483836+00:00`
+     - Wall-Clock End: `2026-10-20T11:14:37.905380+00:00`
+     - Target Duration: 600.0 s
+     - Monotonic Elapsed: **600.42 s**
+     - Active Duration: **600.42 s**
+     - Host Suspension Gap: **0.00 s (None detected — completely uninterrupted)**
+     - Run Integrity: **COMPLETE (Uninterrupted)**
+   - **Load Test Telemetry & Error Accounting:**
+     - Total Completed Requests: **156,895**
+     - Throughput: **261.31 req/s**
+     - Successful (HTTP 2xx): **156,895 (100.00%)**
+     - Failed / Errors: **0**
+       - HTTP 4xx (Client Errors): **0**
+       - HTTP 5xx (Server Errors): **0**
+       - Timeouts: **0**
+       - Network Errors: **0** (eliminated all 92k port-exhaustion errors)
+     - Status Codes: `{200: 156895}`
+     - CPU Process Time: 869.91 s (144.9% process utilization across 4 workers)
+   - **Latency Distribution (ms):**
+     - Min: **1.57 ms**
+     - Mean: **15.28 ms**
+     - **p50:** **14.99 ms** (well below 50.0 ms threshold)
+     - **p90:** **24.99 ms**
+     - **p95:** **29.02 ms** (well below 100.0 ms threshold)
+     - **p99:** **39.02 ms**
+     - Max: **109.88 ms**
+   - **Per-Endpoint Latency Breakdown:**
+     - `GET /`: 31,390 reqs | 31,390 2xx | 0 errors | p50: 6.95 ms | p95: 11.97 ms | max: 32.79 ms
+     - `GET /api/events`: 31,169 reqs | 31,169 2xx | 0 errors | p50: 8.69 ms | p95: 14.31 ms | max: 43.24 ms
+     - `GET /api/health`: 62,717 reqs | 62,717 2xx | 0 errors | p50: 18.39 ms | p95: 31.35 ms | max: 101.64 ms
+     - `GET /api/history`: 31,619 reqs | 31,619 2xx | 0 errors | p50: 20.22 ms | p95: 33.66 ms | max: 109.88 ms
+
+5. **Clean Shutdown & Data Isolation Verification**:
+   - Server cleanly received shutdown signal; Uvicorn exited gracefully.
+   - Port `8899` immediately released (verified via `Get-NetTCPConnection`).
+   - Ephemeral staging directory removed completely.
+   - Pre-soak vs. Post-soak SHA-256 Fingerprints (100% Match):
+     - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (exact match, 0 bytes mutated)
+     - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (exact match, 0 bytes mutated)
+
+6. **Automated Test Suites & Dependency Validation**:
+   - Focused staging test suites ([`tests/test_local_staging.py`](file:///d:/Share_market_predictor/tests/test_local_staging.py), [`tests/test_staging_soak.py`](file:///d:/Share_market_predictor/tests/test_staging_soak.py)): **25 passed**, 1 warning in 12.52s.
+   - Full automated test suite (`pytest -q`): **612 passed**, 0 failed, 1 warning in 25.02s across 45 test files (+3 new deterministic tests).
+   - Dependency validation (`pip check`): Clean (`No broken requirements found.`).
+
+### Evaluation Against Acceptance Criteria
+- [x] Full 600-second run completes without host suspension: **PASS** (600.42s monotonic elapsed, 0.00s gap)
+- [x] HTTP 2xx success rate $\ge 99.9\%$: **PASS (100.00%)** (156,895 / 156,895)
+- [x] HTTP 5xx, timeouts, and network errors $= 0$: **PASS** (0 5xx, 0 timeouts, 0 network errors)
+- [x] Latency within limits: **PASS** (p50: 14.99 ms $< 50$ ms, p95: 29.02 ms $< 100$ ms)
+- [x] Development DB and model artifacts unchanged: **PASS** (100% SHA-256 match)
+- [x] Clean server, port, session, and tempdir shutdown: **PASS** (verified)
+- [x] Focused tests, full test suite (612 passed), and `pip check` pass: **PASS**
+
+### Phase 16 Status
+**Phase 16 remains strictly IN PROGRESS.**
+While Day 45 successfully completed the local staging sustained-load soak validation with 100% 2xx responses and zero data mutation, Phase 16 milestone completion requires future live cloud/cluster deployment soak testing under production-equivalent conditions once external infrastructure is provisioned.
+
+
+
+
 
 

@@ -18,14 +18,31 @@ import math
 from pathlib import Path
 import random
 import sys
+import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
 
 from app.api.app import create_app
+
+
+def create_worker_session(pool_size: int = 10) -> requests.Session:
+    """Create a thread-confined requests.Session with connection pooling and zero automatic retries."""
+    session = requests.Session()
+    no_retry = Retry(total=0, connect=0, read=0, redirect=0, status=0)
+    adapter = HTTPAdapter(
+        pool_connections=pool_size,
+        pool_maxsize=pool_size,
+        max_retries=no_retry,
+    )
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
 
 
 def compute_percentile(sorted_values: List[float], percentile: float) -> float:
@@ -195,16 +212,20 @@ def execute_request_external(
     path: str,
     payload: Optional[Dict[str, Any]] = None,
     timeout: float = 10.0,
+    session: Optional[requests.Session] = None,
 ) -> RequestResult:
     """Execute a single HTTP request against an external server."""
     url = f"{base_url.rstrip('/')}{path}"
     endpoint = path.split("?")[0]
     start = time.perf_counter()
+    resp = None
     try:
+        requester = session if session is not None else requests
         if method == "POST":
-            resp = requests.post(url, json=payload, timeout=timeout)
+            resp = requester.post(url, json=payload, timeout=timeout)
         else:
-            resp = requests.get(url, timeout=timeout)
+            resp = requester.get(url, timeout=timeout)
+        _ = resp.content
         duration_ms = (time.perf_counter() - start) * 1000
         is_success = 200 <= resp.status_code < 300
         category = classify_http_outcome(resp.status_code)
@@ -241,6 +262,9 @@ def execute_request_external(
             error_type="network_error",
             error=str(exc),
         )
+    finally:
+        if resp is not None:
+            resp.close()
 
 
 def execute_request_inprocess(
@@ -317,6 +341,16 @@ def run_soak_simulation(
     start_total = time.perf_counter()
     results: List[RequestResult] = []
 
+    thread_sessions: Dict[int, requests.Session] = {}
+    thread_sessions_lock = threading.Lock()
+
+    def _get_thread_session() -> requests.Session:
+        tid = threading.get_ident()
+        with thread_sessions_lock:
+            if tid not in thread_sessions:
+                thread_sessions[tid] = create_worker_session(pool_size=10)
+            return thread_sessions[tid]
+
     def _worker(_: int) -> RequestResult:
         scenario = random.choice(endpoints)
         if in_process or not base_url:
@@ -326,17 +360,25 @@ def run_soak_simulation(
                 path=scenario["path"],
                 payload=scenario["payload"],
             )
+        session = _get_thread_session()
         return execute_request_external(
             base_url=base_url,
             method=scenario["method"],
             path=scenario["path"],
             payload=scenario["payload"],
+            session=session,
         )
 
-    with ThreadPoolExecutor(max_workers=concurrency) as executor:
-        futures = [executor.submit(_worker, i) for i in range(total_requests)]
-        for f in as_completed(futures):
-            results.append(f.result())
+    try:
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            futures = [executor.submit(_worker, i) for i in range(total_requests)]
+            for f in as_completed(futures):
+                results.append(f.result())
+    finally:
+        with thread_sessions_lock:
+            for s in thread_sessions.values():
+                s.close()
+            thread_sessions.clear()
 
     summary.duration_seconds = round(time.perf_counter() - start_total, 3)
 
