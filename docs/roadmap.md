@@ -239,6 +239,13 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Explicitly partitioned acceptance criteria into completed local staging loopback baselines (p50 < 50ms, p95 < 100ms, 100% data non-mutation) versus pending external staging soak criteria (>= 2h, non-loopback WAN, live market hours, p50 < 150ms, p95 < 350ms).
   - Verified deployment runbook against local zero-cost architecture (Python venv, Uvicorn, Nginx, local SQLite WAL, filesystem model archive); confirmed 618 passing regression tests with clean `pip check`.
   - Maintained Phase 16 strictly IN PROGRESS pending dedicated external staging infrastructure provisioning.
+- CodeRabbit review audit & zero-cost deployment packaging (Day 49 complete):
+  - Audited open CodeRabbit review findings; hardened sleep guard state tracking (`sleep_prevention_active`) and validated exception propagation and teardown safety in `scripts/run_local_staging.py`.
+  - Created `.env.production.example` template with strict production safeguards and safe placeholders only; updated `.env.example` with comprehensive documentation.
+  - Audited `.gitignore` to allow template examples (`!.env.*.example`) while strictly blocking actual environment secret files, SQLite databases, logs, and untracked model weights.
+  - Updated `docs/deployment-runbook.md` with dual Linux/Windows startup guidance, alternative zero-cost Caddyfile TLS template, and Section 7.4 deployment smoke-test verification checklist.
+  - Added automated deployment packaging tests in `tests/test_deployment_runbook.py` verifying template hygiene and `.gitignore` safety; verified 620 passing tests and clean `pip check`.
+  - Maintained Phase 16 strictly IN PROGRESS pending dedicated external staging cluster provisioning.
 - Remaining Phase 16 acceptance criteria:
   - Multi-hour soak testing on dedicated production-equivalent staging infrastructure during live exchange market hours once external host cluster is provisioned.
   - Final Phase 16 completion and milestone sign-off review.

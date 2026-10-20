@@ -169,6 +169,7 @@ class StagingValidationReport:
     suspension_gap_seconds: float = 0.0
     is_interrupted: bool = False
     interruption_reason: str = ""
+    sleep_prevention_active: bool = False
     errors: List[str] = field(default_factory=list)
 
 
@@ -260,7 +261,8 @@ def run_local_staging_validation(
     server_thread = None
 
     sleep_mgr = prevent_windows_sleep()
-    sleep_mgr.__enter__()
+    sleep_active = sleep_mgr.__enter__()
+    report.sleep_prevention_active = bool(sleep_active)
 
     try:
         # Check port availability
@@ -750,6 +752,7 @@ def main() -> int:
     print(f"  Monotonic Elapsed:      {report.load_test_duration_seconds:.2f} s")
     print(f"  Active Duration:        {report.active_duration_seconds:.2f} s")
     print(f"  Suspension Gap:         {report.suspension_gap_seconds:.2f} s ({'DETECTED' if report.suspension_detected else 'None detected'})")
+    print(f"  Sleep Prevention:       {'ACTIVE (Win32 ES_CONTINUOUS|ES_SYSTEM_REQUIRED)' if report.sleep_prevention_active else 'INACTIVE / Non-Windows'}")
     print(f"  Run Integrity:          {'INCOMPLETE / INTERRUPTED' if report.is_interrupted else 'COMPLETE (Uninterrupted)'}")
     if report.is_interrupted:
         print(f"  Interruption Reason:    {report.interruption_reason}")

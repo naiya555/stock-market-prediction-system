@@ -357,9 +357,11 @@ def test_sleep_prevention_engaged_during_validation():
 
     with patch.object(run_local_staging, "prevent_windows_sleep") as mock_sleep:
         mock_ctx = MagicMock()
+        mock_ctx.__enter__.return_value = True
         mock_sleep.return_value = mock_ctx
         with patch("scripts.run_local_staging.is_port_available", return_value=False):
-            _ = run_local_staging_validation(host="127.0.0.1", port=8899)
+            report = run_local_staging_validation(host="127.0.0.1", port=8899)
             assert mock_sleep.called
             assert mock_ctx.__enter__.called
             assert mock_ctx.__exit__.called
+            assert report.sleep_prevention_active is True

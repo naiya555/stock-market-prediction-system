@@ -43,7 +43,10 @@ The stock market directional prediction system is an on-premise / virtual-machin
 
 ## 2. Environment Variables & Production Defaults
 
-All configuration parameters are managed via environment variables and loaded through `app.core.config.Settings.from_env()`.
+All configuration parameters are managed via environment variables and loaded through `app.core.config.Settings.from_env()`. A validated production template with safe placeholders is provided at [`.env.production.example`](file:///d:/Share_market_predictor/.env.production.example).
+
+> [!SECURITY]
+> **Strict `.gitignore` Policy:** Real `.env` files (e.g. `.env`, `.env.production`, `.env.local`) are strictly excluded by `.gitignore` to prevent database paths, model locations, credentials, or internal domains from being committed to Git. Only `.env.example` and `.env.production.example` are tracked.
 
 ### Mandatory Production Settings
 | Variable | Required Value / Format | Default | Description & Constraint |
@@ -83,12 +86,20 @@ pip install -r requirements.txt
 
 # 4. Verify dependency integrity
 python -m pip check
+
+# 5. Create production environment file from template
+cp .env.production.example .env
+# Edit .env to set your trusted domain in APP_CORS_ORIGINS (e.g., https://trading.yourfirm.in)
 ```
 
 ### 3.3 Production Startup via Uvicorn
-Do not bind Uvicorn directly to `0.0.0.0` without an authenticating reverse proxy or firewall.
+
+> [!WARNING]
+> **Strict Binding Policy:** Never bind Uvicorn directly to `0.0.0.0` or expose the ASGI socket to the public WAN without an authenticating reverse proxy or firewall. Always bind strictly to `127.0.0.1` (localhost loopback).
+
+**Linux / macOS (Bash):**
 ```bash
-# Export production environment variables
+# Export production environment variables (or load via .env)
 export APP_ENV=production
 export APP_DEBUG=false
 export APP_CORS_ORIGINS="https://trading.yourfirm.in"
@@ -102,6 +113,19 @@ uvicorn app.api.app:app \
   --workers 4 \
   --no-access-log \
   --proxy-headers
+```
+
+**Windows Server / Local Windows (PowerShell):**
+```powershell
+# Set environment variables in session (or rely on .env file)
+$env:APP_ENV = "production"
+$env:APP_DEBUG = "false"
+$env:APP_CORS_ORIGINS = "https://trading.yourfirm.in"
+$env:DATABASE_PATH = "data/predictions.db"
+$env:MODEL_DIR = "models"
+
+# Note: On Windows, single worker is recommended for local staging; multi-worker requires spawn-safe entrypoint
+python -m uvicorn app.api.app:app --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers
 ```
 
 ---
@@ -145,6 +169,32 @@ server {
     }
 }
 ```
+
+### Alternative Caddy Configuration (`Caddyfile`)
+Caddy provides automated zero-touch Let's Encrypt / ZeroSSL TLS certificates and works identically on Windows and Linux:
+```caddy
+trading.yourfirm.in {
+    # Reverse proxy to local Uvicorn ASGI server
+    reverse_proxy 127.0.0.1:8000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+}
+```
+
+> [!CAUTION]
+> **Reverse Proxy Template Review Notice:**
+> The above Nginx and Caddy configurations are illustrative reference templates. Before deploying in any production environment, your systems/DevOps team must review and adjust domain names, SSL certificate storage locations, firewall rules, client timeouts, rate-limiting directives, and buffer sizes for compliance with your organization's specific security policies.
 
 ---
 
@@ -248,6 +298,27 @@ curl -s http://127.0.0.1:8000/api/health
 | Elevated latency (>2000ms) on `/api/predict` | Ollama LLM inference queue backlog or CPU throttling | Verify Ollama status (`curl http://127.0.0.1:11434/api/tags`). Switch client requests to quantitative ML (`model_name: "xgboost"`). |
 | High rate of `STALE_DATA` warnings | Yahoo Finance rate limiting or market holiday gap | Verify symbol format (`.NS` suffix). Check national holiday calendar. Review quote provider logs. |
 | Model candidate rejected during retraining | Candidate model failed one of the 6 validation gates | Inspect `model_releases` table for failing gate name and observed metric. Active model remains 100% untouched. |
+
+### 7.4 Deployment Smoke-Test Command & Expected Verification Results
+Before putting any new deployment or update into service, run the local staging smoke-test runner:
+```bash
+# Execute isolated local deployment smoke test
+python scripts/run_local_staging.py --host 127.0.0.1 --port 8899 --requests 20 --concurrency 2
+```
+
+**Expected Verification Checklist:**
+| Check | Expected Result | Operational Meaning |
+| :--- | :--- | :--- |
+| **[1] Loopback Isolation** | `PASS` | Bound strictly to `127.0.0.1`; WAN/public interfaces inaccessible. |
+| **[2] Production Startup** | `PASS` | Server started with `APP_ENV=production` and `APP_DEBUG=false`. |
+| **[3] /api/health Endpoint** | `PASS` | Returned HTTP 200 with `status: "healthy"` and dependencies verified. |
+| **[4] Security Headers** | `PASS` | `nosniff`, `DENY`, `strict-origin-when-cross-origin`, and `X-Process-Time-Ms` present. |
+| **[5] OpenAPI /docs Lockdown** | `PASS` | `/docs`, `/redoc`, and `/openapi.json` return HTTP 404 in production. |
+| **[6] Smoke Tests** | `PASS` | UI root `/` and `/api/events` return valid HTTP 200 responses. |
+| **[7] Dev Database Untouched** | `PASS` | SHA-256 fingerprint matches pre-test hash (0 bytes mutated). |
+| **[8] Models Storage Untouched**| `PASS` | Model directory files match pre-test hashes (0 bytes mutated). |
+| **Throughput & Latency** | `> 100 req/s, p50 < 25ms` | Baseline local loopback responsiveness confirmed. |
+| **Port & Cleanup** | `0 errors` | Port 8899 cleanly released; ephemeral directory removed. |
 
 ---
 

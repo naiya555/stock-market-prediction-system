@@ -4489,4 +4489,101 @@ Independently verify Day 47's release-readiness claims, audit whether Phase 16 a
 Local staging validation, connection pooling, and release-readiness audits confirm local robustness. Formal Phase 16 sign-off remains blocked pending dedicated external staging infrastructure provisioning for the production-equivalent multi-hour soak test during live market hours.
 
 ### Next Step
-Await provisioning of dedicated external staging infrastructure or operator direction to initiate production packaging and deployment configuration.
+Execute Day 49 CodeRabbit review audit, verify zero-cost deployment packaging, and enforce configuration and gitignore safeguards.
+
+---
+
+## Day 49 - CodeRabbit Review Audit & Zero-Cost Deployment Packaging
+
+### Goal
+Audit all open CodeRabbit review findings, harden the local staging runner and configuration layers, implement reproducible zero-cost deployment packaging, audit `.gitignore` against secret and artifact leakage, expand automated deployment tests, and maintain Phase 16 strictly in progress under zero-cost constraints.
+
+### 1. Git Baseline Verification
+- **Baseline Commit:** `969bc14` (`docs(phase-16): document release gate verification and zero-cost deployment plan`)
+- **Remote Synchronization:** Working tree clean; local `main` matched `origin/main` at `969bc147887b428c3a48e280a290d12b36ccb2d2`.
+- **Pre-Test Data Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e`
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
+
+---
+
+### 2. CodeRabbit Review Findings & Audit Matrix
+
+| Finding / Area | File & Context | Validity | Risk | Disposition & Remediation | Test Evidence |
+| :--- | :--- | :---: | :---: | :--- | :--- |
+| **Sleep Guard Invocation & State Tracking** | [`scripts/run_local_staging.py`](file:///d:/Share_market_predictor/scripts/run_local_staging.py) (`prevent_windows_sleep`, `StagingValidationReport`) | **Valid** | Medium | Teardown is guaranteed via nested `try ... finally: sleep_mgr.__exit__(*sys.exc_info())`. Added `sleep_prevention_active: bool = False` to `StagingValidationReport` and populated it on entry to verify active engagement. Added CLI reporting line under `[TIMING & RUN HEALTH]`. | [`tests/test_local_staging.py`](file:///d:/Share_market_predictor/tests/test_local_staging.py) (`test_sleep_prevention_engaged_during_validation`, `test_prevent_windows_sleep_exception_propagation`, `test_prevent_windows_sleep_safety`) |
+| **Latency Distribution Labels** | [`docs/daily-progress.md`](file:///d:/Share_market_predictor/docs/daily-progress.md) (Days 45–48) | **Valid** | Low | Confirmed latency measurements (p50: 6.83ms, p95: 15.03ms) are explicitly labeled as single-host local loopback baselines. Clearly demarcated from external multi-node staging WAN targets (p50 < 150ms, p95 < 350ms). | Documentation audit verified; no WAN claims made for local loopback tests. |
+| **Connection Pooling Documentation** | [`docs/daily-progress.md`](file:///d:/Share_market_predictor/docs/daily-progress.md), [`scripts/staging_soak_test.py`](file:///d:/Share_market_predictor/scripts/staging_soak_test.py) | **Valid** | Low | Documented thread-confined `requests.Session()` with `HTTPAdapter(pool_connections=10, pool_maxsize=10, max_retries=Retry(0))` and explicit bounded timeouts `(2.0, 5.0)`. | [`tests/test_local_staging.py`](file:///d:/Share_market_predictor/tests/test_local_staging.py) (`test_create_worker_session_pooling_and_zero_retries`, `test_thread_worker_session_reuse_and_isolation`) |
+| **Phase 16 Status & External Prerequisites** | [`docs/roadmap.md`](file:///d:/Share_market_predictor/docs/roadmap.md), [`docs/daily-progress.md`](file:///d:/Share_market_predictor/docs/daily-progress.md) | **Valid** | High | Phase 16 kept strictly **IN PROGRESS**. Local loopback tests using `OfflineStagingEventProvider` do not prove WAN resilience or live NSE exchange data ingestion. External cluster soak remains an uncompleted prerequisite. | Maintained in `docs/roadmap.md` and `docs/daily-progress.md`. |
+
+---
+
+### 3. Zero-Cost Deployment Packaging
+
+1. **Production Environment Configuration Template ([`.env.production.example`](file:///d:/Share_market_predictor/.env.production.example)):**
+   - Created pristine production template with safe placeholders only.
+   - Enforces `APP_ENV=production`, `APP_DEBUG=false`, and explicit HTTPS origins in `APP_CORS_ORIGINS` (rejecting wildcards and plain HTTP).
+   - Specifies storage paths (`APP_DATA_DIR`, `APP_MODEL_DIR`, `DATABASE_PATH`) and local LLM endpoints (`OLLAMA_BASE_URL`).
+   - Contains zero live secrets, API keys, passwords, or fake credentials.
+2. **Standard Environment Template ([`.env.example`](file:///d:/Share_market_predictor/.env.example)):**
+   - Updated with placeholder documentation for CORS, storage, and local Ollama inference.
+3. **`.gitignore` Safeguards Audit:**
+   - Updated `.gitignore` with `!.env.*.example` alongside `!.env.example`.
+   - Verified that `git check-ignore` allows tracked template files (`.env.production.example`) while strictly blocking actual secret files (`.env.production`, `.env.local`, `.env`).
+   - Re-verified ignore rules for SQLite databases (`*.db`, `*.db-wal`), logs (`*.log`), and model weights (`models/*`, keeping `!models/.gitkeep`).
+4. **Deployment Operations Runbook ([`docs/deployment-runbook.md`](file:///d:/Share_market_predictor/docs/deployment-runbook.md)):**
+   - **Section 2:** Added reference to [`.env.production.example`](file:///d:/Share_market_predictor/.env.production.example) and strict `.gitignore` safety alert.
+   - **Section 3.2 & 3.3:** Documented environment file setup and provided dual Linux (Bash) and Windows Server (PowerShell) Uvicorn production commands with debug mode disabled and loopback binding.
+   - **Section 4:** Added zero-cost Caddy configuration template (`Caddyfile`) with automatic TLS and security headers alongside Nginx, with an explicit caution notice that templates require environment-specific review.
+   - **Section 7.4:** Added Deployment Smoke-Test Procedure and 10-point Expected Results Verification Checklist.
+5. **Automated Deployment Packaging Tests ([`tests/test_deployment_runbook.py`](file:///d:/Share_market_predictor/tests/test_deployment_runbook.py)):**
+   - `test_env_templates_hygiene_and_security`: Validates template existence, production flags, CORS constraints, and strict absence of secrets.
+   - `test_gitignore_deployment_safeguards`: Validates blocking of `.env.*`, databases, and model weights while preserving templates and `.gitkeep`.
+
+---
+
+### 4. Automated Tests & Empirical Verification
+
+- **Dependency Audit**:
+  ```powershell
+  & .\.venv\Scripts\python -m pip check
+  ```
+  `No broken requirements found.`
+- **Git Diff Hygiene**:
+  ```powershell
+  git diff --check
+  ```
+  `Clean (0 whitespace errors, 0 trailing blank lines).`
+- **Focused Staging & Deployment Tests**:
+  ```powershell
+  & .\.venv\Scripts\python -m pytest tests/test_local_staging.py tests/test_staging_soak.py tests/test_deployment_runbook.py -q
+  ```
+  **36 passed**, 1 warning in 18.61s (19 in staging, 11 in soak, 6 in deployment runbook).
+- **Full Test Suite Execution**:
+  ```powershell
+  & .\.venv\Scripts\python -m pytest -q
+  ```
+  **620 passed**, 0 failed, 1 warning (Starlette testclient deprecation) in 24.95s across 45 test files (+2 new tests since Day 48).
+- **Local Staging Smoke Test (Bounded Execution)**:
+  ```powershell
+  & .\.venv\Scripts\python scripts/run_local_staging.py --host 127.0.0.1 --port 8899 --requests 20 --concurrency 2
+  ```
+  - **Checklist:** All 8 checklist items **PASS** (Loopback, Startup, Health, Security Headers, Docs 404, Smoke Tests, Dev DB Untouched, Models Untouched).
+  - **Requests:** 20/20 completed (100.00% 2xx, 0 4xx, 0 5xx, 0 timeouts, 0 net errors).
+  - **Throughput:** 215.75 req/s.
+  - **Local Latencies:** Min: 2.76 ms, Mean: 8.77 ms, p50: 6.83 ms, p95: 15.03 ms, Max: 25.54 ms.
+  - **Sleep Prevention:** `ACTIVE (Win32 ES_CONTINUOUS|ES_SYSTEM_REQUIRED)`.
+  - **Teardown & Cleanup:** Clean server shutdown, Port 8899 released, ephemeral staging directory deleted.
+- **Data Integrity Verification (Pre & Post Test)**:
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% Match — 0 bytes mutated**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% Match — 0 bytes mutated**)
+
+---
+
+### 5. Phase 16 Status & Next Steps
+
+**Phase 16 remains strictly IN PROGRESS.**
+Zero-cost deployment packaging, configuration templates, and local staging validation are verified and complete. The final acceptance criterion — a multi-hour soak test on dedicated production-equivalent external infrastructure during live NSE market hours — remains pending external infrastructure provisioning.
+
+### Next Step
+Await provisioning of dedicated external staging infrastructure or operator direction for Phase 16 final milestone audit.

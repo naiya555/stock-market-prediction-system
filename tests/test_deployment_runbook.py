@@ -167,3 +167,61 @@ def test_execute_request_external_failure_handling():
     assert res.status_code == 0
     assert res.error is not None
     assert "Failed" in res.error or "Connection" in res.error or "Max retries" in res.error
+
+
+def test_env_templates_hygiene_and_security():
+    """Verify .env.example and .env.production.example contain strictly safe placeholders."""
+    project_root = Path(__file__).resolve().parent.parent
+
+    # 1. Base .env.example must exist
+    dev_example = project_root / ".env.example"
+    assert dev_example.exists(), ".env.example must exist at project root."
+    dev_content = dev_example.read_text(encoding="utf-8")
+    assert "APP_ENV=development" in dev_content
+
+    # 2. Production .env.production.example must exist
+    prod_example = project_root / ".env.production.example"
+    assert prod_example.exists(), ".env.production.example must exist for zero-cost deployment packaging."
+    prod_content = prod_example.read_text(encoding="utf-8")
+
+    # 3. Production template must enforce production and debug=false
+    assert "APP_ENV=production" in prod_content
+    assert "APP_DEBUG=false" in prod_content
+    assert "APP_DEBUG=true" not in prod_content
+
+    # 4. Mandatory CORS configuration with explicit HTTPS (no wildcards)
+    assert "APP_CORS_ORIGINS=" in prod_content
+    assert "https://" in prod_content
+    # Ensure no wildcard origins are configured
+    for line in prod_content.splitlines():
+        if line.startswith("APP_CORS_ORIGINS="):
+            origins = line.split("=", 1)[1].split(",")
+            assert "*" not in origins
+            assert not any("http://" in o and "localhost" not in o for o in origins)
+
+    # 5. Security audit: no real secrets, passwords, or live tokens
+    forbidden_tokens = ["api_key=", "secret_key=", "password=", "bearer ", "ghp_"]
+    for token in forbidden_tokens:
+        assert token not in dev_content.lower()
+        assert token not in prod_content.lower()
+
+
+def test_gitignore_deployment_safeguards():
+    """Verify .gitignore blocks deployment secrets, local databases, and model weights."""
+    project_root = Path(__file__).resolve().parent.parent
+    gitignore_path = project_root / ".gitignore"
+    assert gitignore_path.exists(), ".gitignore must exist."
+    content = gitignore_path.read_text(encoding="utf-8")
+
+    # Critical security ignores
+    assert ".env\n" in content or ".env\r\n" in content
+    assert ".env.*" in content
+    assert "!.env.example" in content
+    assert "!.env.*.example" in content
+
+    # Database and model weights ignores
+    assert "*.db" in content
+    assert "*.db-wal" in content
+    assert "models/*" in content
+    assert "!models/.gitkeep" in content
+    assert "*.log" in content
