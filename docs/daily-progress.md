@@ -4381,4 +4381,112 @@ The following items constitute the formal prerequisites required prior to launch
 All local staging reliability, connection pooling, and CodeRabbit review findings are completely remediated and verified. Formal Phase 16 completion and milestone sign-off await provisioning of dedicated external staging infrastructure for the multi-hour soak test.
 
 ### Next Step
-Await provisioning of dedicated external staging environment or operator instruction to initiate staging deployment preparation.
+Execute Day 48 independent release gate verification, audit soak metrics, and formulate zero-cost deployment plan.
+
+---
+
+## Day 48 - Release Gate Verification & Zero-Cost Deployment Planning
+
+### Goal
+Independently verify Day 47's release-readiness claims, audit whether Phase 16 acceptance criteria are technically justified and measurable, construct a comprehensive Release-Readiness Evidence Matrix, evaluate SQLite trigger immutability boundaries, audit soak-test metric algorithms, formulate a production-grade zero-cost deployment plan, and maintain Phase 16 strictly in progress under local-only constraints.
+
+### 1. Audit of Day 47's Implementation & Sleep Guard Architecture
+- **Platform & API Pre-Checks:** `prevent_windows_sleep` in [`scripts/run_local_staging.py`](file:///d:/Share_market_predictor/scripts/run_local_staging.py) verifies `sys.platform == "win32"` and tests `ctypes.windll.kernel32.SetThreadExecutionState` inside a pre-yield `try/except` block, setting `enabled = True` only upon successful invocation before any `yield` occurs.
+- **Exception Propagation Without Suppression:** The generator yields `enabled` inside an unencumbered `try ... finally:` construct. Exceptions thrown into the generator are not caught by any `except` statement within the generator, preserving the original exception and preventing `RuntimeError: generator didn't stop after throw()`.
+- **Restoration Across All Exit Paths:** In `run_local_staging_validation()`, context teardown is guaranteed by an outer `try ... finally:` whose inner block wraps server shutdown, environment restoration, temporary directory cleanup, and non-mutation verification in a nested `try ... finally: sleep_mgr.__exit__(*sys.exc_info())`. This ensures execution state restoration on normal completion, port conflicts, early returns, and unexpected runtime exceptions.
+- **Restoration Failure Containment:** The context manager's `finally:` block wraps the cleanup `SetThreadExecutionState(ES_CONTINUOUS)` in `try ... except Exception: pass`, ensuring any Win32 API failure during cleanup cannot mask or replace an in-flight primary exception.
+- **Cross-Platform Safety:** On non-Windows platforms, `enabled` defaults to `False`, yielding `False` with an empty `finally:`, ensuring predictable no-op execution on Linux/macOS.
+- **Test Verification:** [`tests/test_local_staging.py`](file:///d:/Share_market_predictor/tests/test_local_staging.py) covers safe entry/exit (`test_prevent_windows_sleep_safety`), clean exception propagation (`test_prevent_windows_sleep_exception_propagation`), and active engagement during validation (`test_sleep_prevention_engaged_during_validation`).
+
+---
+
+### 2. Release-Readiness Evidence Matrix
+
+| Control | Code Location | Test / Verification Evidence | Result | Remaining Limitation |
+| :--- | :--- | :--- | :---: | :--- |
+| **Production Configuration** | [`app/core/config.py`](file:///d:/Share_market_predictor/app/core/config.py) (`Settings.validate_production_mode`) | `tests/test_api.py::test_production_config_rejects_debug` | **PASS** | Relies on environment variable enforcement at process launch. |
+| **OpenAPI Docs Lockdown** | [`app/api/app.py`](file:///d:/Share_market_predictor/app/api/app.py) (`docs_url=None`, `openapi_url=None`) | `tests/test_api.py::test_docs_suppressed_in_production` | **PASS** | Only active when `APP_ENV=production`. |
+| **Security Headers** | [`app/api/app.py`](file:///d:/Share_market_predictor/app/api/app.py) (`SecurityHeadersMiddleware`) | `tests/test_api.py::test_security_headers_present` | **PASS** | Does not replace perimeter WAF or edge DDoS mitigation. |
+| **CORS Policy Restrictions** | [`app/api/app.py`](file:///d:/Share_market_predictor/app/api/app.py) (`validate_cors_origins`) | `tests/test_api.py::test_cors_rejects_wildcard_in_production` | **PASS** | Requires accurate DNS domain whitelist configuration. |
+| **Degraded Health Reporting** | [`app/api/routes/health.py`](file:///d:/Share_market_predictor/app/api/routes/health.py) (`/api/health`) | `tests/test_api.py::test_health_endpoint_db_failure`, `test_health_endpoint_model_storage_failure` | **PASS** | Reports binary degraded status; does not auto-heal unmounted volumes. |
+| **Database Write-Once Triggers** | [`app/database/schema.py`](file:///d:/Share_market_predictor/app/database/schema.py) (`trg_prevent_prediction_*`, `trg_prevent_actual_*`) | `tests/test_prediction_database.py::test_immutability_triggers` | **PASS** | **Scope Limitation:** Triggers prevent row-level `UPDATE`/`DELETE` on `predictions` and `actuals`, but do NOT prevent DDL (`DROP TABLE`, `DROP TRIGGER`), table truncation, changes to `stocks`/`model_releases`, or direct disk file deletion. |
+| **HTTP Connection Pooling** | [`scripts/staging_soak_test.py`](file:///d:/Share_market_predictor/scripts/staging_soak_test.py) (`create_worker_session`) | `tests/test_local_staging.py::test_thread_worker_session_reuse_and_isolation` | **PASS** | Thread-confined pooling (1 session per worker); concurrency bounded by client pool size. |
+| **Bounded Timeouts & Retries** | [`scripts/staging_soak_test.py`](file:///d:/Share_market_predictor/scripts/staging_soak_test.py) (`execute_request_external`) | `tests/test_local_staging.py::test_response_and_session_cleanup_on_success_and_exception` | **PASS** | Client-side timeout; does not terminate server-side execution if socket drops mid-flight. |
+| **Host Sleep & Suspension Guard** | [`scripts/run_local_staging.py`](file:///d:/Share_market_predictor/scripts/run_local_staging.py) (`prevent_windows_sleep`, heartbeat) | `tests/test_local_staging.py::test_interruption_and_suspension_detection_classification` | **PASS** | Win32-specific API; non-Windows environments rely on OS-level systemd / cgroups power settings. |
+| **Soak Completion Rejection** | [`scripts/staging_soak_test.py`](file:///d:/Share_market_predictor/scripts/staging_soak_test.py) (`SoakSummary.is_complete`, `main`) | `tests/test_staging_soak.py::test_soak_main_rejects_incomplete_run` | **PASS** | Enforces scheduled request volume or duration; does not evaluate data semantic drift. |
+| **Staging Environment Isolation** | [`scripts/run_local_staging.py`](file:///d:/Share_market_predictor/scripts/run_local_staging.py) (`TemporaryDirectory`, SHA-256 pre/post) | `tests/test_local_staging.py::test_staging_data_and_model_isolation_verified` | **PASS** | Validates filesystem isolation on single host; does not simulate multi-node shared storage. |
+
+---
+
+### 3. Audit of Soak-Test Metrics & Acceptance Thresholds
+- **Monotonic Duration Calculation:** Accurately computed via `time.monotonic()` in `scripts/run_local_staging.py` and `time.perf_counter()` in `scripts/staging_soak_test.py`, ensuring immunity to NTP time adjustments or daylight saving shifts.
+- **Suspension Gap Detection:** Dedicated heartbeat thread samples every 1.0s; intervals $\ge 3.0$s indicate host sleep or hypervisor suspension, flagged as `is_interrupted = True` and subtracted from active duration to avoid throughput skew.
+- **Request Categorization & Denominators:** `classify_http_outcome` accurately partitions results into 2xx, 3xx, 4xx, 5xx, timeouts, and network errors. Throughput denominator strictly uses completed requests (`len(latencies)`), avoiding inflated throughput calculations on aborted runs.
+- **Percentile Mathematics:** Continuous linear interpolation (`compute_percentile`, matching NumPy `method='linear'`) replaces discrete index rounding, avoiding distortion on small samples. Sample stability indicators explicitly flag $N < 20$ for p95 and $N < 100$ for p99.
+- **Separation of Acceptance Criteria:**
+  - **Local Staging Loopback Baseline (PASSED on Day 45):** 10-minute duration, loopback `127.0.0.1`, offline mock event provider, single-host latency (p50 $< 50$ ms, p95 $< 100$ ms), 100% 2xx responses, 0 errors, 100% data immutability.
+  - **External Staging Soak Gate (PENDING External Infrastructure):** $\ge 2$ hours sustained traffic, $\ge 100$ req/s, public/WAN network routing with TLS, executed during live NSE market hours (09:15 – 15:30 IST) to test live feed ingestion, WAN latency (p50 $< 150$ ms, p95 $< 350$ ms), 0 5xx, 0 timeouts.
+  - **Crucial Boundary:** Local loopback tests using `OfflineStagingEventProvider` do NOT validate live NSE feed intake or internet transit. External market connectivity remains an unverified production gate.
+
+---
+
+### 4. Zero-Cost Deployment Plan (Based on Existing Project Infrastructure)
+1. **Runtime & Environment:**
+   - Standard Python virtual environment (`.venv`) using Python 3.11/3.12/3.14.
+   - Pinned dependencies from `requirements.txt` validated with `python -m pip check`.
+2. **Configuration & Secrets:**
+   - Production settings managed strictly via local `.env` file (loaded through `app.core.config.Settings.from_env()`).
+   - Zero hardcoded credentials; `APP_DEBUG=false`, `APP_ENV=production`, explicit trusted domain CORS origins.
+3. **Application Server & Reverse Proxy:**
+   - Uvicorn ASGI server bound strictly to localhost (`127.0.0.1:8000`) with 4 worker processes.
+   - Local Nginx or Caddy instance providing TLS termination (Let's Encrypt / self-signed internal CA), security headers, and reverse proxying without cloud API gateway costs.
+4. **Persistence & Model Storage:**
+   - SQLite with WAL journal mode (`PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;`).
+   - Automated zero-cost backup via SQLite Online Backup API (`sqlite3 data/predictions.db ".backup 'data/backups/predictions_backup.db'"`).
+   - Local filesystem model directory (`models/`) with quarantined retraining promotion and atomic replacement (`os.replace`).
+5. **Observability & Health Checks:**
+   - Built-in `/api/health` HTTP endpoint monitored via local curl / systemd watchdog.
+   - Structured access logging with `X-Process-Time-Ms` response header without third-party APM subscription dependencies.
+6. **Graceful Lifecycle Management:**
+   - Systemd unit service on Linux (`/etc/systemd/system/stock-predictor.service`) or Windows Service via NSSM, handling graceful SIGTERM teardown within 5 seconds.
+7. **External Staging Blockers:**
+   - Dedicated external staging infrastructure is currently unprovisioned. No free cloud staging cluster was fabricated; external multi-hour soak testing remains blocked until dedicated external hosting is made available.
+
+---
+
+### 5. Automated Tests & Empirical Verification
+- **Dependency Audit**:
+  ```powershell
+  & .\.venv\Scripts\python -m pip check
+  ```
+  `No broken requirements found.`
+- **Full Test Suite Execution**:
+  ```powershell
+  & .\.venv\Scripts\python -m pytest -q
+  ```
+  **618 passed**, 0 failed, 1 warning (Starlette testclient deprecation) in 30.85s across 45 test files.
+- **Git Diff Hygiene**:
+  ```powershell
+  git diff --check
+  ```
+  Clean (0 whitespace errors, 0 trailing blank lines).
+- **Local Staging Smoke Test (Bounded Execution)**:
+  ```powershell
+  & .\.venv\Scripts\python scripts/run_local_staging.py --host 127.0.0.1 --port 8899 --requests 20 --concurrency 2
+  ```
+  - Requests: 20 completed (100.0% 2xx, 0 errors, 210.49 req/s).
+  - Local Latencies: p50: 6.44 ms, p95: 23.15 ms, Max: 28.11 ms.
+  - All 8 production checklist items: **PASS**.
+  - Server shutdown: Port 8899 cleanly released; ephemeral directory removed.
+- **Data Integrity Check (Pre & Post Smoke Test)**:
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% Match — 0 bytes mutated**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% Match — 0 bytes mutated**)
+
+---
+
+### Phase 16 Status
+**Phase 16 remains strictly IN PROGRESS.**
+Local staging validation, connection pooling, and release-readiness audits confirm local robustness. Formal Phase 16 sign-off remains blocked pending dedicated external staging infrastructure provisioning for the production-equivalent multi-hour soak test during live market hours.
+
+### Next Step
+Await provisioning of dedicated external staging infrastructure or operator direction to initiate production packaging and deployment configuration.

@@ -23,7 +23,7 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 | **13** | **Web Application** | Interactive FastAPI endpoints and user-facing presentation dashboard. | Complete (Day 33-34) |
 | **14** | **Live Data Pipeline** | Point-in-time current price, breadth, session intake, and prediction quote integration. | Complete (Day 35-36) |
 | **15** | **Model Comparison & Improvement**| Comparative metrics (ML vs. LLM vs. Ensemble) and controlled retraining. | **Complete (Day 37-38)** |
-| **16** | **Final Testing & Evaluation** | Comprehensive end-to-end audit, load testing, and production hardening. | **In Progress (Day 40-47)** |
+| **16** | **Final Testing & Evaluation** | Comprehensive end-to-end audit, load testing, and production hardening. | **In Progress (Day 40-48)** |
 
 ---
 
@@ -171,7 +171,7 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Atomic promotion protocol copying candidate to active path (`models/{model}_direction.*`) and preserving active models 100% on any gate failure.
   - SQLite model release persistence in `model_releases` table tracking version history, cutoffs, metrics, and gate results.
 
-### Phase 16: Final Testing & Evaluation (In Progress - Day 47)
+### Phase 16: Final Testing & Evaluation (In Progress - Day 48)
 - Comprehensive audit of retraining workflow and model release management (Day 39 complete).
 - Implementation of Gate 0 (Chronological Integrity Gate) eliminating look-ahead bias and inverted cutoffs (ADR 07).
 - Transactional promotion protocol with mandatory archiving, atomic staging (`os.replace`), and automatic rollback from archive on SQLite/filesystem failure.
@@ -232,6 +232,13 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Corrected documentation ambiguities in `docs/daily-progress.md`, clearly labeling latency distributions as single-host local loopback baselines and qualifying soak test acceptance as local non-milestone criteria.
   - Formulated comprehensive multi-hour staging soak test prerequisite checklist (external host cluster, dedicated secrets, database isolation, NSE live market hours alignment, error budgets, and sign-off criteria).
   - Maintained Phase 16 strictly IN PROGRESS until live external cluster soak testing is executed.
+- Release gate verification & zero-cost deployment planning (Day 48 complete):
+  - Independently audited Day 47's `prevent_windows_sleep` refactoring, confirming exception propagation without generator suppression and guaranteed teardown via `sleep_mgr.__exit__(*sys.exc_info())`.
+  - Constructed concise 10-point Release-Readiness Evidence Matrix mapping controls to code locations, tests, and residual limitations (e.g. SQLite trigger scope vs. DDL/filesystem immutability).
+  - Audited soak-test telemetry calculations (monotonic timing, suspension gap accumulation, status classification, linear interpolation percentiles, and sample stability flags).
+  - Explicitly partitioned acceptance criteria into completed local staging loopback baselines (p50 < 50ms, p95 < 100ms, 100% data non-mutation) versus pending external staging soak criteria (>= 2h, non-loopback WAN, live market hours, p50 < 150ms, p95 < 350ms).
+  - Verified deployment runbook against local zero-cost architecture (Python venv, Uvicorn, Nginx, local SQLite WAL, filesystem model archive); confirmed 618 passing regression tests with clean `pip check`.
+  - Maintained Phase 16 strictly IN PROGRESS pending dedicated external staging infrastructure provisioning.
 - Remaining Phase 16 acceptance criteria:
   - Multi-hour soak testing on dedicated production-equivalent staging infrastructure during live exchange market hours once external host cluster is provisioned.
   - Final Phase 16 completion and milestone sign-off review.
