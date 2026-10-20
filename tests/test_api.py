@@ -250,6 +250,21 @@ def test_health_endpoint_db_failure():
         assert data["dependencies"]["database"]["status"] == "unreachable"
 
 
+def test_health_endpoint_model_storage_failure():
+    """Verify health endpoint reports 503 degraded when model directory is missing."""
+    from unittest.mock import patch
+    from pathlib import Path
+
+    app = create_app()
+    with patch.object(Path, "exists", return_value=False):
+        with TestClient(app) as test_client:
+            res = test_client.get("/api/health")
+            assert res.status_code == 503
+            data = res.json()
+            assert data["status"] == "degraded"
+            assert data["dependencies"]["models"]["status"] == "degraded"
+
+
 def test_predict_validation_invalid_symbol(client: TestClient):
     """Verify empty or whitespace symbol triggers 422 Unprocessable Entity."""
     res = client.post("/api/predict", json={"symbol": "  ", "model_name": "xgboost"})

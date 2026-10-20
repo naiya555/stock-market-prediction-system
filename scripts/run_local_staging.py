@@ -227,51 +227,77 @@ def run_local_staging_validation(
         if item.is_file()
     }
 
-    # Check port availability
-    if not is_port_available(host, port):
-        report.errors.append(f"Port {port} on {host} is already in use by another process.")
-        return report
+    def _verify_unmutated() -> None:
+        dev_db_size_after, dev_db_mtime_after = get_dev_db_fingerprint(project_root)
+        report.dev_db_sha256_after = get_file_sha256(project_root / "data" / "predictions.db")
+        if (
+            dev_db_size_before == dev_db_size_after
+            and dev_db_mtime_before == dev_db_mtime_after
+            and report.dev_db_sha256_before == report.dev_db_sha256_after
+        ):
+            report.dev_db_unmutated_verified = True
+        else:
+            report.errors.append("CRITICAL: Development database was mutated during staging validation!")
 
-    report.loopback_isolation_verified = True
+        report.models_sha256_after = {
+            item.name: get_file_sha256(item)
+            for item in real_models_dir.glob("*")
+            if item.is_file()
+        }
+        if report.models_sha256_before == report.models_sha256_after:
+            report.models_unmutated_verified = True
+        else:
+            report.errors.append("CRITICAL: Active models directory was mutated during staging validation!")
 
-    # Create temporary isolated staging directory
     temp_dir_obj = None
-    if custom_staging_dir:
-        staging_root = Path(custom_staging_dir)
-        staging_root.mkdir(parents=True, exist_ok=True)
-    else:
-        temp_dir_obj = tempfile.TemporaryDirectory(prefix="staging_env_")
-        staging_root = Path(temp_dir_obj.name)
-
-    staging_data_dir = staging_root / "data"
-    staging_models_dir = staging_root / "models"
-    staging_data_dir.mkdir(parents=True, exist_ok=True)
-    staging_models_dir.mkdir(parents=True, exist_ok=True)
-
-    # Safe read-only copy of existing models into staging directory if any exist
-    for item in real_models_dir.glob("*"):
-        if item.is_file() and item.name != ".gitkeep":
-            shutil.copy2(item, staging_models_dir / item.name)
-
-    staging_cors = f"http://{host}:{port},https://staging.local"
-    env_overrides = {
-        "APP_ENV": "production",
-        "APP_DEBUG": "false",
-        "APP_CORS_ORIGINS": staging_cors,
-        "APP_DATA_DIR": str(staging_data_dir),
-        "APP_MODEL_DIR": str(staging_models_dir),
-        "APP_LOG_LEVEL": "INFO",
-    }
-
-    # Backup existing environment variables
-    old_env = {k: os.environ.get(k) for k in env_overrides}
-    for k, v in env_overrides.items():
-        os.environ[k] = v
-
+    old_env = {}
     server = None
     server_thread = None
 
+    sleep_mgr = prevent_windows_sleep()
+    sleep_mgr.__enter__()
+
     try:
+        # Check port availability
+        if not is_port_available(host, port):
+            report.errors.append(f"Port {port} on {host} is already in use by another process.")
+            return report
+
+        report.loopback_isolation_verified = True
+
+        # Create temporary isolated staging directory
+        if custom_staging_dir:
+            staging_root = Path(custom_staging_dir)
+            staging_root.mkdir(parents=True, exist_ok=True)
+        else:
+            temp_dir_obj = tempfile.TemporaryDirectory(prefix="staging_env_")
+            staging_root = Path(temp_dir_obj.name)
+
+        staging_data_dir = staging_root / "data"
+        staging_models_dir = staging_root / "models"
+        staging_data_dir.mkdir(parents=True, exist_ok=True)
+        staging_models_dir.mkdir(parents=True, exist_ok=True)
+
+        # Safe read-only copy of existing models into staging directory if any exist
+        for item in real_models_dir.glob("*"):
+            if item.is_file() and item.name != ".gitkeep":
+                shutil.copy2(item, staging_models_dir / item.name)
+
+        staging_cors = f"http://{host}:{port},https://staging.local"
+        env_overrides = {
+            "APP_ENV": "production",
+            "APP_DEBUG": "false",
+            "APP_CORS_ORIGINS": staging_cors,
+            "APP_DATA_DIR": str(staging_data_dir),
+            "APP_MODEL_DIR": str(staging_models_dir),
+            "APP_LOG_LEVEL": "INFO",
+        }
+
+        # Backup existing environment variables
+        old_env = {k: os.environ.get(k) for k in env_overrides}
+        for k, v in env_overrides.items():
+            os.environ[k] = v
+
         # Reload settings with staging overrides
         get_settings(reload=True)
         app = create_app()
@@ -450,33 +476,36 @@ def run_local_staging_validation(
                 t.start()
                 threads.append(t)
 
-            last_tick = time.monotonic()
-            next_log = load_start + 30.0
-            while any(t.is_alive() for t in threads):
-                now_mono = time.monotonic()
-                tick_delta = now_mono - last_tick
-                # 1.0s heartbeat; tick_delta > 4.0s indicates host OS suspension/sleep gap
-                if tick_delta > 4.0:
-                    report.suspension_detected = True
-                    report.suspension_gap_seconds += round(tick_delta - 1.0, 3)
-                last_tick = now_mono
+            try:
+                last_tick = time.monotonic()
+                next_log = load_start + 30.0
+                while any(t.is_alive() for t in threads):
+                    now_mono = time.monotonic()
+                    tick_delta = now_mono - last_tick
+                    # 1.0s heartbeat; tick_delta > 4.0s indicates host OS suspension/sleep gap
+                    if tick_delta > 4.0:
+                        report.suspension_detected = True
+                        report.suspension_gap_seconds += round(tick_delta - 1.0, 3)
+                    last_tick = now_mono
 
-                now = time.perf_counter()
-                if now >= next_log:
-                    elapsed = now - load_start
-                    with results_lock:
-                        req_count = len(latencies)
-                        rate = req_count / max(elapsed - report.suspension_gap_seconds, 0.001)
-                    print(
-                        f"  [SOAK PROGRESS] Elapsed: {elapsed:6.1f}s / {duration_seconds:.0f}s | "
-                        f"Requests: {req_count:6d} | Rate: {rate:6.1f} req/s | "
-                        f"2xx: {report.http_2xx:6d} | Errors: {report.load_test_failed_requests}"
-                    )
-                    next_log += 30.0
-                time.sleep(1.0)
-
-            for t in threads:
-                t.join(timeout=5.0)
+                    now = time.perf_counter()
+                    if now >= next_log:
+                        elapsed = now - load_start
+                        with results_lock:
+                            req_count = len(latencies)
+                            rate = req_count / max(elapsed - report.suspension_gap_seconds, 0.001)
+                        print(
+                            f"  [SOAK PROGRESS] Elapsed: {elapsed:6.1f}s / {duration_seconds:.0f}s | "
+                            f"Requests: {req_count:6d} | Rate: {rate:6.1f} req/s | "
+                            f"2xx: {report.http_2xx:6d} | Errors: {report.load_test_failed_requests}"
+                        )
+                        next_log += 30.0
+                    time.sleep(1.0)
+            finally:
+                for t in threads:
+                    t.join(timeout=5.0)
+                    if t.is_alive():
+                        report.errors.append(f"Worker thread {t.name} did not terminate within join timeout.")
 
             report.load_test_total_requests = len(latencies)
         else:
@@ -650,28 +679,9 @@ def run_local_staging_validation(
             except Exception:
                 pass
 
-    # Verify Development Database was NOT mutated (Size, mtime, and SHA-256)
-    dev_db_size_after, dev_db_mtime_after = get_dev_db_fingerprint(project_root)
-    report.dev_db_sha256_after = get_file_sha256(project_root / "data" / "predictions.db")
-    if (
-        dev_db_size_before == dev_db_size_after
-        and dev_db_mtime_before == dev_db_mtime_after
-        and report.dev_db_sha256_before == report.dev_db_sha256_after
-    ):
-        report.dev_db_unmutated_verified = True
-    else:
-        report.errors.append("CRITICAL: Development database was mutated during staging validation!")
-
-    # Verify Active Models directory was NOT mutated (Files and SHA-256)
-    report.models_sha256_after = {
-        item.name: get_file_sha256(item)
-        for item in real_models_dir.glob("*")
-        if item.is_file()
-    }
-    if report.models_sha256_before == report.models_sha256_after:
-        report.models_unmutated_verified = True
-    else:
-        report.errors.append("CRITICAL: Active models directory was mutated during staging validation!")
+        # Verify Development Database and Active Models were NOT mutated
+        _verify_unmutated()
+        sleep_mgr.__exit__(None, None, None)
 
     return report
 

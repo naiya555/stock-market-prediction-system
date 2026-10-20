@@ -20,7 +20,7 @@ import random
 import sys
 import threading
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -186,6 +186,11 @@ class SoakSummary:
         for stats in self.endpoint_stats.values():
             stats.compute()
 
+    @property
+    def is_complete(self) -> bool:
+        """Return True if all scheduled requests completed."""
+        return self.total_requests > 0 and self.completed_requests == self.total_requests
+
 
 TRAFFIC_SCENARIOS = [
     {"method": "GET", "path": "/api/health", "payload": None, "weight": 40},
@@ -211,7 +216,7 @@ def execute_request_external(
     method: str,
     path: str,
     payload: Optional[Dict[str, Any]] = None,
-    timeout: float = 10.0,
+    timeout: Union[float, Tuple[float, float]] = (2.0, 5.0),
     session: Optional[requests.Session] = None,
 ) -> RequestResult:
     """Execute a single HTTP request against an external server."""
@@ -494,7 +499,8 @@ def main() -> int:
     print("under live exchange market hours remains a documented, pending Phase 16 acceptance criterion.")
     print("=" * 75)
 
-    return 0 if summary.failed_requests == 0 else 1
+    all_passed = summary.is_complete and summary.failed_requests == 0
+    return 0 if all_passed else 1
 
 
 if __name__ == "__main__":

@@ -22,8 +22,8 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 | **12** | **ML + LLM Combination** | Ensemble layer combining numerical ML and LLM predictions transparently. | Complete (Day 32) |
 | **13** | **Web Application** | Interactive FastAPI endpoints and user-facing presentation dashboard. | Complete (Day 33-34) |
 | **14** | **Live Data Pipeline** | Point-in-time current price, breadth, session intake, and prediction quote integration. | Complete (Day 35-36) |
-| **15** | **Model Comparison & Improvement**| Comparative metrics (ML vs. LLM vs. Ensemble) and controlled retraining. | **In Progress (Day 37)** |
-| **16** | **Final Testing & Evaluation** | Comprehensive end-to-end audit, load testing, and production hardening. | Future |
+| **15** | **Model Comparison & Improvement**| Comparative metrics (ML vs. LLM vs. Ensemble) and controlled retraining. | **Complete (Day 37-38)** |
+| **16** | **Final Testing & Evaluation** | Comprehensive end-to-end audit, load testing, and production hardening. | **In Progress (Day 40-46)** |
 
 ---
 
@@ -171,7 +171,7 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Atomic promotion protocol copying candidate to active path (`models/{model}_direction.*`) and preserving active models 100% on any gate failure.
   - SQLite model release persistence in `model_releases` table tracking version history, cutoffs, metrics, and gate results.
 
-### Phase 16: Final Testing & Evaluation (In Progress - Day 45)
+### Phase 16: Final Testing & Evaluation (In Progress - Day 46)
 - Comprehensive audit of retraining workflow and model release management (Day 39 complete).
 - Implementation of Gate 0 (Chronological Integrity Gate) eliminating look-ahead bias and inverted cutoffs (ADR 07).
 - Transactional promotion protocol with mandatory archiving, atomic staging (`os.replace`), and automatic rollback from archive on SQLite/filesystem failure.
@@ -215,6 +215,16 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Verified graceful Uvicorn shutdown on loopback, immediate port 8899 release, and ephemeral directory cleanup.
   - Passed all 25 focused staging tests (+6 new deterministic tests) and 612 full regression tests with clean `pip check`.
   - Maintained Phase 16 as IN PROGRESS; local staging validation complete, awaiting dedicated cloud/cluster staging infrastructure for multi-hour production-equivalent soak testing.
+- Post-soak reliability audit & release readiness hardening (Day 46 complete):
+  - Audited runtime lifecycle, resource management, telemetry metrics, and health-check subsystems following the Day 45 10-minute soak run.
+  - Implemented guaranteed sleep prevention lifecycle (`prevent_windows_sleep`) across all execution flows in `scripts/run_local_staging.py` via unified `try/finally`.
+  - Enforced post-run database and model SHA-256 fingerprint verification (`_verify_unmutated`) across all exit paths, including startup aborts.
+  - Hardened worker thread joining with bounded timeout (`join(timeout=5.0)`) and thread-leak detection under exceptions.
+  - Fixed premature completion false-positive in `scripts/staging_soak_test.py` by requiring `summary.is_complete` in `main()` exit code determination.
+  - Aligned bounded timeout types `(2.0, 5.0)` across HTTP external execution helpers.
+  - Hardened `/api/health` model storage degradation to mark `is_overall_healthy = False` and return 503 Service Unavailable when the model directory is unavailable.
+  - Added 5 new deterministic tests bringing suite to 617 passing tests (0 failed) with clean `pip check`.
+  - Maintained Phase 16 as strictly IN PROGRESS pending multi-hour live cloud/cluster deployment soak testing under production-equivalent conditions.
 - Remaining Phase 16 acceptance criteria:
   - Multi-hour soak testing on dedicated production-equivalent staging infrastructure during live exchange market hours once external host cluster is provisioned.
   - Final Phase 16 completion and milestone sign-off review.

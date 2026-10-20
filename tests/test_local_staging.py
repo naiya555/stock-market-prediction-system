@@ -5,7 +5,7 @@ import socket
 import tempfile
 import threading
 import time
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 import pytest
 import requests
 import uvicorn
@@ -332,3 +332,26 @@ def test_response_and_session_cleanup_on_success_and_exception():
     assert res_err.status_code == 0
 
 
+def test_fingerprint_verification_runs_on_aborted_startup():
+    """Verify development database and model non-mutation are verified even when startup aborts."""
+    with patch("scripts.run_local_staging.is_port_available", return_value=False):
+        report = run_local_staging_validation(host="127.0.0.1", port=8899)
+        assert report.startup_verified is False
+        assert report.dev_db_unmutated_verified is True
+        assert report.models_unmutated_verified is True
+        assert report.dev_db_sha256_before != ""
+        assert report.dev_db_sha256_after == report.dev_db_sha256_before
+
+
+def test_sleep_prevention_engaged_during_validation():
+    """Verify prevent_windows_sleep is entered and exited during staging validation."""
+    from scripts import run_local_staging
+
+    with patch.object(run_local_staging, "prevent_windows_sleep") as mock_sleep:
+        mock_ctx = MagicMock()
+        mock_sleep.return_value = mock_ctx
+        with patch("scripts.run_local_staging.is_port_available", return_value=False):
+            _ = run_local_staging_validation(host="127.0.0.1", port=8899)
+            assert mock_sleep.called
+            assert mock_ctx.__enter__.called
+            assert mock_ctx.__exit__.called

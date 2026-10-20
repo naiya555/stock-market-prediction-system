@@ -73,12 +73,14 @@ def get_health(
                 status="degraded",
                 details="Model directory not found on storage",
             )
+            is_overall_healthy = False
     except Exception as exc:
         logger.warning("Model storage check error: %s", exc)
         dependencies["models"] = DependencyStatus(
             status="degraded",
             details="Error verifying model artifact storage",
         )
+        is_overall_healthy = False
 
     # 3. LLM Configuration Readiness (Config check only; no slow inference calls!)
     dependencies["llm"] = DependencyStatus(

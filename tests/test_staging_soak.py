@@ -147,3 +147,38 @@ def test_soak_simulation_bounded_inprocess():
     for ep_name, ep in summary.endpoint_stats.items():
         assert ep.total_requests > 0
         assert ep.http_2xx == ep.total_requests
+
+
+def test_soak_summary_is_complete_property():
+    """Verify is_complete returns True only when all scheduled requests completed."""
+    # 1. Fully complete run
+    complete_summary = SoakSummary(total_requests=20, latencies_ms=[10.0] * 20)
+    complete_summary.compute()
+    assert complete_summary.is_complete is True
+
+    # 2. Incomplete / interrupted run
+    incomplete_summary = SoakSummary(total_requests=100, latencies_ms=[10.0] * 25)
+    incomplete_summary.compute()
+    assert incomplete_summary.is_complete is False
+
+    # 3. Empty run
+    empty_summary = SoakSummary(total_requests=0, latencies_ms=[])
+    empty_summary.compute()
+    assert empty_summary.is_complete is False
+
+
+def test_soak_main_rejects_incomplete_run():
+    """Verify main() returns 1 if run terminated early even with 0 error responses."""
+    from scripts.staging_soak_test import main
+
+    incomplete_summary = SoakSummary(
+        total_requests=50,
+        latencies_ms=[12.0] * 10,  # Only 10 completed
+        failed_requests=0,
+    )
+    incomplete_summary.compute()
+
+    with patch("scripts.staging_soak_test.run_soak_simulation", return_value=incomplete_summary):
+        with patch("sys.argv", ["staging_soak_test.py", "--requests", "50"]):
+            exit_code = main()
+            assert exit_code == 1, "main() must return 1 on incomplete run"
