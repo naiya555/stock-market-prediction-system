@@ -206,6 +206,14 @@ def test_prevent_windows_sleep_safety():
         assert isinstance(active, bool)
 
 
+def test_prevent_windows_sleep_exception_propagation():
+    """Verify prevent_windows_sleep propagates exceptions cleanly without RuntimeError after throw."""
+    from scripts.run_local_staging import prevent_windows_sleep
+    with pytest.raises(RuntimeError, match="custom_sleep_test_error"):
+        with prevent_windows_sleep():
+            raise RuntimeError("custom_sleep_test_error")
+
+
 def test_interruption_and_suspension_detection_classification():
     """Verify deterministic classification of host suspension gaps and early interruptions."""
     report = StagingValidationReport(

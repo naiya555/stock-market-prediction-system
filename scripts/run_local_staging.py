@@ -57,20 +57,26 @@ def prevent_windows_sleep():
     automatically releases upon process exit or context exit without altering
     persistent system power settings.
     """
+    enabled = False
     if sys.platform == "win32":
         try:
             import ctypes
             ES_CONTINUOUS = 0x80000000
             ES_SYSTEM_REQUIRED = 0x00000001
             ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
-            try:
-                yield True
-            finally:
-                ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
+            enabled = True
         except Exception:
-            yield False
-    else:
-        yield False
+            enabled = False
+    try:
+        yield enabled
+    finally:
+        if enabled:
+            try:
+                import ctypes
+                ES_CONTINUOUS = 0x80000000
+                ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
+            except Exception:
+                pass
 
 
 class OfflineStagingEventProvider(BaseEventProvider):
@@ -248,7 +254,6 @@ def run_local_staging_validation(
             report.models_unmutated_verified = True
         else:
             report.errors.append("CRITICAL: Active models directory was mutated during staging validation!")
-
     temp_dir_obj = None
     old_env = {}
     server = None
@@ -658,30 +663,32 @@ def run_local_staging_validation(
             }
 
     finally:
-        # Shutdown Uvicorn server gracefully
-        if server:
-            server.should_exit = True
-            if server_thread:
-                server_thread.join(timeout=3.0)
+        try:
+            # Shutdown Uvicorn server gracefully
+            if server:
+                server.should_exit = True
+                if server_thread:
+                    server_thread.join(timeout=3.0)
 
-        # Restore environment variables
-        for k, v in old_env.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
-        get_settings(reload=True)
+            # Restore environment variables
+            for k, v in old_env.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+            get_settings(reload=True)
 
-        # Clean up temporary staging directory if created locally
-        if temp_dir_obj:
-            try:
-                temp_dir_obj.cleanup()
-            except Exception:
-                pass
+            # Clean up temporary staging directory if created locally
+            if temp_dir_obj:
+                try:
+                    temp_dir_obj.cleanup()
+                except Exception:
+                    pass
 
-        # Verify Development Database and Active Models were NOT mutated
-        _verify_unmutated()
-        sleep_mgr.__exit__(None, None, None)
+            # Verify Development Database and Active Models were NOT mutated
+            _verify_unmutated()
+        finally:
+            sleep_mgr.__exit__(*sys.exc_info())
 
     return report
 

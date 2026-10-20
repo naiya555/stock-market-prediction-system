@@ -4172,7 +4172,7 @@ Resolve the Windows TCP ephemeral port exhaustion blocker in the local staging s
        - Network Errors: **0** (eliminated all 92k port-exhaustion errors)
      - Status Codes: `{200: 156895}`
      - CPU Process Time: 869.91 s (144.9% process utilization across 4 workers)
-   - **Latency Distribution (ms):**
+   - **Local Staging Loopback Latency Distribution (ms) (Single-Host, Non-WAN):**
      - Min: **1.57 ms**
      - Mean: **15.28 ms**
      - **p50:** **14.99 ms** (well below 50.0 ms threshold)
@@ -4180,7 +4180,7 @@ Resolve the Windows TCP ephemeral port exhaustion blocker in the local staging s
      - **p95:** **29.02 ms** (well below 100.0 ms threshold)
      - **p99:** **39.02 ms**
      - Max: **109.88 ms**
-   - **Per-Endpoint Latency Breakdown:**
+   - **Per-Endpoint Local Staging Loopback Latency Breakdown:**
      - `GET /`: 31,390 reqs | 31,390 2xx | 0 errors | p50: 6.95 ms | p95: 11.97 ms | max: 32.79 ms
      - `GET /api/events`: 31,169 reqs | 31,169 2xx | 0 errors | p50: 8.69 ms | p95: 14.31 ms | max: 43.24 ms
      - `GET /api/health`: 62,717 reqs | 62,717 2xx | 0 errors | p50: 18.39 ms | p95: 31.35 ms | max: 101.64 ms
@@ -4199,11 +4199,12 @@ Resolve the Windows TCP ephemeral port exhaustion blocker in the local staging s
    - Full automated test suite (`pytest -q`): **612 passed**, 0 failed, 1 warning in 25.02s across 45 test files (+3 new deterministic tests).
    - Dependency validation (`pip check`): Clean (`No broken requirements found.`).
 
-### Evaluation Against Acceptance Criteria
+### Evaluation Against Local Staging Soak Acceptance Criteria (Non-Milestone)
+> **Note on Scope**: The PASS evaluations below reflect compliance with the local 10-minute loopback soak test thresholds. They do NOT constitute completion of the Phase 16 milestone, which requires multi-hour soak testing on dedicated external staging cluster infrastructure.
 - [x] Full 600-second run completes without host suspension: **PASS** (600.42s monotonic elapsed, 0.00s gap)
 - [x] HTTP 2xx success rate $\ge 99.9\%$: **PASS (100.00%)** (156,895 / 156,895)
 - [x] HTTP 5xx, timeouts, and network errors $= 0$: **PASS** (0 5xx, 0 timeouts, 0 network errors)
-- [x] Latency within limits: **PASS** (p50: 14.99 ms $< 50$ ms, p95: 29.02 ms $< 100$ ms)
+- [x] Local Loopback Latency within limits: **PASS** (p50: 14.99 ms $< 50$ ms, p95: 29.02 ms $< 100$ ms; local loopback baseline, not production WAN SLA)
 - [x] Development DB and model artifacts unchanged: **PASS** (100% SHA-256 match)
 - [x] Clean server, port, session, and tempdir shutdown: **PASS** (verified)
 - [x] Focused tests, full test suite (612 passed), and `pip check` pass: **PASS**
@@ -4275,4 +4276,109 @@ Perform a comprehensive post-soak reliability and release readiness audit of the
 Local loopback audits, connection pooling, and reliability hardening confirm local readiness. However, formal milestone sign-off requires sustained soak testing on live production-equivalent cluster infrastructure during live market exchange hours once external infrastructure is provisioned.
 
 ### Next Step
-Prepare deployment manifest and staging provisioning checklist for external cloud/cluster hosting, keeping local application hardened and regression-free.
+Execute CodeRabbit review remediation, audit release-readiness, and establish final soak-test prerequisites.
+
+---
+
+## Day 47 - CodeRabbit Review Remediation & Release-Readiness Audit
+
+### Goal
+Inspect and resolve all CodeRabbit review findings across the local staging runner and documentation, fix genuine code defects and documentation inconsistencies without introducing regressions, perform a rigorous release-readiness audit across security, lifecycle, and data integrity controls, formulate the prerequisite checklist for the outstanding multi-hour external soak test, and keep Phase 16 strictly in progress under local zero-cost constraints.
+
+### CodeRabbit Review Findings Dispositions
+
+1. **Finding 1 — `scripts/run_local_staging.py`: `prevent_windows_sleep` Generator Exception Handling and Context Teardown Safety**
+   - **File & Function:** [`scripts/run_local_staging.py`](file:///d:/Share_market_predictor/scripts/run_local_staging.py), `prevent_windows_sleep()`, `run_local_staging_validation()`
+   - **Reported Issue:**
+     - The generator caught exceptions with an outer `except Exception: yield False` that encompassed the inner `yield True`. If an exception occurred in the caller's context block, `contextlib` threw the exception into the generator, which caught it and yielded again. In Python `@contextmanager`, yielding during exception handling raises `RuntimeError: generator didn't stop after throw()`, masking the real root-cause exception.
+     - In `run_local_staging_validation()`, `sleep_mgr.__exit__(None, None, None)` was invoked manually at the tail of `finally:`. An exception during earlier cleanup steps (such as settings reload or temporary directory deletion) would bypass context exit, leaving Windows in `ES_SYSTEM_REQUIRED` execution state permanently.
+   - **Disposition:** **Valid Defect**.
+   - **Remediation:**
+     - Refactored `prevent_windows_sleep()`: initialization checks occur *before* yielding; the generator yields `enabled: bool` and executes `ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)` in a clean `finally:` block without catching or yielding again during exception propagation.
+     - Wrapped the staging validation cleanup sequence in a nested `try ... finally: sleep_mgr.__exit__(*sys.exc_info())` ensuring that sleep prevention teardown is unconditionally executed on all exit paths (normal return, port conflict, error, or exception).
+     - Added automated regression test `test_prevent_windows_sleep_exception_propagation` in `tests/test_local_staging.py` verifying that exceptions propagate cleanly without `RuntimeError`.
+
+2. **Finding 2 — `docs/daily-progress.md`: Ambiguous Latency Distribution Labels**
+   - **File & Section:** [`docs/daily-progress.md`](file:///d:/Share_market_predictor/docs/daily-progress.md), Day 45 progress log
+   - **Reported Issue:** Latency percentiles in Day 45 telemetry were labeled generically as "Latency Distribution" and "Latency within limits", potentially creating confusion between local single-host loopback measurements and production WAN network SLAs.
+   - **Disposition:** **Valid Documentation Inconsistency**.
+   - **Remediation:** Updated Day 45 documentation to explicitly label metrics as `Local Staging Loopback Latency Distribution (ms) (Single-Host, Non-WAN)` and `Per-Endpoint Local Staging Loopback Latency Breakdown`, clearly documenting that single-host loopback does not reflect WAN transit, TLS handshakes, or edge proxy latencies.
+
+3. **Finding 3 — `docs/daily-progress.md`: Unqualified Acceptance Criteria Header & Connection Pooling Detail**
+   - **File & Section:** [`docs/daily-progress.md`](file:///d:/Share_market_predictor/docs/daily-progress.md), Day 45 "Evaluation Against Acceptance Criteria"
+   - **Reported Issue:** Section header `### Evaluation Against Acceptance Criteria` and `- [x] ... **PASS**` checkboxes could be misconstrued as Phase 16 milestone sign-off. In reality, the criteria applied strictly to the local 10-minute soak test execution.
+   - **Disposition:** **Valid Documentation Inconsistency**.
+   - **Remediation:** Retitled section to `### Evaluation Against Local Staging Soak Acceptance Criteria (Non-Milestone)` and added a prominent scope note stating that passing local soak criteria does not satisfy Phase 16 milestone completion. Re-verified that HTTP Keep-Alive connection pooling is accurately documented as thread-confined `requests.Session` instances (`pool_connections=10`, `pool_maxsize=10`, `Retry(0)`).
+
+4. **Finding 4 — `docs/roadmap.md`: Phase 16 Scope and Acceptance Delineation**
+   - **File & Section:** [`docs/roadmap.md`](file:///d:/Share_market_predictor/docs/roadmap.md), Phase 16 overview and milestone criteria
+   - **Reported Issue:** Roadmap documentation must maintain a strict, unambiguous boundary between completed local staging prerequisites (isolated runner, data non-mutation, 10-minute soak, connection pooling) and outstanding external staging cluster requirements.
+   - **Disposition:** **Valid Documentation Inconsistency**.
+   - **Remediation:** Updated `docs/roadmap.md` Phase 16 entry to Day 47, maintained `In Progress (Day 40-47)` status in overview table and section header, and clearly enumerated remaining prerequisites for Phase 16 sign-off.
+
+---
+
+### Release-Readiness Audit Matrix
+
+| Subsystem / Area | Audit Check | Verified Control / Implementation | Status |
+| :--- | :--- | :--- | :---: |
+| **Startup & Config** | Production mode lockdown | `APP_ENV=production` rejects debug flag (`APP_DEBUG=true` raises ValueError); OpenAPI docs `/docs` and `/openapi.json` return 404. | **PASS** |
+| **Security Headers** | Defensive HTTP headers | OWASP headers enforced via middleware: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`. | **PASS** |
+| **CORS Policy** | Origin restriction | Wildcard origins (`*`) and insecure plain HTTP non-localhost origins rejected at startup. | **PASS** |
+| **Health Checks** | Degraded dependency handling | `/api/health` returns HTTP 503 (`status: degraded`) if database is unreachable OR model directory is missing/inaccessible. | **PASS** |
+| **Data Immutability** | Database write protection | SQLite WAL mode, engine triggers (`trg_prevent_prediction_update`, `trg_prevent_actual_update`, delete guards) enforce append-only immutability. | **PASS** |
+| **Model Immutability** | Active model isolation | Staging launcher creates ephemeral read-only model copies; pre/post SHA-256 fingerprint verification ensures 0 bytes mutated in active `models/`. | **PASS** |
+| **Connection Pooling** | Socket exhaustion prevention | Thread-confined `requests.Session()` with `HTTPAdapter(pool_connections=10, pool_maxsize=10, max_retries=Retry(0))`; bounded `(2.0, 5.0)` timeouts; response body consumption & closure. | **PASS** |
+| **Host Sleep Guard** | Sleep/suspension lifecycle | Win32 `SetThreadExecutionState` with nested `try...finally` teardown; monotonic timing with heartbeat suspension gap detection. | **PASS** |
+| **Soak Runner Integrity** | Completion verification | `SoakSummary.is_complete` strictly rejects partial/interrupted runs (`completed_requests >= total_requests` or `elapsed >= duration`). | **PASS** |
+| **Staging Teardown** | Resource lifecycle | Ephemeral tempdir cleanup (`tempfile.TemporaryDirectory`), immediate port release, graceful Uvicorn shutdown within 3s. | **PASS** |
+
+---
+
+### Final Multi-Hour Soak-Test Prerequisites Checklist
+
+The following items constitute the formal prerequisites required prior to launching the production-equivalent multi-hour soak test:
+
+- [ ] **1. Dedicated External Staging Infrastructure**:
+  - Independent host instance (Linux VM or container cluster) with production-equivalent vCPU, memory ($\ge 8$ GB), and real network interfaces (non-loopback).
+  - *Local Zero-Cost Alternative*: Local Windows loopback staging environment (`scripts/run_local_staging.py`) remains available for pre-deployment regression validation with zero monetary expense.
+- [ ] **2. Environment Configuration & Secret Management**:
+  - Isolated staging `.env` with production keys, staging CORS domain (`https://staging.domain`), and debug disabled.
+  - No production credentials or secrets stored in repository or shared across environments.
+- [ ] **3. Data Isolation**:
+  - Dedicated staging SQLite replica (or PostgreSQL staging instance if migrated).
+  - Production `data/predictions.db` and active `models/` physically quarantined from soak runner access.
+- [ ] **4. Exchange Hours Operational Window**:
+  - Soak test scheduled during live NSE market hours (09:15 – 15:30 IST) to validate real exchange quotes, session transitions, and live news feed ingestion.
+- [ ] **5. Target Load Profile & Acceptance Thresholds**:
+  - Duration: $\ge 2$ hours uninterrupted sustained traffic.
+  - Target throughput: $\ge 100$ requests/second across balanced route mix (`/api/health`, `/api/history`, `/api/events`, `/api/predict`).
+  - Error budget: HTTP 2xx $\ge 99.9\%$, HTTP 5xx $= 0.0\%$, Timeouts $= 0$, Network Errors $= 0$.
+  - SLA: WAN p50 latency $< 150$ ms, p95 $< 350$ ms (accounting for TLS and network routing).
+- [ ] **6. Observability & Alerting**:
+  - External Prometheus/Grafana or structured JSON operational access logging with `X-Process-Time-Ms`.
+  - Automated anomaly alerts for process memory creep, socket leaks, or elevated error rates.
+- [ ] **7. Formal Sign-Off Documentation**:
+  - Complete soak telemetry report with per-endpoint percentiles, SHA-256 data integrity proofs, and stakeholder approval for Phase 16 completion.
+
+---
+
+### Automated Tests & Verification
+- **Focused Staging Suite (`tests/test_local_staging.py`)**:
+  - **19 passed** in 10.18s (+1 new deterministic test `test_prevent_windows_sleep_exception_propagation`).
+- **Full Test Suite Execution**:
+  - `pytest -q`: **618 passed**, 0 failed, 1 warning (Starlette testclient deprecation) in 23.10s across 45 test files.
+- **Dependency Audit**:
+  - `pip check`: `No broken requirements found.`
+- **Git Diff Hygiene**:
+  - `git diff --check`: Clean (0 whitespace errors, 0 trailing blank lines).
+- **Data Integrity Verification**:
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% Match**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% Match**)
+
+### Phase 16 Status
+**Phase 16 remains strictly IN PROGRESS.**
+All local staging reliability, connection pooling, and CodeRabbit review findings are completely remediated and verified. Formal Phase 16 completion and milestone sign-off await provisioning of dedicated external staging infrastructure for the multi-hour soak test.
+
+### Next Step
+Await provisioning of dedicated external staging environment or operator instruction to initiate staging deployment preparation.

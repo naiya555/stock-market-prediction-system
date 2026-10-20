@@ -23,7 +23,7 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
 | **13** | **Web Application** | Interactive FastAPI endpoints and user-facing presentation dashboard. | Complete (Day 33-34) |
 | **14** | **Live Data Pipeline** | Point-in-time current price, breadth, session intake, and prediction quote integration. | Complete (Day 35-36) |
 | **15** | **Model Comparison & Improvement**| Comparative metrics (ML vs. LLM vs. Ensemble) and controlled retraining. | **Complete (Day 37-38)** |
-| **16** | **Final Testing & Evaluation** | Comprehensive end-to-end audit, load testing, and production hardening. | **In Progress (Day 40-46)** |
+| **16** | **Final Testing & Evaluation** | Comprehensive end-to-end audit, load testing, and production hardening. | **In Progress (Day 40-47)** |
 
 ---
 
@@ -171,7 +171,7 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Atomic promotion protocol copying candidate to active path (`models/{model}_direction.*`) and preserving active models 100% on any gate failure.
   - SQLite model release persistence in `model_releases` table tracking version history, cutoffs, metrics, and gate results.
 
-### Phase 16: Final Testing & Evaluation (In Progress - Day 46)
+### Phase 16: Final Testing & Evaluation (In Progress - Day 47)
 - Comprehensive audit of retraining workflow and model release management (Day 39 complete).
 - Implementation of Gate 0 (Chronological Integrity Gate) eliminating look-ahead bias and inverted cutoffs (ADR 07).
 - Transactional promotion protocol with mandatory archiving, atomic staging (`os.replace`), and automatic rollback from archive on SQLite/filesystem failure.
@@ -225,6 +225,13 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Hardened `/api/health` model storage degradation to mark `is_overall_healthy = False` and return 503 Service Unavailable when the model directory is unavailable.
   - Added 5 new deterministic tests bringing suite to 617 passing tests (0 failed) with clean `pip check`.
   - Maintained Phase 16 as strictly IN PROGRESS pending multi-hour live cloud/cluster deployment soak testing under production-equivalent conditions.
+- CodeRabbit review remediation & release-readiness audit (Day 47 complete):
+  - Resolved generator exception handling defect in `prevent_windows_sleep` preventing `RuntimeError: generator didn't stop after throw()`.
+  - Guaranteed `sleep_mgr.__exit__(*sys.exc_info())` execution via nested `try...finally` block within `run_local_staging_validation` teardown.
+  - Added deterministic unit test `test_prevent_windows_sleep_exception_propagation` in `tests/test_local_staging.py`.
+  - Corrected documentation ambiguities in `docs/daily-progress.md`, clearly labeling latency distributions as single-host local loopback baselines and qualifying soak test acceptance as local non-milestone criteria.
+  - Formulated comprehensive multi-hour staging soak test prerequisite checklist (external host cluster, dedicated secrets, database isolation, NSE live market hours alignment, error budgets, and sign-off criteria).
+  - Maintained Phase 16 strictly IN PROGRESS until live external cluster soak testing is executed.
 - Remaining Phase 16 acceptance criteria:
   - Multi-hour soak testing on dedicated production-equivalent staging infrastructure during live exchange market hours once external host cluster is provisioned.
   - Final Phase 16 completion and milestone sign-off review.
