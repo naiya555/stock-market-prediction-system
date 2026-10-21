@@ -61,7 +61,17 @@ def test_no_forbidden_day1_mock_data():
     # Raw and processed data directories should contain no data files on Day 1
     raw_files = [f for f in (project_root / "data" / "raw").iterdir() if f.name != ".gitkeep"]
     processed_files = [f for f in (project_root / "data" / "processed").iterdir() if f.name not in (".gitkeep", "charts")]
-    model_files = [f for f in (project_root / "models").iterdir() if f.name != ".gitkeep"]
+    allowed_model_artifacts = {
+        ".gitkeep",
+        "xgboost_direction.json",
+        "lightgbm_direction.txt",
+        "model_metadata.json",
+        "xgboost_metadata.json",
+        "lightgbm_metadata.json",
+        "candidates",
+        "archive",
+    }
+    model_files = [f for f in (project_root / "models").iterdir() if f.name not in allowed_model_artifacts]
 
     assert len(raw_files) == 0, f"Found unexpected raw data files: {raw_files}"
     assert len(processed_files) == 0, f"Found unexpected processed data files: {processed_files}"

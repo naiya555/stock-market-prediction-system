@@ -4805,3 +4805,62 @@ The comprehensive audit revealed issue GAP-01: `app/api/routes/predict.py` calle
 ### 4. Phase 16 Status & Next Steps
 **Phase 16 remains strictly IN PROGRESS.**
 GAP-01 is repaired with zero paid dependencies and full regression coverage. GAP-02 (model artifacts and training) remains documented as a separate blocker.
+
+---
+
+## Day 51 - Trained Model Artifacts & Inference Readiness (GAP-02)
+
+**Status:** Completed  
+**Phase 16 Status:** Strictly **IN PROGRESS** (Pending final production soak testing during live market hours).  
+**Baseline Commit:** `f73566a`  
+
+### 1. Objective & Problem Root Cause
+The project audit revealed GAP-02: `models/` directory contained only `.gitkeep`, causing live prediction inference via `PredictionService` to return `PredictionStatus.MODEL_UNAVAILABLE` unless preloaded in-memory model instances were passed. Previous daily verification scripts cleaned up generated model files in `finally` blocks to preserve repository baseline invariants. In addition, `.gitignore` specifies `models/*` and `!models/.gitkeep`, confirming that model weights are intentionally untracked in Git to prevent repository bloat.
+
+The objective was to implement and verify the existing deliberate model-training and validation workflow so reproducible, gated model artifacts (`xgboost_direction.json` and `lightgbm_direction.txt`) can be generated, persisted, and loaded through the production `PredictionService` without modifying `data/predictions.db` or violating repository policies.
+
+### 2. Implementation Summary
+1. **ModelRetrainer Enhancements (`app/training/retraining.py`):**
+   - Added balanced accuracy, confusion matrix (`[[TN, FP], [FN, TP]]`), and counts (`TP`, `TN`, `FP`, `FN`) to candidate evaluation metrics dictionary.
+   - Added atomic persistence of model metadata alongside active artifacts (`models/{clean_model}_metadata.json`), recording release ID, model name/version, symbol, feature version (`canonical_37_features`), feature columns list, target definition, training and evaluation cutoffs, sample counts, metrics, and gate outcomes.
+2. **Deliberate Model Training CLI (`scripts/train_models.py`):**
+   - Implemented a standalone, reproducible CLI utility providing end-to-end model training, validation, gating, atomic promotion, metadata generation, and live inference verification.
+   - Reused existing architecture: `run_market_data_pipeline`, `assemble_feature_matrix`, `validate_feature_matrix_isolation`, `split_chronological_holdout`, `ModelRetrainer`, and `PredictionService`.
+   - Maintained strict zero-mutation guarantee for `data/predictions.db` by executing retraining with `repository=None`.
+   - Executed full 5-year lookback training run for `BHARTIARTL` (1,235 bars, 958 train samples, 240 evaluation samples, 1 boundary embargo session):
+     - **XGBoost Candidate:** Out-of-sample accuracy 51.25% vs majority baseline 49.58%, Brier score 0.2556, all 6 validation gates passed -> promoted to `models/xgboost_direction.json`.
+     - **LightGBM Candidate:** Out-of-sample accuracy 53.75% vs majority baseline 49.58%, Brier score 0.2562, all 6 validation gates passed -> promoted to `models/lightgbm_direction.txt`.
+     - Generated consolidated metadata file at `models/model_metadata.json`.
+3. **Inference Verification:**
+   - Verified live prediction execution through `PredictionService` loading active artifacts:
+     - XGBoost: `DOWN`, $P(UP)=0.4686$, $P(DOWN)=0.5314$, status `SUCCESS`.
+     - LightGBM: `DOWN`, $P(UP)=0.4681$, $P(DOWN)=0.5319$, status `SUCCESS`.
+4. **Foundation Test Alignment (`tests/test_foundation.py`):**
+   - Updated `test_no_forbidden_day1_mock_data` to allow legitimate trained model artifacts (`xgboost_direction.json`, `lightgbm_direction.txt`, metadata JSON files, candidates, and archive) while continuing to reject unauthorized mock/fake files.
+5. **Regression & Integration Tests (`tests/test_model_training_artifacts.py`):**
+   - Added 5 comprehensive tests covering `train_and_persist_baseline_model`, gated retraining and metadata persistence, graceful containment of missing and corrupt artifacts, chronological inversion rejection, and production active artifact inference readiness.
+
+### 3. Empirical Verification & Test Results
+- **Full Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **646 passed**, 1 warning in 25.76s across 46 test modules (+5 new tests since Day 50). Zero failures, zero regressions.
+- **Dependency Audit:**
+  ```powershell
+  .\.venv\Scripts\python -m pip check
+  ```
+  `No broken requirements found.`
+- **Git Diff Hygiene Check:**
+  ```powershell
+  git diff --check
+  ```
+  `Clean (0 whitespace errors).`
+- **Protected File Integrity Checks:**
+  - `data/predictions.db`: SHA-256 `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (100% UNCHANGED).
+  - `models/.gitkeep`: SHA-256 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (100% UNCHANGED).
+  - Git tracking: Model weight files in `models/` remain gitignored per repository `.gitignore` policy (`models/*`, `!models/.gitkeep`).
+
+### 4. Phase 16 Status & Next Steps
+**Phase 16 remains strictly IN PROGRESS.**
+Both GAP-01 (ensemble pipeline integration) and GAP-02 (trained model artifacts and inference readiness) are resolved and verified. Next step: Phase 16 pre-release checklist and final deployment soak verification.

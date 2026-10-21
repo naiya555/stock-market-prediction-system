@@ -500,14 +500,27 @@ class ModelRetrainer:
             chronological_message=chrono_msg,
         )
 
+        cand_recall_down = getattr(cand_metrics, "recall_down", 0.0)
+        cand_bal_acc = (
+            round((cand_metrics.recall + cand_recall_down) / 2.0, 4)
+            if (cand_metrics.recall is not None and cand_recall_down is not None)
+            else None
+        )
+
         metrics_dict = {
             "accuracy": cand_metrics.accuracy,
+            "balanced_accuracy": cand_bal_acc,
             "precision_up": cand_metrics.precision,
             "recall_up": cand_metrics.recall,
             "f1_up": cand_metrics.f1,
             "precision_down": cand_metrics.precision_down,
             "recall_down": cand_metrics.recall_down,
             "f1_down": cand_metrics.f1_down,
+            "confusion_matrix": getattr(cand_metrics, "confusion_matrix", None),
+            "true_positives": getattr(cand_metrics, "true_positives", None),
+            "true_negatives": getattr(cand_metrics, "true_negatives", None),
+            "false_positives": getattr(cand_metrics, "false_positives", None),
+            "false_negatives": getattr(cand_metrics, "false_negatives", None),
             "brier_score": cand_brier,
             "majority_baseline_accuracy": maj_metrics.accuracy,
             "active_model_accuracy": active_metrics.accuracy if active_metrics else None,
@@ -539,10 +552,34 @@ class ModelRetrainer:
                 if should_promote:
                     # Step B: Atomically stage candidate and replace active path
                     temp_staging_path = active_path.with_suffix(".tmp")
+                    temp_meta_path = self.models_dir / f"{clean_model}_metadata.json.tmp"
+                    meta_path = self.models_dir / f"{clean_model}_metadata.json"
                     try:
                         shutil.copy2(candidate_path, temp_staging_path)
                         os.replace(temp_staging_path, active_path)
                         logger.info("Promoted candidate model %s to active path %s", version, active_path)
+
+                        # Write JSON metadata alongside artifact
+                        meta_payload = {
+                            "release_id": release_id,
+                            "model_name": clean_model,
+                            "model_version": version,
+                            "symbol": clean_sym,
+                            "feature_version": "canonical_37_features",
+                            "feature_columns": list(X_train.columns) if hasattr(X_train, "columns") else [],
+                            "target_definition": "next_session_direction (1=UP, 0=DOWN)",
+                            "training_sample_count": len(X_train),
+                            "evaluation_sample_count": len(X_val),
+                            "training_cutoff_date": str(training_cutoff_date),
+                            "evaluation_cutoff_date": str(evaluation_cutoff_date),
+                            "metrics": metrics_dict,
+                            "gate_results": [g.to_dict() for g in gates],
+                            "promoted_at": datetime.now(timezone.utc).isoformat(),
+                            "status": status.value,
+                        }
+                        with open(temp_meta_path, "w", encoding="utf-8") as f:
+                            json.dump(meta_payload, f, indent=2)
+                        os.replace(temp_meta_path, meta_path)
 
                         # Step C: Record Model Release in Repository
                         if self.repository:
@@ -567,6 +604,11 @@ class ModelRetrainer:
                         if temp_staging_path.is_file():
                             try:
                                 temp_staging_path.unlink()
+                            except Exception:
+                                pass
+                        if temp_meta_path.is_file():
+                            try:
+                                temp_meta_path.unlink()
                             except Exception:
                                 pass
                         if archived_backup_path and archived_backup_path.is_file():
