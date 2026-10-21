@@ -120,7 +120,6 @@ class EnsemblePredictionResult:
 
     symbol: str
     prediction_timestamp: str
-    latest_input_timestamp: Optional[str]
     status: PredictionStatus
     combined_direction: Optional[str]
     combined_label: Optional[int]
@@ -129,7 +128,8 @@ class EnsemblePredictionResult:
     agreement_status: EnsembleAgreement
     weights_used: Dict[str, float]
     ml_prediction: Optional[PredictionResult]
-    llm_reasoning: Optional[LLMReasoningResult]
+    latest_input_timestamp: Optional[str] = None
+    llm_reasoning: Optional[LLMReasoningResult] = None
     sentiment_summary: Optional[Dict[str, Any]] = None
     integrated_positive_factors: Tuple[str, ...] = field(default_factory=tuple)
     integrated_negative_factors: Tuple[str, ...] = field(default_factory=tuple)
@@ -443,7 +443,7 @@ class EnsembleService:
         p_ml_up = float(ml_result.probability_up if ml_result.probability_up is not None else 0.5)
 
         # Calculate LLM directional component
-        if llm_result:
+        if llm_result and active_weights.llm_weight > 0.0:
             polarity = self._map_llm_direction_to_polarity(
                 llm_result.direction,
                 llm_result.confidence_assessment,
@@ -453,7 +453,7 @@ class EnsembleService:
             w_ml = active_weights.ml_weight
             w_llm = active_weights.llm_weight
         else:
-            # Fallback to ML only when LLM is omitted or unavailable
+            # Fallback to ML only when LLM is omitted, zero-weighted, or unavailable
             polarity = 0.0
             p_llm_up = 0.50
             w_ml = 1.0
@@ -592,7 +592,30 @@ class EnsembleService:
             )
         else:
             try:
-                logger.info("Executing qualitative LLM reasoning for '%s'", clean_sym)
+                active_weights = weights or self.weights
+                logger.info(
+                    "Executing qualitative LLM reasoning for '%s' (w_llm=%.2f)",
+                    clean_sym,
+                    active_weights.llm_weight,
+                )
+                # 1. Independent Qualitative Reasoning (Role B):
+                # When qualitative LLM weighting is requested (llm_weight > 0), obtain independent
+                # qualitative reasoning WITHOUT passing ML prediction context to guarantee statistical
+                # independence and zero data leakage.
+                llm_result = None
+                if active_weights.llm_weight > 0.0 and hasattr(self.llm_service, "generate_qualitative_reasoning"):
+                    try:
+                        llm_result = self.llm_service.generate_qualitative_reasoning(
+                            symbol=request.symbol,
+                            articles=articles or [],
+                            events=events or [],
+                        )
+                    except Exception as err:
+                        logger.warning("Independent qualitative reasoning failed for '%s': %s", clean_sym, err)
+                        llm_result = None
+
+                # 2. Evidence-Grounded Explanation (Role C):
+                # Explains quantitative predictions using verified, point-in-time context.
                 if hasattr(self.llm_service, "explain_prediction"):
                     explanation = self.llm_service.explain_prediction(
                         symbol=request.symbol,
@@ -603,23 +626,16 @@ class EnsembleService:
                         quantitative_probability=ml_result.probability_up,
                         quantitative_probability_down=ml_result.probability_down,
                     )
-                    # Evidence-grounded explanation layer architecture (ADR / Day 55 / CodeRabbit finding F):
-                    # explain_prediction is an explanatory synthesis layer, not an independent predictive signal.
-                    # Because it receives the authoritative ML forecast as context, feeding it back into
-                    # numerical probability blending would violate statistical independence and numerical immutability.
-                    # The authoritative ML forecast remains immutable (ML_ONLY weights w_ml=1.0, w_llm=0.0).
-                    llm_result = None
+                elif llm_result:
+                    explanation = llm_result.to_explanation()
                 else:
-                    llm_result = self.llm_service.generate_qualitative_reasoning(
+                    explanation = LLMExplanationResult.no_context(
                         symbol=request.symbol,
-                        articles=articles or [],
-                        events=events or [],
+                        model=getattr(self.llm_service.client, "model_name", "gemma3:12b") if hasattr(self.llm_service, "client") else "gemma3:12b",
                     )
-                    if llm_result:
-                        explanation = llm_result.to_explanation()
             except Exception as exc:
                 logger.warning(
-                    "Qualitative LLM reasoning failed for '%s': %s. Proceeding with ML-only fallback.",
+                    "Qualitative LLM reasoning/explanation failed for '%s': %s. Proceeding with ML-only fallback.",
                     clean_sym,
                     exc,
                 )

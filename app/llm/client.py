@@ -93,6 +93,35 @@ class BaseLLMClient(ABC):
         pass
 
 
+def _match_model_tag(candidate: str, target: str) -> bool:
+    """Check whether candidate model tag matches target model tag strictly under Ollama contract.
+
+    Contract Rules:
+    1. Case-insensitive exact match.
+    2. Optional default registry namespace 'library/' is normalized.
+    3. Missing tag canonically defaults to ':latest' (e.g. 'gemma3' == 'gemma3:latest').
+    4. Unsafe substring matching is strictly rejected: 'gemma3:12b' does NOT match 'gemma3:12b-instruct'.
+    """
+    c = str(candidate).strip().lower()
+    t = str(target).strip().lower()
+    if not c or not t:
+        return False
+    if c == t:
+        return True
+
+    if c.startswith("library/"):
+        c = c[len("library/"):]
+    if t.startswith("library/"):
+        t = t[len("library/"):]
+    if c == t:
+        return True
+
+    # Normalize canonical implicit ':latest' tag
+    c_tag = c if ":" in c else f"{c}:latest"
+    t_tag = t if ":" in t else f"{t}:latest"
+    return c_tag == t_tag
+
+
 class OllamaLLMClient(BaseLLMClient):
     """Standard-library HTTP client connecting to local Ollama REST API.
 
@@ -189,11 +218,13 @@ class OllamaLLMClient(BaseLLMClient):
                     return False
                 raw = resp.read().decode("utf-8", errors="replace")
                 data = json.loads(raw)
-                models = [m.get("name", "") for m in data.get("models", [])]
-                target = self._model.lower()
-                for m in models:
-                    m_lower = m.lower()
-                    if m_lower == target or m_lower.startswith(target + ":") or target.startswith(m_lower + ":"):
+                if not isinstance(data, dict) or "models" not in data or not isinstance(data["models"], list):
+                    return False
+                for m in data["models"]:
+                    if not isinstance(m, dict):
+                        continue
+                    m_name = m.get("name") or m.get("model")
+                    if m_name and _match_model_tag(str(m_name), self._model):
                         return True
                 return False
         except Exception:
@@ -218,11 +249,13 @@ class OllamaLLMClient(BaseLLMClient):
                     return None
                 raw = resp.read().decode("utf-8", errors="replace")
                 data = json.loads(raw)
-                models = [m.get("name", "") for m in data.get("models", [])]
-                target = self._model.lower()
-                for m in models:
-                    m_lower = m.lower()
-                    if m_lower == target or m_lower.startswith(target + ":") or target.startswith(m_lower + ":"):
+                if not isinstance(data, dict) or "models" not in data or not isinstance(data["models"], list):
+                    return None
+                for m in data["models"]:
+                    if not isinstance(m, dict):
+                        continue
+                    m_name = m.get("name") or m.get("model")
+                    if m_name and _match_model_tag(str(m_name), self._model):
                         return True
                 return False
         except Exception:

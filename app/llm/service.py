@@ -478,11 +478,13 @@ def _validate_supporting_evidence(
 ) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
     """Validate supporting evidence items strictly against supplied source records.
 
-    Enforces zero-fabrication guarantees:
-    - Explicit tags (e.g. [News 99], [Event 10]) are checked against supplied tags.
-    - Sources must match known publishers, organizations, URLs, or headline tokens.
-    - Loose keyword wildcards (e.g. matching 'article' or 'report') are forbidden.
-    - Rejected citations are omitted and reported in limitations.
+    Enforces token-aware, boundary-aware citation matching:
+    - Bracketed tags like [News 1], [N1], [Event 1], [E1] are parsed with exact boundaries.
+      [News 1] or [N1] cannot match [News 10] or [N10].
+    - Explicit source IDs (e.g. art_123, ev_456) are validated with word boundaries (\\b).
+    - Loose keyword wildcards or publisher names alone cannot validate ungrounded citations.
+    - Any unknown, malformed, or fabricated citation ID in an item causes rejection.
+    - Disqualified items are recorded in unverified_notes and appended to limitations.
     """
     if not raw_evidence:
         return (), ()
@@ -494,37 +496,88 @@ def _validate_supporting_evidence(
     else:
         return (), ()
 
-    verified: List[str] = []
-    unverified_notes: List[str] = []
+    if not items:
+        return (), ()
 
     if not known_provenance:
         return (), ("Supporting evidence could not be matched against verified sources (empty provenance).",)
 
-    tag_pattern = re.compile(r"\[(news|event)\s*(\d+)\]", re.IGNORECASE)
+    # Separate known bracket tags and exact source IDs (excluding generic publishers/headlines)
+    known_tags = {k.strip().lower() for k in known_provenance.keys() if k.strip().startswith("[")}
+    known_ids = {
+        k.strip().lower()
+        for k in known_provenance.keys()
+        if not k.strip().startswith("[")
+        and (
+            k.startswith("art")
+            or k.startswith("ev")
+            or (len(k.split()) == 1 and ("_" in k or "-" in k or any(c.isdigit() for c in k)))
+        )
+    }
+
+    # Canonical citation pattern: [news 1], [n1], [event 2], [e2]
+    tag_pattern = re.compile(r"\[(news|event|n|e)\s*(\d+)\]", re.IGNORECASE)
+    # Catch any bracketed citation candidate to reject fabricated non-standard tags (e.g. [Article 5], [Report 1])
+    bracket_candidate_pattern = re.compile(r"\[([a-zA-Z_]+)\s*(\w*)\]")
+
+    verified: List[str] = []
+    unverified_notes: List[str] = []
 
     for item in items:
         item_lower = item.lower()
 
-        # Reject any citation referencing an invented/unknown tag ID (e.g. [News 99])
-        explicit_tags = tag_pattern.findall(item_lower)
-        invalid_tags = [
-            f"[{t_type} {t_num}]"
-            for t_type, t_num in explicit_tags
-            if f"[{t_type.lower()} {t_num}]" not in known_provenance
-        ]
-        if invalid_tags:
+        # Check for non-standard or fabricated bracketed tags
+        all_brackets = bracket_candidate_pattern.findall(item_lower)
+        unrecognized_brackets = []
+        for b_type, b_val in all_brackets:
+            b_norm = f"[{b_type} {b_val}]".strip().lower()
+            b_short = f"[{b_type}{b_val}]".strip().lower()
+            b_bare = f"[{b_type}]".strip().lower()
+            if (
+                b_norm not in known_tags
+                and b_short not in known_tags
+                and b_bare not in known_tags
+                and b_type.lower() not in ("source_context_start", "source_context_end", "system_instruction_start", "system_instruction_end")
+            ):
+                if b_val or b_type.lower() in ("news", "event", "n", "e", "article", "report", "source", "cite"):
+                    unrecognized_brackets.append(f"[{b_type}{(' ' + b_val) if b_val else ''}]")
+
+        if unrecognized_brackets:
             unverified_notes.append(
-                f"Unverified citation omitted (tag {', '.join(invalid_tags)} not in context): '{item[:80]}'"
+                f"Unverified citation omitted (tag {', '.join(unrecognized_brackets)} not in context): '{item[:80]}'"
             )
             continue
 
-        # Verify whether citation names a known source tag, publisher, org, or headline snippet
-        is_grounded = any(
-            token in item_lower
-            for token in known_provenance.keys()
-            if len(token) >= 3
-        )
-        if is_grounded:
+        explicit_tags = tag_pattern.findall(item_lower)
+        if explicit_tags:
+            invalid_tags = []
+            for t_type, t_num in explicit_tags:
+                t_lower = t_type.lower()
+                c1 = f"[{t_lower} {t_num}]"
+                c2 = f"[{t_lower}{t_num}]"
+                alt_type = "news" if t_lower in ("n", "news") else "event"
+                c3 = f"[{alt_type} {t_num}]"
+                c4 = f"[{alt_type[0]}{t_num}]"
+                if c1 not in known_tags and c2 not in known_tags and c3 not in known_tags and c4 not in known_tags:
+                    invalid_tags.append(f"[{t_type} {t_num}]")
+
+            if invalid_tags:
+                unverified_notes.append(
+                    f"Unverified citation omitted (tag {', '.join(invalid_tags)} not in context): '{item[:80]}'"
+                )
+                continue
+
+            verified.append(item)
+            continue
+
+        # If no bracketed tags found, verify against explicit known source IDs with word boundaries (\b)
+        matched_id = False
+        for sid in known_ids:
+            if len(sid) >= 3 and re.search(rf"\b{re.escape(sid)}\b", item_lower):
+                matched_id = True
+                break
+
+        if matched_id:
             verified.append(item)
         else:
             unverified_notes.append(

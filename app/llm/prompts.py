@@ -346,15 +346,20 @@ def build_prediction_explanation_prompt(
             item_str += f"\nSummary: {summary}"
 
         context_lines.append(item_str)
-        known_provenance[tag.lower()] = source
+        known_provenance[tag.lower()] = source or f"News {i}"
+        known_provenance[f"[n{i}]"] = source or f"News {i}"
         if source:
             known_provenance[source.lower()] = tag
         if headline:
             known_provenance[headline[:50].lower()] = tag
+        if art_id:
+            known_provenance[art_id.lower()] = source or f"News {i}"
 
     if events:
         for j, ev in enumerate(events, 1):
             tag = f"[Event {j}]"
+            short_tag = f"[E{j}]"
+            ev_id = ""
             if isinstance(ev, MacroEvent):
                 title = _sanitize_untrusted_text(ev.title)
                 org = _sanitize_untrusted_text(ev.source_org)
@@ -366,6 +371,9 @@ def build_prediction_explanation_prompt(
                 val_str = ""
                 if ev.structured_value:
                     val_str = f" Metric: {ev.structured_value.metric_name}={ev.structured_value.value} {ev.structured_value.unit}"
+                raw_ev_id = getattr(ev, "event_id", None)
+                if raw_ev_id:
+                    ev_id = _sanitize_untrusted_text(str(raw_ev_id))
             elif isinstance(ev, dict):
                 title = _sanitize_untrusted_text(ev.get("title", ""))
                 org = _sanitize_untrusted_text(ev.get("source_org", "Unknown"))
@@ -375,22 +383,30 @@ def build_prediction_explanation_prompt(
                 url = _sanitize_untrusted_text(raw_url) if raw_url else ""
                 summary = _sanitize_untrusted_text(ev.get("summary", ""))
                 val_str = ""
+                raw_ev_id = ev.get("event_id")
+                if raw_ev_id:
+                    ev_id = _sanitize_untrusted_text(str(raw_ev_id))
             else:
                 continue
 
             ev_str = f"{tag} Source: {org} | Category: {cat} | Published: {pub}"
             if url:
                 ev_str += f" | URL: {url}"
+            if ev_id:
+                ev_str += f" | ID: {ev_id}"
             ev_str += f"\nTitle: {title}{val_str}"
             if summary:
                 ev_str += f"\nSummary: {summary}"
 
             context_lines.append(ev_str)
-            known_provenance[tag.lower()] = org
+            known_provenance[tag.lower()] = org or f"Event {j}"
+            known_provenance[short_tag.lower()] = org or f"Event {j}"
             if org:
                 known_provenance[org.lower()] = tag
             if title:
                 known_provenance[title[:50].lower()] = tag
+            if ev_id:
+                known_provenance[ev_id.lower()] = org or f"Event {j}"
 
     joined_context = "\n\n".join(context_lines)
 

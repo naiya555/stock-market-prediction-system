@@ -5209,3 +5209,71 @@ Evidence-grounded qualitative context integration is complete with strict numeri
 ### 5. Phase 16 Status & Next Steps
 **Phase 16 remains strictly IN PROGRESS.**
 Remediation of all CodeRabbit findings is complete, with hardened boundaries, strict citation checking, API escaping, and documented runner diagnostics. Next step: Multi-instrument evaluation, extended soak testing, and live market monitoring.
+
+---
+
+## Day 57: Remaining CodeRabbit Findings & Regression Fixes
+
+### 1. Executive Summary
+- **Baseline Commit:** `d09f427` (`fix(llm): resolve review findings and harden explanations`).
+- **Remediation Scope:** Fully resolved all 4 newly reported CodeRabbit findings (A, B, C, D) plus the `EnsemblePredictionResult` constructor `TypeError` in test fixtures, and re-reviewed all previous findings for potential regressions.
+- **Verification:** All **705 tests passing** (+13 new regression tests) across 48 test modules. Zero regressions. `pip check` clean. `git diff --check` clean. Protected database and model artifact hashes verified 100% bit-identical.
+- **Roadmap Invariant:** **Phase 16 remains strictly IN PROGRESS** (external soak testing, multi-instrument evaluation, and live market monitoring remain outstanding).
+
+### 2. Complete Review Checklist (New & Re-Reviewed Findings)
+
+| Item | Component | Review Finding | Status | Root Cause & Applied Fix | Test Proving Fix |
+| :--- | :--- | :--- | :---: | :--- | :--- |
+| **A** | `app/api/routes/predict.py` | Review escape-then-truncate order and API-level HTML escaping; prevent half-sliced entities and exceeding max length. | **FIXED** | **Root cause:** Escaping ran on full input before truncation, and naive string slicing could cut inside an entity (e.g. `&quot;` -> `&qu`) or exceed `max_length` by appending ` [truncated]`.<br>**Fix:** Sanitized control characters and applied raw length bound *before* escaping; sliced escaped text to `budget = max_length - len(suffix)` and inspected `rfind('&')` to strip incomplete entities before suffix attachment; sanitized all list elements and ensemble factor fields. | `TestFindingAHTMLEscapingAndTruncationOrder` (4 tests) |
+| **B** | `app/llm/client.py` | Match model tag before reporting residency; prevent unsafe substring matching (`gemma3:12b` vs `gemma3:12b-instruct`). | **FIXED** | **Root cause:** `check_model_residency()` used `m_lower.startswith(target + ":")`, matching unrelated models with similar prefixes.<br>**Fix:** Introduced `_match_model_tag()` with strict case-insensitive match, `library/` prefix normalization, and canonical `:latest` default handling. Rejects substring matching. Returns `False` on confirmed non-residency and `None` on query/network/JSON errors. | `TestFindingBExactModelTagMatching` (2 tests) |
+| **C** | `app/llm/service.py` & `app/llm/prompts.py` | Use word-boundary matching for citation grounding; `[N1]` must not validate `[N10]`. | **FIXED** | **Root cause:** Evidence validation checked `token in item_lower` where `token="[n1]"`, which is a substring of `"[n10]"`. Furthermore, generic publisher names in `known_provenance` allowed ungrounded statements to pass.<br>**Fix:** Built token-aware bracket tag regex matching `[News N]`, `[N N]`, `[Event N]`, `[E N]` with non-digit lookahead; restricted ID checks to exact IDs using word boundaries (`\b{id}\b`); prevented generic publisher names or headline words from validating ungrounded claims. | `TestFindingCCitationWordBoundaryValidation` (4 tests) |
+| **D** | `app/prediction/ensemble.py` | Custom `ml_weight`/`llm_weight` request values must not be silently ignored. | **FIXED** | **Root cause:** Day 56 set `llm_result = None` unconditionally to prevent ML prediction leakage from `explain_prediction()`, causing `synthesize()` to silently force `w_ml=1.0, w_llm=0.0`.<br>**Fix:** When callers supply custom weights with `llm_weight > 0.0`, the system calls `generate_qualitative_reasoning()` (Role B) without quantitative ML forecast context (zero data leakage) to blend signals with the requested weights. When `llm_weight == 0.0`, `ML_ONLY` is preserved. Custom weights are validated on API and domain boundaries (rejecting negative or zero-sum weights with HTTP 422). | `TestFindingDCustomEnsembleWeights` (2 tests) |
+| **3** | `app/prediction/ensemble.py` | Fix `EnsemblePredictionResult` construction: test raises `TypeError: missing required positional argument`. | **FIXED** | **Root cause:** Dataclass `EnsemblePredictionResult` declared `latest_input_timestamp` and `llm_reasoning` without default values between required fields, causing positional and keyword constructor errors if callers omitted them.<br>**Fix:** Reordered dataclass fields to place `latest_input_timestamp: Optional[str] = None` and `llm_reasoning: Optional[LLMReasoningResult] = None` with default values after required positional arguments, ensuring backward compatibility. | `TestEnsemblePredictionResultConstructorContract` (1 test) |
+| **D56-A** | `scripts/benchmark_local_llm.py` | Benchmark cold-start and model-residency classification. | **FIXED** | Re-reviewed. Uses `check_model_residency()` with `_match_model_tag()`; reports `unknown` when residency cannot be verified. | Live benchmark & client tests. |
+| **D56-B** | `app/api/routes/predict.py` | API explanation sanitization and bounding. | **FIXED** | Re-reviewed. Upgraded to entity-safe truncation and raw-bound pre-escaping. | API & sanitization tests. |
+| **D56-C** | `app/llm/prompts.py` | `P(UP)` and `P(DOWN)` probability labels. | **FIXED** | Re-reviewed. `P(UP)` strictly denotes upward probability in prompt formatting. | Prompt formatting tests. |
+| **D56-D** | `app/llm/schemas.py` | Unclassified evidence incorrectly treated as positive. | **FIXED** | Re-reviewed. Neutral context remains in `source_references` and is never converted to bullish factors. | Evidence classification tests. |
+| **D56-E** | `app/llm/service.py` | Fabricated citations accepted by fallback logic. | **FIXED** | Re-reviewed. All evidence undergoes boundary-aware tag and ID checks; invalid tags omitted to limitations. | Evidence verification tests. |
+| **D56-F** | `app/prediction/ensemble.py` | Ensemble independence and numerical immutability. | **FIXED** | Re-reviewed. Un-leaked Role B qualitative reasoning is used for blending when `llm_weight > 0`; ML forecast immutable when `llm_weight == 0`. | Signal immutability tests. |
+| **D56-G** | `docs/daily-progress.md` | Resource measurements vs. inferred timeout causes. | **FIXED** | Re-reviewed. Hardware metrics and CPU-only Ollama runner execution verified via Ollama server logs. | Log analysis records. |
+| **D56-H** | `tests/test_llm_explanation.py` | API tests requiring live providers or Ollama. | **FIXED** | Re-reviewed. All 48 test modules run hermetically using mock services and dependency overrides. | Full automated test suite. |
+
+### 3. Key Technical Decisions & Architectural Behavior
+1. **HTML Entity Boundary Protection:**
+   - Truncating an HTML string across an entity (e.g. slicing `&quot;` at 3 characters) creates broken markup (`&qu`) that can corrupt rendering or bypass filters. By computing candidate slices and stripping unclosed `&...` prefixes before appending ` [truncated]`, the output stays within `max_length` while preserving well-formed entities.
+2. **Ollama Model Tag Matching Contract:**
+   - Ollama models follow `[namespace/]name[:tag]`. `_match_model_tag()` normalizes `library/` prefixes and implicit `:latest` suffixes while requiring exact token equality for model names and tags. Substring matches are explicitly prevented (`gemma3:12b` != `gemma3:12b-instruct`).
+3. **Dual-Role LLM Ensemble Architecture:**
+   - **Role B (`generate_qualitative_reasoning`):** Evaluated strictly against point-in-time news and events *without* access to quantitative ML forecasts. Safe for signal blending when callers specify `llm_weight > 0.0`.
+   - **Role C (`explain_prediction`):** Grounded explanatory narrative that receives quantitative ML context. Strictly an explanatory synthesis layer, attached to `explanation` and never altering ML probabilities.
+
+### 4. Verification & Quality Gates
+- **Targeted Test Execution:**
+  - `tests/test_llm_explanation.py`: **29 passed** in 4.38s (+13 new regression tests).
+  - `tests/test_llm_service.py` & `tests/test_ensemble_service.py`: **60 passed** in 1.86s.
+  - `tests/test_api.py`: **31 passed** in 2.68s.
+- **Full Repository Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **705 passed**, 1 warning in 29.36s across all 48 test modules (0 failures, 0 regressions).
+- **Dependency Audit:**
+  ```powershell
+  .\.venv\Scripts\python -m pip check
+  ```
+  `No broken requirements found.`
+- **Git Diff Whitespace Check:**
+  ```powershell
+  git diff --check
+  ```
+  `Clean (0 whitespace errors).`
+- **Protected File SHA-256 Baselines:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (100% UNCHANGED).
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (100% UNCHANGED).
+
+### 5. Phase 16 Status & Next Steps
+**Phase 16 remains strictly IN PROGRESS.**
+All CodeRabbit findings and regression defects are resolved with empirical tests. The next steps on the Phase 16 roadmap are:
+1. Multi-instrument evaluation and latency profiling under concurrent API traffic.
+2. Extended soak testing across real trading-session boundaries.
+3. Live operational monitoring and automated telemetry alerts.

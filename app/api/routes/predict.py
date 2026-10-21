@@ -98,17 +98,49 @@ def _map_data_quality(dq: Optional[PredictionDataQuality]) -> Optional[DataQuali
 
 
 def _sanitize_and_bound_text(val: Any, max_length: int = 2000) -> str:
-    """Sanitize untrusted model text, escape HTML entities, and enforce length bound."""
+    """Sanitize untrusted model text, escape HTML entities, and enforce strict length bounds.
+
+    Ordering & Invariants:
+    1. Handle None, non-string types, and malformed inputs safely.
+    2. Strip non-printable control characters except standard space/tab/newline.
+    3. Apply raw-input length bounding before HTML escaping to prevent runaway expansion.
+    4. Escape HTML entities so model output cannot execute or inject markup.
+    5. Enforce final max_length bound without slicing any HTML entity in half.
+    """
     if val is None:
         return ""
     if not isinstance(val, str):
         val = str(val)
+
     # Strip non-printable control characters except standard space/tab/newline
-    cleaned = "".join(ch for ch in val if ch in ("\n", "\r", "\t") or ch.isprintable())
-    # Escape HTML entities so model output cannot execute or inject markup
-    escaped = html.escape(cleaned.strip())
+    cleaned = "".join(ch for ch in val if ch in ("\n", "\r", "\t") or ch.isprintable()).strip()
+    if not cleaned:
+        return ""
+
+    # Apply raw-input length bounding before HTML escaping
+    raw_bounded = cleaned[:max_length]
+
+    # Escape HTML entities so model-generated text cannot inject markup
+    escaped = html.escape(raw_bounded)
+
+    # If escaped text exceeds max_length, truncate cleanly without splitting an entity
     if len(escaped) > max_length:
-        escaped = escaped[:max_length] + " [truncated]"
+        suffix = " [truncated]"
+        if max_length <= len(suffix):
+            candidate = escaped[:max_length]
+            last_amp = candidate.rfind("&")
+            if last_amp != -1 and candidate.rfind(";", last_amp) == -1:
+                candidate = candidate[:last_amp]
+            return candidate
+
+        budget = max_length - len(suffix)
+        candidate = escaped[:budget]
+        # Avoid cutting an HTML entity in half (e.g. '&quot;' -> '&qu')
+        last_amp = candidate.rfind("&")
+        if last_amp != -1 and candidate.rfind(";", last_amp) == -1:
+            candidate = candidate[:last_amp]
+        return candidate + suffix
+
     return escaped
 
 
@@ -120,14 +152,23 @@ def _sanitize_and_bound_string_list(
     """Sanitize list of untrusted strings with element-level and collection bounds."""
     if not items:
         return []
-    if isinstance(items, (list, tuple, set)):
+
+    if isinstance(items, dict):
+        raw_list = list(items.values())[:max_items]
+    elif isinstance(items, (list, tuple, set)):
         raw_list = list(items)[:max_items]
     else:
         raw_list = [items]
 
     sanitized: List[str] = []
     for elem in raw_list:
-        clean_elem = _sanitize_and_bound_text(elem, max_length=max_item_length)
+        if elem is None:
+            continue
+        if isinstance(elem, dict):
+            val = elem.get("text") or elem.get("summary") or elem.get("content") or str(elem)
+        else:
+            val = elem
+        clean_elem = _sanitize_and_bound_text(val, max_length=max_item_length)
         if clean_elem:
             sanitized.append(clean_elem)
     return sanitized
@@ -176,23 +217,29 @@ def _map_ensemble_details(res: EnsemblePredictionResult) -> EnsembleDetailsRespo
     llm_conf = None
     llm_dir = None
     if res.llm_reasoning:
-        llm_summary = res.llm_reasoning.reasoning_summary
-        llm_conf = res.llm_reasoning.confidence_assessment
-        llm_dir = (
+        llm_summary = _sanitize_and_bound_text(res.llm_reasoning.reasoning_summary, max_length=2000)
+        llm_conf = _sanitize_and_bound_text(res.llm_reasoning.confidence_assessment, max_length=100)
+        raw_dir = (
             res.llm_reasoning.direction.value
             if hasattr(res.llm_reasoning.direction, "value")
             else str(res.llm_reasoning.direction)
         )
+        llm_dir = _sanitize_and_bound_text(raw_dir, max_length=30)
+
+    pos_factors = _sanitize_and_bound_string_list(res.integrated_positive_factors, max_items=25, max_item_length=500)
+    neg_factors = _sanitize_and_bound_string_list(res.integrated_negative_factors, max_items=25, max_item_length=500)
+    downside = _sanitize_and_bound_string_list(res.downside_risks, max_items=25, max_item_length=500)
+    sources = _sanitize_and_bound_string_list(res.source_references, max_items=50, max_item_length=200)
 
     return EnsembleDetailsResponse(
         agreement_status=res.agreement_status.value,
         combined_probability_up=res.combined_probability_up,
         combined_probability_down=res.combined_probability_down,
         weights_used=res.weights_used,
-        integrated_positive_factors=list(res.integrated_positive_factors),
-        integrated_negative_factors=list(res.integrated_negative_factors),
-        downside_risks=list(res.downside_risks),
-        source_references=list(res.source_references),
+        integrated_positive_factors=pos_factors,
+        integrated_negative_factors=neg_factors,
+        downside_risks=downside,
+        source_references=sources,
         target_range=tr,
         llm_direction=llm_dir,
         llm_reasoning_summary=llm_summary,
@@ -252,11 +299,24 @@ def predict(
     # 1. Handle Multi-Agent Ensemble Synthesis
     if payload.model_name == "ensemble":
         custom_weights = None
-        if payload.ml_weight is not None and payload.llm_weight is not None:
-            custom_weights = EnsembleWeights(
-                ml_weight=payload.ml_weight,
-                llm_weight=payload.llm_weight,
-            )
+        if payload.ml_weight is not None or payload.llm_weight is not None:
+            w_ml = payload.ml_weight if payload.ml_weight is not None else round(1.0 - (payload.llm_weight or 0.0), 6)
+            w_llm = payload.llm_weight if payload.llm_weight is not None else round(1.0 - (payload.ml_weight or 0.0), 6)
+            if w_ml < 0.0 or w_llm < 0.0 or (w_ml + w_llm) <= 0.0:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Ensemble weights must be non-negative and sum to greater than zero.",
+                )
+            try:
+                custom_weights = EnsembleWeights(
+                    ml_weight=w_ml,
+                    llm_weight=w_llm,
+                )
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Invalid ensemble weights: {exc}",
+                )
 
         domain_req = DomainPredictionRequest(
             symbol=clean_symbol,

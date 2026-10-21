@@ -1294,3 +1294,26 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
      Evidence items that do not contain explicit directional indicators are categorized as neutral context within `source_references` and are never silently converted into bullish `positive_factors`.
   5. **API Boundary Sanitization & Length Bounding:**
      All model-generated strings returned via `/api/predict` are treated as untrusted text. HTML markup is escaped (`html.escape`), control characters stripped, and field lengths bounded (`summary <= 2000 chars`, `items <= 500 chars`), preventing stored XSS or payload inflation attacks.
+
+### 4.28 Residual Finding Remediation & Ensemble Contract Hardening (Day 57)
+- **Objective & Architectural Hardening:**
+  Address all residual CodeRabbit review findings regarding HTML escaping order, model residency tag matching, citation boundary validation, custom ensemble weighting contracts, and dataclass constructor resilience.
+- **Architectural Rules & Mechanisms:**
+  1. **Escape-Then-Truncate & Entity Integrity:**
+     - Raw text length limits and control-character stripping occur *before* HTML escaping to bound worst-case memory expansion.
+     - Slicing after HTML escaping calculates `budget = max_length - len(" [truncated]")` and detects unclosed `&...` entity slices (`last_amp = candidate.rfind("&")`). Incomplete entity prefixes are trimmed before suffix attachment, ensuring final outputs strictly satisfy `len <= max_length` and never expose broken HTML entity fragments.
+  2. **Exact Model Tag Matching Before Residency Reporting:**
+     - Exact case-insensitive matching (`_match_model_tag`) normalizes canonical default registry namespaces (`library/`) and implicit `:latest` tags.
+     - Unsafe substring/prefix matching (e.g. `gemma3:12b` matching `gemma3:12b-instruct`) is strictly forbidden.
+     - Query errors, daemon unreachability, or malformed JSON payloads return `None` (indeterminate/unknown status) rather than false negative or positive assumptions.
+  3. **Word-Boundary Citation Validation:**
+     - Bracketed citation tags (`[News 1]`, `[N1]`, `[Event 1]`, `[E1]`) are validated with exact non-digit lookahead and regex token matching. A valid citation like `[N1]` cannot validate a fabricated tag like `[N10]` or `[News 10]`.
+     - Explicit source IDs (e.g. `art_101`, `ev_regulatory_1`) require exact regex word-boundary matching (`\b{id}\b`).
+     - Generic publisher names (e.g. `Reuters`, `TRAI`) and vocabulary words (`article`, `report`) alone cannot ground ungrounded claims.
+  4. **Ensemble Custom Weight Blending vs. Explanatory Decoupling:**
+     - When callers request qualitative LLM blending (`llm_weight > 0.0`), the system obtains an *independent* qualitative reasoning signal (Role B via `generate_qualitative_reasoning`) that receives no quantitative ML forecast context, completely eliminating data leakage.
+     - The explanatory layer (Role C via `explain_prediction`) continues to provide evidence-grounded explanation narrative attached to `explanation`.
+     - When callers specify `llm_weight == 0.0` or custom weights are omitted, the system operates in strict `ML_ONLY` mode (`w_ml=1.0, w_llm=0.0`), preserving numerical ML forecast immutability.
+     - Custom weights are explicitly validated (`ml_weight >= 0.0`, `llm_weight >= 0.0`, `sum > 0.0`), rejecting invalid configurations with HTTP 422 errors instead of silently discarding parameters.
+  5. **Constructor Contract Resilience:**
+     - Dataclass `EnsemblePredictionResult` defines `latest_input_timestamp: Optional[str] = None` and `llm_reasoning: Optional[LLMReasoningResult] = None` with canonical defaults following required positional parameters, eliminating constructor `TypeError` regressions while maintaining full backward compatibility.
