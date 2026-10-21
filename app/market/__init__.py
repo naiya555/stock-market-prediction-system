@@ -55,6 +55,7 @@ from app.market.trend import (
     label_market_structure,
 )
 from app.market.providers.base import BaseMarketDataProvider
+from app.market.providers.nifty_indices_provider import NiftyIndicesProvider
 from app.market.providers.yfinance_provider import YFinanceProvider
 from app.market.returns import (
     ReturnFeatures,
@@ -68,6 +69,7 @@ from app.market.benchmark import (
     BROAD_MARKET_BENCHMARK,
     BANKING_BENCHMARK,
     IT_BENCHMARK,
+    TELECOM_BENCHMARK,
     SECTOR_BENCHMARK_MAP,
     MarketBreadthObservation,
     RelativePerformanceFeature,
@@ -77,6 +79,15 @@ from app.market.benchmark import (
     compute_multi_symbol_breadth_series,
     compute_relative_performance,
     get_sector_benchmark,
+)
+from app.market.instruments import (
+    Instrument,
+    InstrumentType,
+    get_instrument,
+    is_equity,
+    is_index,
+    resolve_canonical_symbol,
+    validate_instrument_separation,
 )
 from app.market.visualizer import (
     generate_market_charts,
@@ -134,6 +145,7 @@ __all__ = [
     "BROAD_MARKET_BENCHMARK",
     "BANKING_BENCHMARK",
     "IT_BENCHMARK",
+    "TELECOM_BENCHMARK",
     "SECTOR_BENCHMARK_MAP",
     "MarketBreadthObservation",
     "RelativePerformanceFeature",
@@ -143,6 +155,14 @@ __all__ = [
     "compute_multi_symbol_breadth_series",
     "compute_relative_performance",
     "get_sector_benchmark",
+    "Instrument",
+    "InstrumentType",
+    "get_instrument",
+    "is_equity",
+    "is_index",
+    "resolve_canonical_symbol",
+    "validate_instrument_separation",
+    "NiftyIndicesProvider",
     "MarketSessionState",
     "MarketSessionInfo",
     "get_market_session",

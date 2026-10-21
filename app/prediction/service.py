@@ -19,7 +19,9 @@ from app.market.pipeline import (
     MarketDataPipelineResult,
     run_market_data_pipeline,
 )
+from app.market.instruments import is_index
 from app.market.providers.base import BaseMarketDataProvider
+from app.market.providers.nifty_indices_provider import NiftyIndicesProvider
 from app.market.providers.yfinance_provider import YFinanceProvider
 from app.prediction.contract import (
     PredictionDataQuality,
@@ -96,6 +98,7 @@ class PredictionService:
         model_name: str,
         explicit_artifact_path: Optional[Union[str, Path]] = None,
         preloaded_model: Optional[Any] = None,
+        symbol: Optional[str] = None,
     ) -> Tuple[Optional[Any], Optional[str]]:
         """Resolve a fitted model from preloaded object, in-memory registry, or disk.
 
@@ -106,21 +109,52 @@ class PredictionService:
         if preloaded_model is not None:
             if not getattr(preloaded_model, "is_fitted", False):
                 return None, "Supplied preloaded_model is not fitted."
+            if symbol and is_index(symbol):
+                model_symbol = getattr(preloaded_model, "symbol", None)
+                if model_symbol and not is_index(model_symbol):
+                    return None, (
+                        f"Model was fitted for equity '{model_symbol}' and cannot be reused "
+                        f"for sectoral index '{symbol}'."
+                    )
             return preloaded_model, None
 
         # 2. In-memory model registry
-        if model_name in self.model_registry:
-            reg_model = self.model_registry[model_name]
-            if not getattr(reg_model, "is_fitted", False):
-                return None, f"Registry model for '{model_name}' is not fitted."
-            return reg_model, None
+        if symbol and is_index(symbol):
+            idx_keys = [
+                f"{symbol.upper()}_{model_name}",
+                f"{symbol.lower()}_{model_name}",
+                f"{symbol.upper()}",
+            ]
+            found_key = next((k for k in idx_keys if k in self.model_registry), None)
+            if found_key:
+                reg_model = self.model_registry[found_key]
+                if not getattr(reg_model, "is_fitted", False):
+                    return None, f"Registry model for '{found_key}' is not fitted."
+                return reg_model, None
+        else:
+            if model_name in self.model_registry:
+                reg_model = self.model_registry[model_name]
+                if not getattr(reg_model, "is_fitted", False):
+                    return None, f"Registry model for '{model_name}' is not fitted."
+                return reg_model, None
 
         # 3. Persistent filesystem artifact
-        artifact_path = (
-            Path(explicit_artifact_path)
-            if explicit_artifact_path
-            else self._get_default_artifact_path(model_name)
-        )
+        if symbol and is_index(symbol) and not explicit_artifact_path:
+            clean_sym = symbol.strip().lower()
+            idx_artifact = self.models_dir / f"{clean_sym}_{model_name}_direction.json"
+            if not idx_artifact.is_file():
+                return None, (
+                    f"Index-specific forecasting model for '{symbol}' not found at '{idx_artifact}'. "
+                    f"BHARTIARTL equity models cannot be reused for sectoral index forecasting. "
+                    f"Index-specific model training is documented as a planned follow-up."
+                )
+            artifact_path = idx_artifact
+        else:
+            artifact_path = (
+                Path(explicit_artifact_path)
+                if explicit_artifact_path
+                else self._get_default_artifact_path(model_name)
+            )
 
         if not artifact_path.is_file():
             return None, (
@@ -164,13 +198,17 @@ class PredictionService:
                 is_historical=True,
             )
 
+        provider = self.provider
+        if is_index(clean_symbol) and getattr(self.provider, "name", "") == "yfinance":
+            provider = NiftyIndicesProvider()
+
         try:
-            if hasattr(self.provider, "fetch_quote"):
-                live_q = self.provider.fetch_quote(clean_symbol)
+            if hasattr(provider, "fetch_quote"):
+                live_q = provider.fetch_quote(clean_symbol)
                 return QuoteContext.from_live_quote(live_q)
             return QuoteContext.unavailable(
                 symbol=clean_symbol,
-                reason=f"Provider '{getattr(self.provider, 'name', type(self.provider).__name__)}' does not support live quotes.",
+                reason=f"Provider '{getattr(provider, 'name', type(provider).__name__)}' does not support live quotes.",
                 is_historical=False,
             )
         except Exception as exc:
@@ -221,18 +259,42 @@ class PredictionService:
                 model_name=request.model_name,
             )
 
+        # Index contract guard: Sectoral index forecasting requires an index-specific trained model.
+        # Single-stock equity weights (e.g. BHARTIARTL) cannot be reused for index forecasting.
+        if is_index(clean_symbol):
+            idx_model, idx_model_err = self._resolve_model(
+                model_name=request.model_name,
+                explicit_artifact_path=request.model_artifact_path,
+                preloaded_model=preloaded_model,
+                symbol=clean_symbol,
+            )
+            if idx_model is None:
+                quote_context = self._fetch_quote_context(clean_symbol, request)
+                return self._build_error_result(
+                    symbol=clean_symbol,
+                    prediction_timestamp=pred_time_str,
+                    status=PredictionStatus.MODEL_UNAVAILABLE,
+                    error_message=idx_model_err or f"Model resolution failed for index '{clean_symbol}'.",
+                    model_name=request.model_name,
+                    quote_context=quote_context,
+                )
+
         quote_context = self._fetch_quote_context(clean_symbol, request)
 
         ref_time = request.as_of_date or datetime.now(timezone.utc)
         start_date = ref_time - timedelta(days=request.lookback_days)
 
         # Step 2: Market Data Retrieval
+        active_provider = self.provider
+        if is_index(clean_symbol) and getattr(self.provider, "name", "") == "yfinance":
+            active_provider = NiftyIndicesProvider()
+
         try:
             pipeline_result = run_market_data_pipeline(
                 symbol=clean_symbol,
                 start_date=start_date,
                 end_date=ref_time,
-                provider=self.provider,
+                provider=active_provider,
             )
         except Exception as exc:
             logger.error("Market data pipeline failed for symbol '%s': %s", sanitize_log_field(clean_symbol), exc)
@@ -391,6 +453,7 @@ class PredictionService:
             model_name=request.model_name,
             explicit_artifact_path=request.model_artifact_path,
             preloaded_model=preloaded_model,
+            symbol=clean_symbol,
         )
 
         if model is None:

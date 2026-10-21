@@ -4864,3 +4864,74 @@ The objective was to implement and verify the existing deliberate model-training
 ### 4. Phase 16 Status & Next Steps
 **Phase 16 remains strictly IN PROGRESS.**
 Both GAP-01 (ensemble pipeline integration) and GAP-02 (trained model artifacts and inference readiness) are resolved and verified. Next step: Phase 16 pre-release checklist and final deployment soak verification.
+
+---
+
+## Day 52 - GAP-05: Nifty Telecommunications Index Integration
+
+**Status:** Completed  
+**Phase 16 Status:** Strictly **IN PROGRESS** (Pending final production soak testing during live market hours).  
+**Baseline Commit:** `9121a93`  
+
+### 1. Objective & Official Source Verification
+The objective was to integrate official Nifty Telecommunications index data into the market-data and prediction architecture without breaking the existing `BHARTIARTL` pipeline or corrupting protected database and model artifacts.
+
+- **Official Source Verified:** NSE Indices Limited sectoral index portal:
+  `https://www.niftyindices.com/indices/equity/sectoral-indices/nifty-telecommunications`
+- **Official Backend Endpoint:**
+  `POST https://www.niftyindices.com/BackPage/getHistoricaldatatabletoString`
+- **Data Availability & Source Limitations:**
+  - **Yahoo Finance Incompatibility:** Yahoo Finance does not host or update the Nifty Telecommunications index (`^CNXTELECOM`, `^NSETELECOM`, and `NIFTY_TELECOM.NS` all return HTTP 404). Yahoo Finance tickers cannot be used for this index.
+  - **Available Fields:** Official NSE Indices endpoint provides daily closing index levels (`CLOSE`). Intra-day `OPEN`, `HIGH`, and `LOW` fields are returned as hyphenated strings (`"-"`).
+  - **Zero-Volume Guarantee:** Volume is omitted / not published by NSE Indices for sectoral indices. In accordance with zero-fabrication standards, volume is strictly recorded as `0` without synthetic inflation.
+  - **Candle Geometry Invariant:** When intra-day price ranges are not published, physical candle bounds require `open = high = low = close`, satisfying `high >= max(open, close)` and `low <= min(open, close)`.
+
+### 2. Implementation Summary
+1. **Instrument Registry & Separation (`app/market/instruments.py`):**
+   - Implemented `InstrumentType` (`EQUITY`, `INDEX`) and `Instrument` dataclass tracking official source, tradability, currency (`INR`), lot sizes, and sector benchmarks.
+   - Registered canonical symbols: `BHARTIARTL` (Equity) and `NIFTY_TELECOMMUNICATIONS` (Index).
+   - Created `validate_instrument_separation(equity, index)` to prevent accidental cross-instrument substitution, price mixing, or cross-application.
+2. **Official Index Data Provider (`app/market/providers/nifty_indices_provider.py`):**
+   - Implemented `NiftyIndicesProvider` adhering to `BaseMarketDataProvider`.
+   - Reverse-engineered official Nifty Indices ASMX/JSON protocol (`cinfo` payload with `DD-Mon-YYYY` dates).
+   - Sanitized numeric prices, deduplicated observations, and strictly sorted chronologically.
+   - Enforced hard rejection if single-stock equities (e.g. `BHARTIARTL`) are requested via `NiftyIndicesProvider`.
+   - Provided near-real-time index quotes via `fetch_quote` with `LiveQuote` schema compliance.
+3. **Benchmark Context Alignment (`app/market/benchmark.py` & `app/market/__init__.py`):**
+   - Added `TELECOM_BENCHMARK = "NIFTY_TELECOMMUNICATIONS"`.
+   - Mapped `TELECOM`, `TELECOMMUNICATIONS`, `NIFTY_TELECOM`, and `NIFTY_TELECOMMUNICATIONS` in `SECTOR_BENCHMARK_MAP`.
+   - Verified relative performance computation (`RelativePerformanceFeature`) between `BHARTIARTL` and `NIFTY_TELECOMMUNICATIONS`.
+4. **Prediction Service & Model Safety (`app/prediction/service.py` & `app/api/routes/predict.py`):**
+   - Automatically routes `NIFTY_TELECOMMUNICATIONS` to `NiftyIndicesProvider` when index data or quotes are requested.
+   - **Model Weight Isolation Guard:** Enforced strict check that `BHARTIARTL` single-stock model weights cannot be reused for sectoral index prediction.
+   - Returns truthful `PredictionStatus.MODEL_UNAVAILABLE` with actionable message: `"Index-specific forecasting model for 'NIFTY_TELECOMMUNICATIONS' not found... BHARTIARTL equity models cannot be reused for sectoral index forecasting. Index-specific model training is documented as a planned follow-up."`
+   - Added public error message sanitization in `app/api/routes/predict.py`.
+5. **Data Sources Documentation (`docs/data-sources.md`):**
+   - Cataloged Nifty Telecommunications index provider, official endpoint, zero-volume guarantee, and Yahoo Finance limitation.
+
+### 3. Empirical Verification & Test Results
+- **Dedicated Regression Test Suite (`tests/test_nifty_telecom_integration.py`):**
+  Added 19 targeted tests verifying instrument registration, alias resolution, equity/index separation enforcement, provider response parsing, hyphenated OHL normalization, zero-volume preservation, network error handling, pipeline compatibility, model isolation guards, and protected file integrity.
+- **Full Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **665 passed**, 1 warning in 32.06s across 47 test modules (+19 new tests since Day 51). Zero failures, zero regressions.
+- **Dependency Audit:**
+  ```powershell
+  .\.venv\Scripts\python -m pip check
+  ```
+  `No broken requirements found.`
+- **Git Diff Hygiene Check:**
+  ```powershell
+  git diff --check
+  ```
+  `Clean (0 whitespace errors).`
+- **Protected File Integrity Checks:**
+  - `data/predictions.db`: SHA-256 `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (100% UNCHANGED).
+  - `models/.gitkeep`: SHA-256 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (100% UNCHANGED).
+
+### 4. Phase 16 Status & Next Steps
+**Phase 16 remains strictly IN PROGRESS.**
+GAP-05 (Nifty Telecommunications Index Integration) is complete and verified with official source data and model safety guarantees. Index-specific predictive model training is documented as a separate future follow-up.
+

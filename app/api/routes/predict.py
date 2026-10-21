@@ -139,6 +139,8 @@ def _sanitize_public_error_message(msg: Optional[str], model_name: str) -> Optio
         return None
     logger.warning("Internal prediction diagnostic for '%s': %s", model_name, msg)
     lower = msg.lower()
+    if "index-specific forecasting model" in lower or "cannot be reused for sectoral index" in lower:
+        return f"Index-specific forecasting model unavailable for '{model_name}'. Equity models cannot be reused for sectoral indices."
     if "artifact not found" in lower or "not found at" in lower:
         return f"Model artifact unavailable for '{model_name}'. Model must be trained and persisted prior to inference."
     if "failed to deserialize" in lower or "failed to load" in lower:

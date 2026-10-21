@@ -32,6 +32,7 @@ This document catalogs the candidate data sources required for the Indian Stock 
 
 | Information | Candidate Providers / Mechanisms | Status | Notes / Verification Requirements |
 |---|---|:---:|---|
+| NIFTY Telecommunications | Official NSE Indices Limited backend (`https://www.niftyindices.com/BackPage/getHistoricaldatatabletoString`) via `NiftyIndicesProvider` | **VERIFIED (GAP-05)** | Verified official daily closing levels (`CLOSE`), zero-volume guarantee (volume not published by exchange; zero fabrication), hyphenated OHL handling (`open=high=low=close`), and strict instrument separation from `BHARTIARTL`. Not available on Yahoo Finance. |
 | NIFTY Bank, NIFTY IT, NIFTY Auto, NIFTY Pharma, NIFTY Metal, NIFTY FMCG | NSE sectoral indices feeds | **PLANNED / TO BE VERIFIED** | Necessary for computing relative strength and sector-level rotation. |
 
 ---
