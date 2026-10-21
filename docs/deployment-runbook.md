@@ -230,23 +230,53 @@ Schedule this command via `cron` daily at 00:00 UTC.
 
 ### 5.4 Non-Destructive Backup & Restore Verification
 To verify that backup snapshots exist, are uncorrupted, and can be restored without risking or overwriting the active live production database:
+
+> [!IMPORTANT]
+> **SQLite WAL Mode Consistency:**
+> When SQLite is configured in WAL mode (`PRAGMA journal_mode=WAL;`), active transactions may reside in the write-ahead log (`predictions.db-wal`). Never perform a raw file copy (`cp` or `copy`) of an open database file without checkpointing. Always use SQLite's online backup API (`.backup` command or Python `conn.backup()`), which safely checkpoints and merges WAL pages into a single consistent snapshot without locking ongoing readers or writers.
+
 1. **Verify Backup File Presence & Timestamp:**
-   ```bash
-   ls -lh /var/backups/stock-predictor/predictions_*.db
-   ```
+   - **Linux / Bash:**
+     ```bash
+     ls -lh /var/backups/stock-predictor/predictions_*.db
+     ```
+   - **Windows / PowerShell:**
+     ```powershell
+     Get-ChildItem -Path C:\var\backups\stock-predictor\predictions_*.db | Format-Table Name, Length, LastWriteTime
+     ```
+
 2. **In-Place SQLite Integrity Check on Backup:**
-   ```bash
-   sqlite3 /var/backups/stock-predictor/predictions_latest.db "PRAGMA integrity_check;"
-   # Expected output: ok
-   ```
+   - **Linux / Bash:**
+     ```bash
+     sqlite3 /var/backups/stock-predictor/predictions_latest.db "PRAGMA integrity_check;"
+     # Expected output: ok
+     ```
+   - **Cross-Platform / Python:**
+     ```bash
+     python -c "import sqlite3; con = sqlite3.connect('predictions_latest.db'); print(con.execute('PRAGMA integrity_check;').fetchone()[0]); con.close()"
+     # Expected output: ok
+     ```
+
 3. **Isolated Dry-Run Restoration Drill (Zero Live Mutation):**
    Restore the backup to an ephemeral temporary directory to test data accessibility without touching the active production database:
-   ```bash
-   mkdir -p /tmp/stock-predictor-verify
-   cp /var/backups/stock-predictor/predictions_latest.db /tmp/stock-predictor-verify/verify.db
-   sqlite3 /tmp/stock-predictor-verify/verify.db "SELECT count(*) AS total_predictions FROM predictions; SELECT count(*) AS releases FROM model_releases;"
-   rm -rf /tmp/stock-predictor-verify
-   ```
+   - **Linux / Bash:**
+     ```bash
+     mkdir -p /tmp/stock-predictor-verify
+     cp /var/backups/stock-predictor/predictions_latest.db /tmp/stock-predictor-verify/verify.db
+     sqlite3 /tmp/stock-predictor-verify/verify.db "SELECT count(*) AS total_predictions FROM predictions; SELECT count(*) AS releases FROM model_releases;"
+     rm -rf /tmp/stock-predictor-verify
+     ```
+   - **Windows / PowerShell:**
+     ```powershell
+     New-Item -ItemType Directory -Force -Path "$env:TEMP\stock-predictor-verify"
+     Copy-Item -Path "C:\var\backups\stock-predictor\predictions_latest.db" -Destination "$env:TEMP\stock-predictor-verify\verify.db"
+     python -c "import sqlite3; c = sqlite3.connect(r'$env:TEMP\stock-predictor-verify\verify.db'); print('predictions:', c.execute('SELECT count(*) FROM predictions;').fetchone()[0]); print('releases:', c.execute('SELECT count(*) FROM model_releases;').fetchone()[0]); c.close()"
+     Remove-Item -Recurse -Force -Path "$env:TEMP\stock-predictor-verify"
+     ```
+   - **Automated Verification Script:**
+     ```bash
+     python scripts/verify_day49_backup_restore.py
+     ```
    This proves recovery readiness while ensuring the live database at `/var/lib/stock-predictor/data/predictions.db` remains completely untouched.
 
 ---

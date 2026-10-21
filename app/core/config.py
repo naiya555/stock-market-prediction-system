@@ -19,6 +19,16 @@ except ImportError:
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
+def _resolve_relative_path(raw_path: Optional[str], default_path: Path) -> Path:
+    """Resolve a raw path string against PROJECT_ROOT if relative, or return default."""
+    if not raw_path or not raw_path.strip():
+        return default_path
+    p = Path(raw_path.strip())
+    if p.is_absolute():
+        return p.resolve()
+    return (PROJECT_ROOT / p).resolve()
+
+
 @dataclass(frozen=True)
 class Settings:
     """Immutable application settings container."""
@@ -57,9 +67,9 @@ class Settings:
         custom_model_dir = os.getenv("APP_MODEL_DIR") or os.getenv("MODEL_DIR")
         custom_db_path = os.getenv("DATABASE_PATH")
 
-        resolved_data_dir = Path(custom_data_dir).resolve() if custom_data_dir else PROJECT_ROOT / "data"
-        resolved_model_dir = Path(custom_model_dir).resolve() if custom_model_dir else PROJECT_ROOT / "models"
-        resolved_db_path = Path(custom_db_path).resolve() if custom_db_path else resolved_data_dir / "predictions.db"
+        resolved_data_dir = _resolve_relative_path(custom_data_dir, PROJECT_ROOT / "data")
+        resolved_model_dir = _resolve_relative_path(custom_model_dir, PROJECT_ROOT / "models")
+        resolved_db_path = _resolve_relative_path(custom_db_path, resolved_data_dir / "predictions.db")
 
         cors_env = os.getenv("APP_CORS_ORIGINS")
         if cors_env:

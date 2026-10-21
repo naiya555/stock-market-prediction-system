@@ -251,11 +251,15 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Fixed Finding C: hardened `prevent_windows_sleep()` in `scripts/run_local_staging.py` to check Win32 `SetThreadExecutionState` return values and verify required flags were accepted; added 7 deterministic tests covering activation, API failure, unsupported platforms, exception propagation, and cleanup.
   - Fixed Finding D: aligned SQLite database path (`/var/lib/stock-predictor/data/predictions.db`) and backup/restore commands across `.env.production.example`, `docs/deployment-runbook.md`, `Settings.database_path`, and `get_default_db_path()`.
   - Verified 629 passing unit tests (0 failures, +9 new tests), zero pip check issues, zero git diff hygiene warnings, and 100% data immutability on `data/predictions.db`.
-  - Maintained Phase 16 strictly IN PROGRESS pending dedicated external staging cluster provisioning.
+- Deployment configuration consistency audit & non-destructive backup/restore verification (Day 49 complete):
+  - Audited configuration resolution in `app/core/config.py`: implemented `_resolve_relative_path` ensuring relative paths for `APP_DATA_DIR`, `DATABASE_PATH`, and `APP_MODEL_DIR` resolve deterministically against `PROJECT_ROOT` across arbitrary working directories with whitespace safety.
+  - Verified environment variable precedence: confirmed `APP_MODEL_DIR` takes precedence over legacy `MODEL_DIR`, with seamless fallback when unset or empty whitespace.
+  - Verified database path resolution: confirmed `get_default_db_path()` accurately returns `settings.database_path` with fallback to `resolved_data_dir / "predictions.db"`.
+  - Audited SQLite online backup and WAL handling in `docs/deployment-runbook.md` Section 5.4: documented why raw `cp` of active WAL databases is unsafe and provided cross-platform Linux Bash and Windows PowerShell commands using SQLite online backup API.
+  - Created standalone isolated drill runner `scripts/verify_day49_backup_restore.py` and automated test `test_non_destructive_backup_and_restore_verification` in `tests/test_deployment_runbook.py`.
+  - Executed non-destructive backup/restore verification drill in ephemeral sandbox: confirmed `PRAGMA integrity_check` returned `ok`, restored records matched source snapshot, and protected files (`data/predictions.db` and `models/.gitkeep`) remained 100% untouched with identical SHA-256 hashes.
+  - Verified full test suite: 633 passing tests (0 failures, +4 new tests), 0 broken pip requirements, and clean `git diff --check`.
+  - Maintained Phase 16 strictly IN PROGRESS pending dedicated external staging cluster provisioning for live NSE market hours soak testing.
 - Remaining Phase 16 acceptance criteria:
   - Multi-hour soak testing on dedicated production-equivalent staging infrastructure during live exchange market hours once external host cluster is provisioned.
   - Final Phase 16 completion and milestone sign-off review.
-
-
-
-

@@ -4653,4 +4653,90 @@ Review and resolve the four CodeRabbit review findings on deployment packaging a
 All local staging reliability, configuration templates, and review findings are remediated and verified. Formal Phase 16 completion and milestone sign-off await provisioning of dedicated external staging infrastructure for the multi-hour soak test during live NSE market hours.
 
 ### Next Step
+Execute Day 49 Deployment Configuration Audit & Non-Destructive Backup/Restore Verification.
+
+---
+
+## Day 49 - Deployment Configuration Audit & Non-Destructive Backup/Restore Verification
+
+### Goal
+Audit Day 48 deployment configuration changes, independently verify configuration consistency across the codebase, execute a non-destructive backup/restore verification drill locally in an isolated sandbox following Section 5.4 of `docs/deployment-runbook.md`, verify SQLite WAL handling and integrity, and preserve existing development databases and model files under zero-cost constraints while keeping Phase 16 marked strictly IN PROGRESS.
+
+### 1. Git Baseline & Initial Integrity Check
+- **Baseline Commit:** `7e45e75` (`fix(phase-16): resolve coderabbit review findings on deployment safety`)
+- **Remote Synchronization:** Working tree clean prior to edits; synchronized with `origin/main` at `7e45e754a6c4293f7c4688b7768562d987df43e9`.
+- **Pre-Drill Protected File Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e`
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
+
+---
+
+### 2. Configuration Consistency Audit
+
+| Subsystem / Path | Inspected Component | Finding & Verification | Action Taken |
+| :--- | :--- | :--- | :--- |
+| **Relative Path Anchoring** | [`app/core/config.py`](app/core/config.py) | `Path(custom_data_dir).resolve()` resolved relative to `os.getcwd()` rather than `PROJECT_ROOT`, causing path drift when running from arbitrary directories. | Implemented `_resolve_relative_path(path_str, base_dir)` to resolve relative paths deterministically against `PROJECT_ROOT`. |
+| **Model Directory Precedence** | [`app/core/config.py`](app/core/config.py) | Confirmed `APP_MODEL_DIR` is preferred, with fallback to legacy `MODEL_DIR` if unset, and fallback to `PROJECT_ROOT / "models"` if both unset or empty whitespace. | Added unit test coverage verifying precedence, fallback, and whitespace safety in `tests/test_core.py`. |
+| **Database Path Resolution** | [`app/core/config.py`](app/core/config.py), [`app/database/connection.py`](app/database/connection.py) | `get_default_db_path()` returns `get_settings().database_path`, with fallback to `data_dir / "predictions.db"`. Relative paths resolve against `PROJECT_ROOT`. | Verified resolution consistency between standalone connection helper and application settings. |
+| **Environment Templates** | `.env.example`, `.env.production.example` | Verified zero secret leaks. `APP_ENV=production` and `APP_DEBUG=false` enforced in production template with explicit HTTPS CORS. | Verified with `tests/test_deployment_runbook.py::test_env_templates_hygiene_and_security`. |
+| **SQLite WAL Mode Consistency** | [`docs/deployment-runbook.md`](docs/deployment-runbook.md) | Documented that raw file copying (`cp predictions.db ...`) during active WAL mode risks inconsistent snapshots if uncheckpointed transactions reside in `.db-wal`. Online SQLite backup API (`.backup` or `conn.backup()`) is required. | Updated Section 5.4 with explicit WAL advisory and cross-platform PowerShell / Python commands. |
+
+---
+
+### 3. Non-Destructive Backup & Restore Verification Drill
+
+The drill was executed locally in an isolated temporary directory (`tempfile.TemporaryDirectory`) using disposable database copies:
+1. **Source Setup:** Initialized simulated live database with production schema (`predictions`, `model_releases`) and activated SQLite WAL mode (`PRAGMA journal_mode=WAL;`). Seeded active rows while write-ahead log was active.
+2. **Point-in-Time Online Backup:** Executed `src_conn.backup(bck_conn)` using Python's native SQLite Online Backup API (equivalent to `sqlite3 .backup`). WAL journal pages were checkpointed and safely merged into the backup file without table locks.
+3. **In-Place Integrity Verification:** Executed `PRAGMA integrity_check;` on the backup file. **Result:** `ok`.
+4. **Dry-Run Isolated Restore:** Restored backup into `restored_verify.db` in an ephemeral sandbox. Executed `PRAGMA integrity_check;` (**Result:** `ok`). Queried restored counts: `predictions=2`, `model_releases=1` (100% data integrity verified).
+5. **Ephemeral Sandbox Cleanup:** Closed all SQLite connection handles cleanly before directory deletion (preventing Win32 file locking errors) and removed sandbox.
+6. **Automated Regression Test:** Added `test_non_destructive_backup_and_restore_verification` to `tests/test_deployment_runbook.py` and standalone drill runner `scripts/verify_day49_backup_restore.py`.
+
+**Protected File Immutability (Zero-Mutation Verification):**
+- `data/predictions.db`:
+  - Pre-Drill SHA-256: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e`
+  - Post-Drill SHA-256: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e`
+  - **Status:** **100% MATCH (0 bytes mutated)**
+- `models/.gitkeep`:
+  - Pre-Drill SHA-256: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
+  - Post-Drill SHA-256: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
+  - **Status:** **100% MATCH (0 bytes mutated)**
+
+---
+
+### 4. Empirical Verification & Test Results
+
+- **Targeted Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest tests/test_core.py tests/test_deployment_runbook.py tests/test_local_staging.py -q
+  ```
+  **54 passed**, 1 warning (`StarletteDeprecationWarning`) in 17.86s.
+- **Full Regression Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **633 passed**, 1 warning (`StarletteDeprecationWarning`) in 39.67s across 45 test files (+4 new tests since Day 48). Zero failures, zero regressions.
+- **Dependency Audit:**
+  ```powershell
+  .\.venv\Scripts\python -m pip check
+  ```
+  `No broken requirements found.`
+- **Git Diff Hygiene Check:**
+  ```powershell
+  git diff --check
+  ```
+  `Clean (0 whitespace errors, 0 trailing blank lines).`
+- **Zero-Cost & Credential Controls:**
+  - Zero cloud spending and zero paid services.
+  - No secrets, API keys, passwords, or cloud infrastructure introduced.
+
+---
+
+### 5. Phase 16 Status & Next Steps
+
+**Phase 16 remains strictly IN PROGRESS.**
+Configuration consistency, relative path resolution, and non-destructive disaster recovery procedures are audited, documented, and automated. The final remaining acceptance criterion for Phase 16 is a multi-hour soak test on dedicated production-equivalent external infrastructure during live NSE market hours once external staging infrastructure is provisioned.
+
+### Next Step
 Await provisioning of dedicated external staging infrastructure or operator direction for Phase 16 final milestone audit.

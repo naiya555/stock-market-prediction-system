@@ -50,6 +50,49 @@ def test_settings_environment_override(monkeypatch):
     assert settings.is_production() is True
 
 
+def test_settings_relative_paths_resolve_against_project_root(monkeypatch):
+    """Verify relative paths resolve deterministically against PROJECT_ROOT."""
+    from app.core.config import PROJECT_ROOT
+
+    monkeypatch.setenv("APP_DATA_DIR", "sub_data")
+    monkeypatch.setenv("APP_MODEL_DIR", "sub_models")
+    monkeypatch.setenv("DATABASE_PATH", "sub_data/nested.db")
+
+    settings = Settings.from_env()
+    assert settings.data_dir == PROJECT_ROOT / "sub_data"
+    assert settings.model_dir == PROJECT_ROOT / "sub_models"
+    assert settings.database_path == PROJECT_ROOT / "sub_data" / "nested.db"
+
+
+def test_settings_model_dir_precedence_and_fallback(monkeypatch):
+    """Verify APP_MODEL_DIR takes precedence over MODEL_DIR, and MODEL_DIR serves as fallback."""
+    # 1. Fallback to MODEL_DIR when APP_MODEL_DIR is unset
+    monkeypatch.delenv("APP_MODEL_DIR", raising=False)
+    monkeypatch.setenv("MODEL_DIR", "legacy_models")
+    settings = Settings.from_env()
+    assert settings.model_dir.name == "legacy_models"
+
+    # 2. APP_MODEL_DIR takes precedence over MODEL_DIR when both are present
+    monkeypatch.setenv("APP_MODEL_DIR", "primary_models")
+    monkeypatch.setenv("MODEL_DIR", "legacy_models")
+    settings2 = Settings.from_env()
+    assert settings2.model_dir.name == "primary_models"
+
+
+def test_settings_whitespace_and_empty_paths_safe_defaults(monkeypatch):
+    """Verify empty or whitespace-only paths retain safe defaults without error."""
+    from app.core.config import PROJECT_ROOT
+
+    monkeypatch.setenv("APP_DATA_DIR", "   ")
+    monkeypatch.setenv("APP_MODEL_DIR", "")
+    monkeypatch.setenv("DATABASE_PATH", "   ")
+
+    settings = Settings.from_env()
+    assert settings.data_dir == PROJECT_ROOT / "data"
+    assert settings.model_dir == PROJECT_ROOT / "models"
+    assert settings.database_path == PROJECT_ROOT / "data" / "predictions.db"
+
+
 def test_get_settings_cached_singleton():
     """Verify get_settings returns consistent cached settings instance."""
     s1 = get_settings()

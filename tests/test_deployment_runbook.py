@@ -8,8 +8,10 @@ Validates:
 5. Error handling and failure containment for connection timeouts and server errors.
 """
 
+import hashlib
 import os
 from pathlib import Path
+import sqlite3
 import tempfile
 import threading
 import time
@@ -271,3 +273,102 @@ def test_gitignore_deployment_safeguards():
     assert "models/*" in content
     assert "!models/.gitkeep" in content
     assert "*.log" in content
+
+
+def test_non_destructive_backup_and_restore_verification():
+    """Verify non-destructive backup and restore drill workflow in isolated temp directory.
+
+    Verifies:
+    1. Online SQLite backup captures active state (including WAL mode) safely.
+    2. Backup passes PRAGMA integrity_check.
+    3. Restoring into an isolated ephemeral sandbox yields matching records.
+    4. Protected development database and models remain 100% untouched.
+    """
+    project_root = Path(__file__).resolve().parent.parent
+    dev_db_path = project_root / "data" / "predictions.db"
+    model_keep_path = project_root / "models" / ".gitkeep"
+
+    def compute_sha(path: Path) -> str:
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            while chunk := f.read(65536):
+                h.update(chunk)
+        return h.hexdigest()
+
+    db_hash_before = compute_sha(dev_db_path)
+    model_hash_before = compute_sha(model_keep_path)
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        source_db = temp_path / "live_simulated.db"
+        backup_db = temp_path / "backup_snapshot.db"
+        restore_db = temp_path / "restored_verify.db"
+
+        # 1. Setup isolated database with WAL mode and test records
+        src_conn = sqlite3.connect(source_db)
+        try:
+            src_conn.execute("PRAGMA journal_mode=WAL;")
+            src_conn.execute(
+                "CREATE TABLE predictions ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "symbol TEXT NOT NULL, "
+                "prediction_date TEXT NOT NULL, "
+                "predicted_direction TEXT NOT NULL, "
+                "confidence REAL NOT NULL, "
+                "horizon_days INTEGER NOT NULL);"
+            )
+            src_conn.execute(
+                "CREATE TABLE model_releases ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "model_name TEXT NOT NULL, "
+                "candidate_tag TEXT NOT NULL, "
+                "promoted_at TEXT NOT NULL, "
+                "training_cutoff TEXT NOT NULL, "
+                "status TEXT NOT NULL);"
+            )
+            src_conn.execute(
+                "INSERT INTO predictions (symbol, prediction_date, predicted_direction, confidence, horizon_days) "
+                "VALUES ('INFY.NS', '2026-10-21', 'UP', 0.77, 5);"
+            )
+            src_conn.execute(
+                "INSERT INTO model_releases (model_name, candidate_tag, promoted_at, training_cutoff, status) "
+                "VALUES ('xgboost_direction', 'cand-test-drill', '2026-10-21T00:00:00Z', '2026-10-15', 'active');"
+            )
+            src_conn.commit()
+
+            # 2. Perform online backup (equivalent to sqlite3 .backup or con.backup())
+            bck_conn = sqlite3.connect(backup_db)
+            try:
+                src_conn.backup(bck_conn)
+            finally:
+                bck_conn.close()
+        finally:
+            src_conn.close()
+
+        # 3. Integrity check on backup snapshot
+        bck_conn = sqlite3.connect(backup_db)
+        try:
+            integrity = bck_conn.execute("PRAGMA integrity_check;").fetchone()
+            assert integrity[0] == "ok"
+        finally:
+            bck_conn.close()
+
+        # 4. Isolated dry-run restore into ephemeral target
+        restore_db.write_bytes(backup_db.read_bytes())
+        res_conn = sqlite3.connect(restore_db)
+        try:
+            res_integrity = res_conn.execute("PRAGMA integrity_check;").fetchone()
+            assert res_integrity[0] == "ok"
+
+            preds = res_conn.execute("SELECT count(*) FROM predictions;").fetchone()[0]
+            releases = res_conn.execute("SELECT count(*) FROM model_releases;").fetchone()[0]
+            assert preds == 1
+            assert releases == 1
+        finally:
+            res_conn.close()
+
+    # 5. Non-mutation assertion: confirm dev database and model files were untouched
+    db_hash_after = compute_sha(dev_db_path)
+    model_hash_after = compute_sha(model_keep_path)
+    assert db_hash_after == db_hash_before, "Dev database was modified during drill!"
+    assert model_hash_after == model_hash_before, "Model files were modified during drill!"
