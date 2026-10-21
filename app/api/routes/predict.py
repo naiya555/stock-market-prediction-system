@@ -5,8 +5,9 @@ and multi-agent ensemble synthesis (ML + Gemma 3 12B LLM) through canonical serv
 """
 
 from datetime import datetime, timedelta, timezone
+import html
 import logging
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -96,20 +97,67 @@ def _map_data_quality(dq: Optional[PredictionDataQuality]) -> Optional[DataQuali
     )
 
 
+def _sanitize_and_bound_text(val: Any, max_length: int = 2000) -> str:
+    """Sanitize untrusted model text, escape HTML entities, and enforce length bound."""
+    if val is None:
+        return ""
+    if not isinstance(val, str):
+        val = str(val)
+    # Strip non-printable control characters except standard space/tab/newline
+    cleaned = "".join(ch for ch in val if ch in ("\n", "\r", "\t") or ch.isprintable())
+    # Escape HTML entities so model output cannot execute or inject markup
+    escaped = html.escape(cleaned.strip())
+    if len(escaped) > max_length:
+        escaped = escaped[:max_length] + " [truncated]"
+    return escaped
+
+
+def _sanitize_and_bound_string_list(
+    items: Any,
+    max_items: int = 25,
+    max_item_length: int = 500,
+) -> List[str]:
+    """Sanitize list of untrusted strings with element-level and collection bounds."""
+    if not items:
+        return []
+    if isinstance(items, (list, tuple, set)):
+        raw_list = list(items)[:max_items]
+    else:
+        raw_list = [items]
+
+    sanitized: List[str] = []
+    for elem in raw_list:
+        clean_elem = _sanitize_and_bound_text(elem, max_length=max_item_length)
+        if clean_elem:
+            sanitized.append(clean_elem)
+    return sanitized
+
+
 def _map_llm_explanation(exp: Optional[LLMExplanationResult]) -> Optional[LLMExplanationResponse]:
-    """Map domain LLMExplanationResult to API LLMExplanationResponse schema."""
+    """Map domain LLMExplanationResult to API LLMExplanationResponse schema with bounds and HTML escaping."""
     if not exp:
         return None
+    raw_status = exp.status.value if hasattr(exp.status, "value") else str(exp.status)
+    status_str = _sanitize_and_bound_text(raw_status, max_length=50)
+
+    summary_str = _sanitize_and_bound_text(exp.summary, max_length=2000)
+    evidence_list = _sanitize_and_bound_string_list(exp.supporting_evidence, max_items=25, max_item_length=500)
+    limitations_list = _sanitize_and_bound_string_list(exp.limitations, max_items=25, max_item_length=500)
+    model_str = _sanitize_and_bound_text(exp.model, max_length=100)
+    direction_str = _sanitize_and_bound_text(exp.direction, max_length=30) if exp.direction else None
+    confidence_str = _sanitize_and_bound_text(exp.confidence, max_length=30) if exp.confidence else None
+    disclaimer_str = _sanitize_and_bound_text(exp.disclaimer, max_length=500)
+
     return LLMExplanationResponse(
-        status=exp.status.value if hasattr(exp.status, "value") else str(exp.status),
-        summary=exp.summary,
-        supporting_evidence=list(exp.supporting_evidence),
-        limitations=list(exp.limitations),
-        model=exp.model,
+        status=status_str,
+        summary=summary_str,
+        supporting_evidence=evidence_list,
+        limitations=limitations_list,
+        model=model_str,
         generated_at=exp.generated_at,
-        direction=exp.direction,
-        confidence=exp.confidence,
-        disclaimer=exp.disclaimer,
+        direction=direction_str,
+        confidence=confidence_str,
+        disclaimer=disclaimer_str,
     )
 
 

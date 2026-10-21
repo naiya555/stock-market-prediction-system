@@ -283,6 +283,7 @@ class LLMService:
         cutoff_time: Optional[datetime] = None,
         quantitative_direction: Optional[str] = None,
         quantitative_probability: Optional[float] = None,
+        quantitative_probability_down: Optional[float] = None,
         max_articles: int = 10,
         max_events: int = 10,
     ) -> LLMExplanationResult:
@@ -297,7 +298,8 @@ class LLMService:
             events: Ingested macroeconomic and regulatory events.
             cutoff_time: Optional point-in-time reference timestamp.
             quantitative_direction: Optional directional forecast from quantitative ML.
-            quantitative_probability: Optional probability from quantitative ML.
+            quantitative_probability: Optional upward probability P(UP) from quantitative ML.
+            quantitative_probability_down: Optional downward probability P(DOWN) from quantitative ML.
             max_articles: Maximum number of articles to pass into prompt (default 10).
             max_events: Maximum number of events to pass into prompt (default 10).
 
@@ -386,6 +388,7 @@ class LLMService:
             events=filtered_events[:max_events],
             quantitative_direction=quantitative_direction,
             quantitative_probability=quantitative_probability,
+            quantitative_probability_down=quantitative_probability_down,
         )
 
         # 6. Execute model inference
@@ -473,7 +476,14 @@ def _validate_supporting_evidence(
     raw_evidence: Any,
     known_provenance: Dict[str, str],
 ) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
-    """Validate supporting evidence items against supplied source records."""
+    """Validate supporting evidence items strictly against supplied source records.
+
+    Enforces zero-fabrication guarantees:
+    - Explicit tags (e.g. [News 99], [Event 10]) are checked against supplied tags.
+    - Sources must match known publishers, organizations, URLs, or headline tokens.
+    - Loose keyword wildcards (e.g. matching 'article' or 'report') are forbidden.
+    - Rejected citations are omitted and reported in limitations.
+    """
     if not raw_evidence:
         return (), ()
 
@@ -488,11 +498,27 @@ def _validate_supporting_evidence(
     unverified_notes: List[str] = []
 
     if not known_provenance:
-        return (), ("Supporting evidence could not be matched against verified sources.",)
+        return (), ("Supporting evidence could not be matched against verified sources (empty provenance).",)
+
+    tag_pattern = re.compile(r"\[(news|event)\s*(\d+)\]", re.IGNORECASE)
 
     for item in items:
         item_lower = item.lower()
-        # Verify if citation explicitly names any known source tag, publisher, org, or snippet
+
+        # Reject any citation referencing an invented/unknown tag ID (e.g. [News 99])
+        explicit_tags = tag_pattern.findall(item_lower)
+        invalid_tags = [
+            f"[{t_type} {t_num}]"
+            for t_type, t_num in explicit_tags
+            if f"[{t_type.lower()} {t_num}]" not in known_provenance
+        ]
+        if invalid_tags:
+            unverified_notes.append(
+                f"Unverified citation omitted (tag {', '.join(invalid_tags)} not in context): '{item[:80]}'"
+            )
+            continue
+
+        # Verify whether citation names a known source tag, publisher, org, or headline snippet
         is_grounded = any(
             token in item_lower
             for token in known_provenance.keys()
@@ -501,9 +527,8 @@ def _validate_supporting_evidence(
         if is_grounded:
             verified.append(item)
         else:
-            if any(k in item_lower for k in ("[news", "[event", "article", "report", "reuters", "rbi", "sebi", "nse")):
-                verified.append(item)
-            else:
-                unverified_notes.append(f"Unverified citation omitted: '{item[:60]}...'")
+            unverified_notes.append(
+                f"Unverified citation omitted (source not in supplied context): '{item[:80]}'"
+            )
 
     return tuple(verified), tuple(unverified_notes)

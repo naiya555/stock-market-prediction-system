@@ -143,18 +143,21 @@ def run_benchmark(num_runs: int = 3, timeout_sec: float = 60.0) -> List[Dict[str
     )
 
     is_online = False
-    model_available = False
+    model_installed = False
+    model_resident: Optional[bool] = None
     try:
         is_online = ollama_client.is_available()
         if is_online:
-            model_available = ollama_client.check_model_availability()
+            model_installed = ollama_client.check_model_availability()
+            model_resident = ollama_client.check_model_residency()
     except Exception as exc:
         print(f"[!] Warning checking Ollama status: {exc}")
 
     print(f"Ollama Endpoint:     {settings.ollama_base_url}")
     print(f"Target Model:        {settings.ollama_model}")
     print(f"Daemon Reachable:    {is_online}")
-    print(f"Model Resident:      {model_available}")
+    print(f"Model Installed:     {model_installed}")
+    print(f"Model Resident:      {'unknown' if model_resident is None else model_resident}")
 
     ram_initial = get_system_ram_info()
     gpu_initial = get_gpu_memory_info()
@@ -163,7 +166,7 @@ def run_benchmark(num_runs: int = 3, timeout_sec: float = 60.0) -> List[Dict[str
     if gpu_initial["total_mib"]:
         print(f"GPU VRAM:            {gpu_initial['total_mib']:.0f} MiB total ({gpu_initial['free_mib']:.0f} MiB free, {gpu_initial['used_mib']:.0f} MiB used)")
 
-    use_live_client = is_online and model_available
+    use_live_client = is_online and model_installed
     if use_live_client:
         print("\n>>> Executing Live Local Inference via Ollama / Gemma 3 12B <<<")
         service = LLMService(client=ollama_client)
@@ -191,7 +194,17 @@ def run_benchmark(num_runs: int = 3, timeout_sec: float = 60.0) -> List[Dict[str
     results: List[Dict[str, Any]] = []
 
     for i in range(1, num_runs + 1):
-        run_type = "Cold Start (Run 1)" if i == 1 else f"Warm Request (Run {i})"
+        # Determine evidence-based run label without guessing cold start
+        if i == 1:
+            if model_resident is False:
+                run_type = "Cold Start (Unloaded)"
+            elif model_resident is True:
+                run_type = "Warm (Model Resident)"
+            else:
+                run_type = "Run 1 (Residency Unknown)"
+        else:
+            run_type = f"Subsequent Run {i}"
+
         print(f"\n--- Benchmark {run_type} ---")
 
         ram_pre = get_system_ram_info()
@@ -220,10 +233,21 @@ def run_benchmark(num_runs: int = 3, timeout_sec: float = 60.0) -> List[Dict[str
         ram_post = get_system_ram_info()
         gpu_post = get_gpu_memory_info()
 
+        # Categorize latency nature
+        if explanation.status == LLMExplanationStatus.TIMEOUT:
+            latency_category = "TIMEOUT (Exceeded limit)"
+        elif explanation.status == LLMExplanationStatus.SUCCESS:
+            latency_category = "INFERENCE (Completed)"
+        elif explanation.status == LLMExplanationStatus.UNAVAILABLE:
+            latency_category = "UNAVAILABLE"
+        else:
+            latency_category = f"FAILED ({explanation.status.value})"
+
         record = {
             "run_index": i,
             "run_type": run_type,
             "wall_clock_seconds": round(t_elapsed, 3),
+            "latency_category": latency_category,
             "status": explanation.status.value,
             "success": success,
             "model": explanation.model,
@@ -238,7 +262,7 @@ def run_benchmark(num_runs: int = 3, timeout_sec: float = 60.0) -> List[Dict[str
         }
         results.append(record)
 
-        print(f"Status:               {record['status']}")
+        print(f"Status:               {record['status']} [{latency_category}]")
         print(f"Wall-Clock Latency:   {record['wall_clock_seconds']:.3f} s")
         print(f"Direction & Conf:     {record['direction']} ({record['confidence']})")
         print(f"Summary Length:       {record['summary_chars']} chars")
@@ -253,11 +277,10 @@ def run_benchmark(num_runs: int = 3, timeout_sec: float = 60.0) -> List[Dict[str
     print("\n" + "=" * 80)
     print("BENCHMARK SUMMARY SCOREBOARD")
     print("=" * 80)
-    print(f"{'Run':<22} | {'Latency (s)':<12} | {'Status':<10} | {'Evidence':<9} | {'Limitations':<12} | {'GPU Used':<10}")
+    print(f"{'Run':<26} | {'Latency (s)':<12} | {'Category':<22} | {'Status':<10} | {'Evidence':<9}")
     print("-" * 80)
     for r in results:
-        vram_str = f"{r['gpu_used_mib']:.0f} MiB" if r["gpu_used_mib"] else "N/A"
-        print(f"{r['run_type']:<22} | {r['wall_clock_seconds']:<12.3f} | {r['status']:<10} | {r['supporting_evidence_count']:<9} | {r['limitations_count']:<12} | {vram_str:<10}")
+        print(f"{r['run_type']:<26} | {r['wall_clock_seconds']:<12.3f} | {r['latency_category']:<22} | {r['status']:<10} | {r['supporting_evidence_count']:<9}")
 
     return results
 

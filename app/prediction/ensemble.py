@@ -601,9 +601,14 @@ class EnsembleService:
                         cutoff_time=request.as_of_date,
                         quantitative_direction=ml_result.predicted_direction,
                         quantitative_probability=ml_result.probability_up,
+                        quantitative_probability_down=ml_result.probability_down,
                     )
-                    if explanation.status == LLMExplanationStatus.SUCCESS:
-                        llm_result = explanation.to_reasoning_result()
+                    # Evidence-grounded explanation layer architecture (ADR / Day 55 / CodeRabbit finding F):
+                    # explain_prediction is an explanatory synthesis layer, not an independent predictive signal.
+                    # Because it receives the authoritative ML forecast as context, feeding it back into
+                    # numerical probability blending would violate statistical independence and numerical immutability.
+                    # The authoritative ML forecast remains immutable (ML_ONLY weights w_ml=1.0, w_llm=0.0).
+                    llm_result = None
                 else:
                     llm_result = self.llm_service.generate_qualitative_reasoning(
                         symbol=request.symbol,

@@ -345,15 +345,29 @@ class LLMExplanationResult:
             except ValueError:
                 dir_val = LLMDirection.INSUFFICIENT_EVIDENCE
 
-        pos_factors = tuple(
-            e for e in self.supporting_evidence
-            if any(w in e.lower() for w in ("positive", "gain", "growth", "support", "upside", "expansion"))
-        ) or self.supporting_evidence
+        pos_list = []
+        neg_list = []
+        for e in self.supporting_evidence:
+            e_lower = e.lower()
+            is_bull = any(
+                w in e_lower
+                for w in ("positive", "gain", "growth", "support", "upside", "expansion", "profit", "surge", "boost", "outperform", "bullish")
+            )
+            is_bear = any(
+                w in e_lower
+                for w in ("negative", "loss", "decline", "risk", "downside", "penalty", "adverse", "drop", "headwind", "cut", "bearish")
+            )
+            if is_bull and not is_bear:
+                pos_list.append(e)
+            elif is_bear and not is_bull:
+                neg_list.append(e)
+            elif is_bull and is_bear:
+                pos_list.append(e)
+                neg_list.append(e)
+            # Neutral / unclassified evidence remains in source_references and is not falsely treated as bullish
 
-        neg_factors = tuple(
-            e for e in self.supporting_evidence
-            if any(w in e.lower() for w in ("negative", "loss", "decline", "risk", "downside", "penalty", "adverse"))
-        )
+        pos_factors = tuple(pos_list)
+        neg_factors = tuple(neg_list)
 
         return LLMReasoningResult(
             symbol=self.symbol or "UNKNOWN",

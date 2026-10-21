@@ -61,6 +61,13 @@ class BaseLLMClient(ABC):
         """Return structured diagnostic status for health checks and observability."""
         pass
 
+    def check_model_residency(self) -> Optional[bool]:
+        """Check whether the model is currently resident/loaded in memory.
+
+        Returns True if loaded, False if not loaded, or None if unknown/unsupported.
+        """
+        return None
+
     @abstractmethod
     def generate(
         self,
@@ -192,10 +199,40 @@ class OllamaLLMClient(BaseLLMClient):
         except Exception:
             return False
 
+    def check_model_residency(self) -> Optional[bool]:
+        """Check whether the configured model is currently loaded in memory via /api/ps.
+
+        Distinguishes an installed model from a resident/loaded model.
+        Returns:
+            True if resident/loaded in memory.
+            False if installed but currently idle/unloaded.
+            None if residency cannot be determined (e.g. check failed or daemon offline).
+        """
+        if not self._enabled:
+            return False
+        check_url = f"{self._base_url}/api/ps"
+        req = urllib.request.Request(check_url, headers={"User-Agent": "StockMarketPrediction/1.0"})
+        try:
+            with self._http_opener(req, min(self._timeout, 3.0)) as resp:
+                if getattr(resp, "status", 200) != 200:
+                    return None
+                raw = resp.read().decode("utf-8", errors="replace")
+                data = json.loads(raw)
+                models = [m.get("name", "") for m in data.get("models", [])]
+                target = self._model.lower()
+                for m in models:
+                    m_lower = m.lower()
+                    if m_lower == target or m_lower.startswith(target + ":") or target.startswith(m_lower + ":"):
+                        return True
+                return False
+        except Exception:
+            return None
+
     def get_status(self) -> Dict[str, Any]:
         """Return structured diagnostic status for health checks and observability without exposing secrets."""
         reachable = self.is_available()
         model_ready = self.check_model_availability() if reachable else False
+        model_resident = self.check_model_residency() if reachable else None
         return {
             "provider": "ollama",
             "base_url": self._base_url,
@@ -203,6 +240,7 @@ class OllamaLLMClient(BaseLLMClient):
             "enabled": self._enabled,
             "reachable": reachable,
             "model_available": model_ready,
+            "model_resident": model_resident,
             "timeout_seconds": self._timeout,
         }
 
@@ -352,6 +390,10 @@ class MockLLMClient(BaseLLMClient):
         """Check whether mock model is available."""
         return self._enabled and not isinstance(self._simulated_error, LLMModelUnavailableError)
 
+    def check_model_residency(self) -> Optional[bool]:
+        """Mock residency check returns True if enabled and available."""
+        return self._enabled and self._simulated_error is None
+
     def get_status(self) -> Dict[str, Any]:
         """Return structured diagnostic status."""
         return {
@@ -361,6 +403,7 @@ class MockLLMClient(BaseLLMClient):
             "enabled": self._enabled,
             "reachable": self.is_available(),
             "model_available": self.check_model_availability(),
+            "model_resident": self.check_model_residency(),
             "timeout_seconds": 0.0,
         }
 

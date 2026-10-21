@@ -1279,3 +1279,18 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
      - Complete keyboard accessibility with unique DOM IDs, ARIA roles, live regions, and semantic landmark tags (`<header>`, `<nav>`, `<main>`, `<section>`).
      - Mobile-first responsive layout scaling seamlessly from 320px mobile viewports up to 4K ultra-wide monitors.
      - Comprehensive UI error states handling network disconnects, 4xx input validation errors, and 5xx backend service degradation without unhandled JavaScript exceptions.
+
+### 4.27 Evidence-Grounded LLM Context Integration & Explanation Hardening (Day 56)
+- **Objective & Architectural Contract:**
+  Connect the local Ollama / Gemma 3 12B qualitative reasoning engine to explain quantitative forecasts using verified, point-in-time filtered market context without violating numerical authority or leaking predictive signals.
+- **Architectural Tenets & Remediation Invariants:**
+  1. **Strict Separation of Explanation from Predictive Signal:**
+     The LLM explanation layer (`explain_prediction`) operates downstream of the authoritative quantitative forecast. Because it ingests the quantitative ML prediction as context to synthesize explanatory narrative, its output is strictly an *explanation layer*, not an independent predictive signal. It is never re-blended into `combined_probability_up` or directional decisions. The quantitative ML forecast remains 100% authoritative and immutable (`w_ml=1.0, w_llm=0.0`).
+  2. **Model Installed vs. Resident Lifecycle Observability:**
+     The LLM integration explicitly distinguishes between an installed model (`GET /api/tags`) and a resident/loaded model in memory (`GET /api/ps`). Benchmarks and diagnostics must report `unknown` when residency cannot be verified, never guessing cold start or warm status.
+  3. **Strict Citation Cross-Validation:**
+     Supporting evidence citations are verified strictly against supplied point-in-time context records. Fabricated tags (e.g. `[News 99]`) and generic keyword wildcards (`"article"`, `"report"`, `"reuters"`) are rejected and isolated into `limitations`.
+  4. **Neutral/Unclassified Evidence Integrity:**
+     Evidence items that do not contain explicit directional indicators are categorized as neutral context within `source_references` and are never silently converted into bullish `positive_factors`.
+  5. **API Boundary Sanitization & Length Bounding:**
+     All model-generated strings returned via `/api/predict` are treated as untrusted text. HTML markup is escaped (`html.escape`), control characters stripped, and field lengths bounded (`summary <= 2000 chars`, `items <= 500 chars`), preventing stored XSS or payload inflation attacks.

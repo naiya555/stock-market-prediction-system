@@ -5118,10 +5118,12 @@ Executed reproducible benchmark via `scripts/benchmark_local_llm.py 3` on `BHART
 | **Warm Request (Run 2)** | 60.160 s | `TIMEOUT` | 0 | 1 | 0.88 GB | 70 MiB |
 | **Warm Request (Run 3)** | 60.047 s | `TIMEOUT` | 0 | 1 | 0.53 GB | 70 MiB |
 
-- **Empirical Resource Constraints & Degradation Verification:**
-  - Gemma 3 12B (8.15 GB disk image) running in the current local Windows environment loaded into system memory and swap (physical free RAM dropped to 0.34 GB) rather than fully offloading to GPU VRAM.
-  - CPU-bound execution with memory paging took >60s per completion.
-  - **Critical Architectural Resilience:** The integration layer handled the timeout cleanly without crashing the daemon, locking the prediction API, or unhandled socket errors. It returned typed `TIMEOUT` status with clear limitations (`"Inference exceeded configured OLLAMA_TIMEOUT_SECONDS."`), and the ensemble automatically degraded to `ML_ONLY`.
+- **Empirical Measurements vs. Hypotheses:**
+  - *Measured Hardware State:* Host RAM: 15.26 GB total (~2.65 GB free initially, dropped to 0.34 GB during Run 1). Dedicated GPU: NVIDIA RTX 5050 Laptop GPU (8,151 MiB total, 7,777 MiB free initially, 70 MiB used post-run).
+  - *Measured Wall-Clock Latency:* 60.253s, 60.160s, 60.047s across 3 runs. All 3 runs exceeded the 60.0s threshold and timed out (`TIMEOUT`).
+  - *Observed Ollama Runner Log Evidence (Confirmed Day 56):* Prompt token size was 790 tokens. Prompt evaluation took 18.18s on Run 1. Measured token generation rate was ~2.73 to 2.80 tokens/sec. Because a full JSON explanation requires 350-500 tokens, generation takes ~140s at this throughput, causing the client timeout to cleanly cancel execution at 60s.
+  - *Hardware Offloading Hypothesis:* Ollama's runner logged `total_vram="0 B"` on startup, indicating GPU layers were not offloaded by the runner, resulting in CPU-bound execution.
+  - *Critical Architectural Resilience:* The integration layer handled the timeout cleanly without crashing the daemon, locking the prediction API, or raising unhandled socket errors. It returned typed `TIMEOUT` status with clear limitations (`"Inference exceeded configured OLLAMA_TIMEOUT_SECONDS."`), and the ensemble automatically degraded to `ML_ONLY`.
 
 ### 6. Empirical Verification & Test Results
 - **Dedicated Regression Suite (`tests/test_llm_explanation.py`):**
@@ -5148,3 +5150,62 @@ Executed reproducible benchmark via `scripts/benchmark_local_llm.py 3` on `BHART
 ### 7. Phase 16 Status & Next Steps
 **Phase 16 remains strictly IN PROGRESS.**
 Evidence-grounded qualitative context integration is complete with strict numerical immutability, citation verification, and timeout degradation. Next step: Multi-instrument evaluation, extended soak testing, and live market monitoring.
+
+---
+
+## Day 56: CodeRabbit Review Remediation + Day 55 Defect Fixes
+
+### 1. Executive Summary
+- **Baseline Commit:** `0a01dd1` (`feat(llm): ground prediction explanations in verified market context`).
+- **Remediation Scope:** Fully addressed all 8 CodeRabbit findings (A through H) across local benchmark observability, API sanitization and length bounding, probability labeling correctness, evidence classification neutrality, strict zero-fabrication citation validation, ensemble signal independence, empirical Ollama runner diagnosis, and hermetic automated test isolation.
+- **Verification:** All 692 tests passing across 48 test modules (+5 new targeted tests). `pip check` clean. Protected database and model artifact hashes verified 100% bit-identical.
+- **Roadmap Invariant:** **Phase 16 remains strictly IN PROGRESS** (pending external soak testing and multi-instrument live evaluation).
+
+### 2. CodeRabbit Remediation Checklist
+| Item | Component | Review Finding | Status | Resolution Details & Verification Test |
+| :--- | :--- | :--- | :---: | :--- |
+| **A** | `scripts/benchmark_local_llm.py` | Distinguish installed model from resident model; do not guess cold start; categorize latency. | **FIXED** | Added `check_model_residency()` querying `/api/ps` on `OllamaLLMClient`. Run 1 labeled `Cold Start (Unloaded)` only when confirmed unloaded via API; if residency unknown, reports `unknown`. Latency categorized as `TIMEOUT (Exceeded limit)` vs `INFERENCE (Completed)`. Tested live via benchmark runner. |
+| **B** | `app/api/routes/predict.py` | Sanitize and bound explanation `summary` and `limitations`; treat model output as untrusted text, not HTML. | **FIXED** | Added `_sanitize_and_bound_text()` using `html.escape()`, control character stripping, and strict length bounds (`summary <= 2000 chars`, list elements `<= 500 chars`). Tested in `test_api_sanitization_and_bounding_of_untrusted_llm_output`. |
+| **C** | `app/llm/prompts.py` | Probability label correctness: `P(UP)` must strictly mean probability of upward move; calculate direction-specific probability for DOWN. | **FIXED** | Updated `build_prediction_explanation_prompt()` to support `quantitative_probability_down`. Formats `UP [P(UP)=58.4%]` and `DOWN [P(DOWN)=53.1%, P(UP)=46.9%]`. Tested in `test_probability_formatting_for_up_and_down_predictions`. |
+| **D** | `app/llm/schemas.py` | Stop classifying every unmatched evidence item as positive; represent positive, negative, and neutral evidence properly. | **FIXED** | Removed `) or self.supporting_evidence` fallback in `to_reasoning_result()`. Unclassified/neutral items stay in `source_references` and are never forced into `pos_factors`. Tested in `test_unclassified_neutral_evidence_not_converted_to_positive_factors` and `test_down_prediction_unclassified_evidence_never_bullish`. |
+| **E** | `app/llm/service.py` | Fix loose keyword fallback permitting fabricated citation tags (e.g. `[News 99]`) or generic words (`article`, `report`). | **FIXED** | Completely eliminated wildcard fallback in `_validate_supporting_evidence()`. Enforces regex validation against `known_provenance` keys; fabricated tags and unsupplied sources are rejected and reported in `limitations`. Tested in `test_fabricated_tags_and_loose_keywords_are_rejected`. |
+| **F** | `app/prediction/ensemble.py` | Review passing ML forecast into LLM prompt; prevent leaking forecast into blended signal and maintain numerical immutability. | **FIXED** | Explicitly decoupled explanation layer from probability blending. `predict_ensemble()` attaches `explanation` directly, while maintaining `w_ml=1.0, w_llm=0.0` and `llm_result=None` to ensure the authoritative numerical ML prediction is never mutated by the explanatory narrative. Tested in `test_adversarial_llm_payload_cannot_change_ml_probabilities`. |
+| **G** | `docs/daily-progress.md` | Separate measured RAM/GPU utilization from hypotheses; label CPU offloading as unconfirmed without runner logs; preserve benchmark timeouts. | **FIXED** | Clarified Day 55 Section 5 to explicitly distinguish measured hardware and latency data from runner hypotheses. Corroborated with Ollama server log analysis in Day 56. |
+| **H** | `tests/test_llm_explanation.py` | Isolate API tests from live market providers, live Ollama, and local model weights using deterministic mocks. | **FIXED** | Refactored `test_api_predict_ensemble_includes_explanation_isolated` to use `app.dependency_overrides` with deterministic mock `EnsembleService`, achieving 100% hermetic test execution independent of local daemon state. |
+
+### 3. Runtime Investigation & Ollama Log Analysis
+- **Direct Server Log Inspection (`%LOCALAPPDATA%\Ollama\server.log`):**
+  - **Runner Hardware Detection:** Ollama logged `msg="vram-based default context" total_vram="0 B" default_num_ctx=4096`. The runner did not detect/allocate NVIDIA GPU VRAM on this Windows daemon instance, executing layers entirely on CPU.
+  - **Prompt Token Size:** Evaluated `task.n_tokens = 790`. Prompt evaluation took `18.18 s` (~43.23 tokens/sec) on cold run, and restored in `0.10 ms` from checkpoint on warm runs.
+  - **Token Generation Throughput:** Measured token generation speed was `2.73 to 2.80 tokens/sec` (`tg = 2.78 t/s`).
+  - **Timeout Root Cause:** A complete structured JSON explanation with summary, evidence citations, limitations, and metadata spans 350 to 500 tokens. At 2.78 tokens/sec, full completion requires ~125 to 180 seconds. At the configured 60.0s client timeout, Ollama had generated only 165 tokens (`n_tokens = 956` out of expected ~1200 total), triggering a clean client cancellation:
+    `[GIN] 2026/10/22 - 00:55:56 | 500 | 1m0s | 127.0.0.1 | POST "/api/generate"`.
+  - **Verification of Fail-Safe Degradation:** In all timeout events, the system degraded gracefully to `ML_ONLY` without crashing the daemon or raising unhandled exceptions in the API.
+
+### 4. Verification & Quality Gates
+- **Targeted Test Modules:**
+  - `tests/test_llm_explanation.py`: 16 passed in 4.49s.
+  - `tests/test_llm_service.py` & `tests/test_ensemble_service.py`: 60 passed in 1.95s.
+  - `tests/test_api.py`: 31 passed in 2.50s.
+- **Full Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **692 passed**, 1 warning in 33.92s across all 48 test modules. Zero regressions.
+- **Dependency Audit:**
+  ```powershell
+  .\.venv\Scripts\python -m pip check
+  ```
+  `No broken requirements found.`
+- **Git Diff Whitespace Check:**
+  ```powershell
+  git diff --check
+  ```
+  `Clean (0 whitespace errors).`
+- **Protected File SHA-256 Baselines:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (100% UNCHANGED).
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (100% UNCHANGED).
+
+### 5. Phase 16 Status & Next Steps
+**Phase 16 remains strictly IN PROGRESS.**
+Remediation of all CodeRabbit findings is complete, with hardened boundaries, strict citation checking, API escaping, and documented runner diagnostics. Next step: Multi-instrument evaluation, extended soak testing, and live market monitoring.

@@ -237,6 +237,33 @@ class TestContextFilteringAndProvenance:
         assert "[news 1]" in known_provenance_clean(known_prov)
         assert "trai" in known_provenance_clean(known_prov)
 
+    def test_probability_formatting_for_up_and_down_predictions(
+        self,
+        sample_news: List[NewsArticle],
+    ) -> None:
+        """P(UP) must strictly denote upward probability for both UP and DOWN predictions."""
+        # 1. UP prediction: probability_up = 0.584
+        _, prompt_up, _ = build_prediction_explanation_prompt(
+            symbol="BHARTIARTL",
+            articles=sample_news,
+            quantitative_direction="UP",
+            quantitative_probability=0.584,
+            quantitative_probability_down=0.416,
+        )
+        assert "Authoritative Quantitative ML Baseline Forecast: UP [P(UP)=58.4%]." in prompt_up
+
+        # 2. DOWN prediction: probability_up = 0.469, probability_down = 0.531
+        _, prompt_down, _ = build_prediction_explanation_prompt(
+            symbol="BHARTIARTL",
+            articles=sample_news,
+            quantitative_direction="DOWN",
+            quantitative_probability=0.469,
+            quantitative_probability_down=0.531,
+        )
+        assert "Authoritative Quantitative ML Baseline Forecast: DOWN [P(DOWN)=53.1%, P(UP)=46.9%]." in prompt_down
+        # P(UP) must NOT be mislabeled as 53.1%
+        assert "P(UP)=53.1%" not in prompt_down
+
 
 def known_provenance_clean(prov_map: Dict[str, str]) -> List[str]:
     return [k.lower() for k in prov_map.keys()]
@@ -364,6 +391,29 @@ class TestSupportingEvidenceVerification:
         assert len(unverified) == 1
         assert "Wall Street Journal" in unverified[0]
 
+    def test_fabricated_tags_and_loose_keywords_are_rejected(self) -> None:
+        """Citations referencing invented tags [News 99] or generic words like 'article' must be rejected."""
+        known_prov = {
+            "[news 1]": "The Economic Times",
+            "the economic times": "[News 1]",
+            "[news 2]": "Reuters",
+            "reuters": "[News 2]",
+        }
+
+        raw_evidence = [
+            "Citing [News 99] (Fabricated Source): Invented rumor",
+            "According to an article published recently: Generic claim",
+            "Citing [News 1] (The Economic Times): Valid ARPU metric",
+        ]
+
+        verified, unverified = _validate_supporting_evidence(raw_evidence, known_prov)
+
+        assert len(verified) == 1
+        assert "Valid ARPU metric" in verified[0]
+        assert len(unverified) == 2
+        assert any("News 99" in u for u in unverified)
+        assert any("Generic claim" in u for u in unverified)
+
 
 # ==============================================================================
 # 4. Numerical Prediction Immutability Tests
@@ -471,36 +521,164 @@ class TestEnsembleFallbackBehavior:
 
 
 # ==============================================================================
-# 6. Public API Compatibility Tests
+# 6. Evidence Classification Tests
+# ==============================================================================
+
+class TestEvidenceClassification:
+    """Test classification of evidence into positive, negative, and neutral items."""
+
+    def test_unclassified_neutral_evidence_not_converted_to_positive_factors(self) -> None:
+        """Neutral or unclassified evidence must remain in source_references and not become positive_factors."""
+        exp = LLMExplanationResult(
+            status=LLMExplanationStatus.SUCCESS,
+            summary="Operational update",
+            supporting_evidence=(
+                "Citing [News 1]: Company scheduled general meeting for next Tuesday",
+                "Citing [News 2]: High quarterly growth and subscriber expansion observed",
+                "Citing [Event 1]: Severe regulatory penalty and margin decline warned",
+            ),
+            limitations=("Macro uncertainty",),
+            model="mock-gemma3:12b",
+            generated_at="2026-10-22T01:00:00+00:00",
+            symbol="BHARTIARTL",
+            direction="UP",
+            confidence="MEDIUM",
+        )
+
+        reasoning = exp.to_reasoning_result()
+
+        # Positive factor must only contain the bullish item
+        assert len(reasoning.positive_factors) == 1
+        assert "growth and subscriber expansion" in reasoning.positive_factors[0]
+
+        # Negative factor must only contain the bearish item
+        assert len(reasoning.negative_factors) == 1
+        assert "regulatory penalty" in reasoning.negative_factors[0]
+
+        # Neutral item must NOT be in positive_factors
+        assert not any("general meeting" in p for p in reasoning.positive_factors)
+        # All items must be present in source_references
+        assert len(reasoning.source_references) == 3
+
+    def test_down_prediction_unclassified_evidence_never_bullish(self) -> None:
+        """When direction is DOWN, neutral evidence must never be coerced into positive_factors."""
+        exp = LLMExplanationResult(
+            status=LLMExplanationStatus.SUCCESS,
+            summary="Bearish context",
+            supporting_evidence=(
+                "Citing [News 1]: Routine quarterly filing submitted on Friday",
+            ),
+            limitations=("Capex strain",),
+            model="mock-gemma3:12b",
+            generated_at="2026-10-22T01:00:00+00:00",
+            symbol="BHARTIARTL",
+            direction="DOWN",
+            confidence="HIGH",
+        )
+
+        reasoning = exp.to_reasoning_result()
+        assert len(reasoning.positive_factors) == 0
+        assert reasoning.direction == LLMDirection.DOWN
+
+
+# ==============================================================================
+# 7. Public API Compatibility & Sanitization Tests (Isolated)
 # ==============================================================================
 
 class TestPredictAPIPublicResponse:
-    """Test that /api/predict correctly returns explanation structure."""
+    """Test that /api/predict correctly sanitizes, bounds, and returns explanation structures."""
 
-    def test_api_predict_ensemble_includes_explanation(self) -> None:
-        """API response must conform to PredictionResponse with explanation fields."""
-        client = TestClient(app)
-        response = client.post(
-            "/api/predict",
-            json={
-                "symbol": "BHARTIARTL",
-                "model_name": "ensemble",
-                "persist": False,
-                "allow_stale_data": True,
-            },
+    def test_api_sanitization_and_bounding_of_untrusted_llm_output(self) -> None:
+        """Untrusted HTML and oversized text must be escaped and bounded by API mapping."""
+        from app.api.routes.predict import _map_llm_explanation
+
+        malicious_exp = LLMExplanationResult(
+            status=LLMExplanationStatus.SUCCESS,
+            summary="<script>alert('xss')</script> Safe text " + ("A" * 3000),
+            supporting_evidence=("<img src=x onerror=alert(1)>", "Valid evidence"),
+            limitations=("<b>Bold Warning</b>",),
+            model="mock-model",
+            generated_at="2026-10-22T01:00:00+00:00",
+            symbol="BHARTIARTL",
+            direction="UP",
+            confidence="MEDIUM",
         )
-        assert response.status_code == 200
-        data = response.json()
 
-        assert "explanation" in data
-        assert "ensemble" in data
-        if data["explanation"]:
+        mapped = _map_llm_explanation(malicious_exp)
+        assert mapped is not None
+        assert "<script>" not in mapped.summary
+        assert "&lt;script&gt;" in mapped.summary
+        assert "[truncated]" in mapped.summary
+        assert len(mapped.summary) <= 2050
+        assert "<img" not in mapped.supporting_evidence[0]
+        assert "&lt;img" in mapped.supporting_evidence[0]
+        assert "<b>" not in mapped.limitations[0]
+        assert "&lt;b&gt;" in mapped.limitations[0]
+
+    def test_api_predict_ensemble_includes_explanation_isolated(
+        self,
+        mock_ml_result: PredictionResult,
+    ) -> None:
+        """API response must conform to PredictionResponse with explanation fields using isolated mock."""
+        from app.api.dependencies import get_ensemble_service
+
+        mock_exp = LLMExplanationResult(
+            status=LLMExplanationStatus.SUCCESS,
+            summary="Verified enterprise contract expansion supports telecom cash flow.",
+            supporting_evidence=("Citing [News 1]: Enterprise contract signed",),
+            limitations=("Execution timeline pending",),
+            model="mock-gemma3:12b",
+            generated_at="2026-10-22T01:00:00+00:00",
+            symbol="BHARTIARTL",
+            direction="UP",
+            confidence="MEDIUM",
+        )
+
+        mock_ensemble_res = EnsemblePredictionResult(
+            symbol="BHARTIARTL",
+            prediction_timestamp="2026-10-22T01:00:00+00:00",
+            latest_input_timestamp=mock_ml_result.latest_input_timestamp,
+            status=PredictionStatus.SUCCESS,
+            combined_direction="UP",
+            combined_label=1,
+            combined_probability_up=0.5840,
+            combined_probability_down=0.4160,
+            agreement_status=EnsembleAgreement.ML_ONLY,
+            weights_used={"ml": 1.0, "llm": 0.0},
+            ml_prediction=mock_ml_result,
+            llm_reasoning=None,
+            explanation=mock_exp,
+        )
+
+        class IsolatedMockEnsembleService:
+            def predict_ensemble(self, *args, **kwargs):
+                return mock_ensemble_res
+
+        app.dependency_overrides[get_ensemble_service] = lambda: IsolatedMockEnsembleService()
+        try:
+            client = TestClient(app)
+            response = client.post(
+                "/api/predict",
+                json={
+                    "symbol": "BHARTIARTL",
+                    "model_name": "ensemble",
+                    "persist": False,
+                    "allow_stale_data": True,
+                },
+            )
+            assert response.status_code == 200
+            data = response.json()
+
+            assert "explanation" in data
+            assert data["explanation"] is not None
             exp = data["explanation"]
-            assert "status" in exp
-            assert "summary" in exp
+            assert exp["status"] == "SUCCESS"
+            assert exp["summary"] == "Verified enterprise contract expansion supports telecom cash flow."
             assert "supporting_evidence" in exp
+            assert len(exp["supporting_evidence"]) == 1
             assert "limitations" in exp
-            assert "model" in exp
-            assert "generated_at" in exp
-            assert isinstance(exp["supporting_evidence"], list)
-            assert isinstance(exp["limitations"], list)
+            assert exp["model"] == "mock-gemma3:12b"
+            assert data["probability_up"] == 0.5840
+            assert data["predicted_direction"] == "UP"
+        finally:
+            app.dependency_overrides.pop(get_ensemble_service, None)

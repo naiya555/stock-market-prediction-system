@@ -295,6 +295,7 @@ def build_prediction_explanation_prompt(
     events: Optional[Sequence[Union[MacroEvent, Dict[str, Any]]]] = None,
     quantitative_direction: Optional[str] = None,
     quantitative_probability: Optional[float] = None,
+    quantitative_probability_down: Optional[float] = None,
 ) -> Tuple[str, str, Dict[str, str]]:
     """Build system instructions and user prompt for evidence-grounded prediction explanation.
 
@@ -302,8 +303,9 @@ def build_prediction_explanation_prompt(
         symbol: Target NSE/BSE stock ticker (e.g. 'BHARTIARTL').
         articles: Point-in-time filtered news items.
         events: Optional point-in-time filtered macroeconomic/regulatory items.
-        quantitative_direction: Optional directional forecast from quantitative ML model (e.g. 'UP').
-        quantitative_probability: Optional directional probability from quantitative ML model.
+        quantitative_direction: Optional directional forecast from quantitative ML model (e.g. 'UP' or 'DOWN').
+        quantitative_probability: Optional probability of an upward move P(UP).
+        quantitative_probability_down: Optional probability of a downward move P(DOWN).
 
     Returns:
         Tuple of (system_instruction, user_prompt, known_provenance_map).
@@ -394,8 +396,23 @@ def build_prediction_explanation_prompt(
 
     ml_context = ""
     if quantitative_direction:
-        prob_str = f" (Probability: {quantitative_probability:.1%})" if quantitative_probability is not None else ""
-        ml_context = f"\nAuthoritative Quantitative ML Baseline Forecast: {quantitative_direction}{prob_str}.\n"
+        dir_clean = str(quantitative_direction).strip().upper()
+        if quantitative_probability is not None:
+            p_up = float(quantitative_probability)
+            p_down = (
+                float(quantitative_probability_down)
+                if quantitative_probability_down is not None
+                else round(1.0 - p_up, 4)
+            )
+            if dir_clean == "UP":
+                prob_str = f" [P(UP)={p_up:.1%}]"
+            elif dir_clean == "DOWN":
+                prob_str = f" [P(DOWN)={p_down:.1%}, P(UP)={p_up:.1%}]"
+            else:
+                prob_str = f" [P(UP)={p_up:.1%}]"
+        else:
+            prob_str = ""
+        ml_context = f"\nAuthoritative Quantitative ML Baseline Forecast: {dir_clean}{prob_str}.\n"
 
     user_prompt = f"""Explain the qualitative market context for equity symbol: {clean_sym}.{ml_context}
 Examine the supplied verified point-in-time items and synthesize supporting evidence and limitations:
