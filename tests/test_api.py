@@ -5,7 +5,7 @@ offline mock services, SQLite repository persistence, and error handling.
 Does NOT require network access or live Ollama inference.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import sqlite3
 from typing import Any, Dict, List, Optional
 from unittest.mock import MagicMock
@@ -18,6 +18,7 @@ from app.api.dependencies import (
     get_db_connection,
     get_ensemble_service,
     get_event_providers,
+    get_news_provider,
     get_prediction_repository,
     get_prediction_service,
 )
@@ -26,6 +27,8 @@ from app.database.repository import PredictionRepository
 from app.database.schema import initialize_database
 from app.events.providers.base import BaseEventProvider, EventProviderError
 from app.events.schemas import EventCategory, MacroEvent
+from app.news.providers.base import BaseNewsProvider, NewsProviderError
+from app.news.schemas import NewsArticle
 from app.llm.schemas import LLMDirection, LLMReasoningResult
 from app.prediction.contract import (
     PredictionDataQuality,
@@ -180,6 +183,37 @@ class StubEventProvider(BaseEventProvider):
         return self._events[:limit]
 
 
+class StubNewsProvider(BaseNewsProvider):
+    """Stub news provider for deterministic API testing."""
+
+    def __init__(self, name: str, articles: List[NewsArticle], fail: bool = False):
+        self._name = name
+        self._articles = articles
+        self._fail = fail
+        self.call_count = 0
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def fetch_news(
+        self,
+        symbol: str,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        limit: int = 50,
+    ) -> List[NewsArticle]:
+        self.call_count += 1
+        if self._fail:
+            raise NewsProviderError(f"Simulated failure in news provider '{self._name}'")
+        res = self._articles
+        if start_date is not None:
+            res = [a for a in res if a.published_at >= start_date]
+        if end_date is not None:
+            res = [a for a in res if a.published_at <= end_date]
+        return res[:limit]
+
+
 @pytest.fixture
 def client(
     in_memory_db: sqlite3.Connection,
@@ -196,6 +230,7 @@ def client(
     app.dependency_overrides[get_prediction_service] = lambda: mock_prediction_service
     app.dependency_overrides[get_ensemble_service] = lambda: mock_ensemble_service
     app.dependency_overrides[get_event_providers] = lambda: []
+    app.dependency_overrides[get_news_provider] = lambda: StubNewsProvider("mock_news", [])
 
     with TestClient(app) as test_client:
         yield test_client
@@ -742,3 +777,479 @@ def test_events_provider_error_resilience():
         data = res.json()
         assert data["count"] == 1
         assert data["events"][0]["title"] == "SEBI Circular on Margin Trading"
+
+
+# ---------------------------------------------------------------------------
+# GAP-01: Multi-Agent Ensemble Live News and Events Integration Regression Tests
+# ---------------------------------------------------------------------------
+
+
+def test_ensemble_prediction_receives_pit_news_and_events(
+    in_memory_db: sqlite3.Connection,
+    test_repo: PredictionRepository,
+    mock_prediction_service: MagicMock,
+    dummy_ensemble_result: EnsemblePredictionResult,
+):
+    """Verify that ensemble API endpoint passes point-in-time filtered news and events to ensemble service."""
+    cutoff = datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc)
+
+    # Eligible past article
+    past_art = NewsArticle(
+        headline="Reliance Expands Green Energy Portfolio",
+        source="Reuters",
+        published_at=cutoff - timedelta(hours=2),
+        ingested_at=cutoff - timedelta(hours=1),
+        symbols=("RELIANCE",),
+    )
+    # Excluded future article
+    future_art = NewsArticle(
+        headline="Reliance Reports Late Evening Earnings",
+        source="Bloomberg",
+        published_at=cutoff + timedelta(hours=3),
+        ingested_at=cutoff + timedelta(hours=3),
+        symbols=("RELIANCE",),
+    )
+
+    # Eligible past event
+    past_event = MacroEvent(
+        title="RBI Monetary Policy Committee Keeps Repo Rate Unchanged",
+        category=EventCategory.MONETARY_POLICY,
+        event_type="rate_decision",
+        source_org="RBI",
+        ingested_at=cutoff - timedelta(hours=4),
+        published_at=cutoff - timedelta(hours=4),
+        affected_symbols=(),
+    )
+    # Excluded future event
+    future_event = MacroEvent(
+        title="SEBI Announces Post-Market Framework",
+        category=EventCategory.REGULATORY,
+        event_type="framework",
+        source_org="SEBI",
+        ingested_at=cutoff + timedelta(hours=2),
+        published_at=cutoff + timedelta(hours=2),
+        affected_symbols=(),
+    )
+
+    news_provider = StubNewsProvider("stub_news", [past_art, future_art])
+    event_provider = StubEventProvider("stub_events", [past_event, future_event])
+
+    mock_ensemble = MagicMock(spec=EnsembleService)
+    mock_ensemble.predict_ensemble.return_value = dummy_ensemble_result
+
+    app = create_app()
+    app.dependency_overrides[get_db_connection] = lambda: in_memory_db
+    app.dependency_overrides[get_prediction_repository] = lambda: test_repo
+    app.dependency_overrides[get_prediction_service] = lambda: mock_prediction_service
+    app.dependency_overrides[get_ensemble_service] = lambda: mock_ensemble
+    app.dependency_overrides[get_news_provider] = lambda: news_provider
+    app.dependency_overrides[get_event_providers] = lambda: [event_provider]
+
+    with TestClient(app) as test_client:
+        payload = {
+            "symbol": "RELIANCE",
+            "model_name": "ensemble",
+            "as_of_date": cutoff.isoformat(),
+            "lookback_days": 100,
+            "persist": False,
+        }
+        res = test_client.post("/api/predict", json=payload)
+        assert res.status_code == 200
+        data = res.json()
+        assert data["model_name"] == "ensemble"
+        assert data["ensemble"] is not None
+
+        # Verify arguments passed to predict_ensemble
+        mock_ensemble.predict_ensemble.assert_called_once()
+        call_kwargs = mock_ensemble.predict_ensemble.call_args.kwargs
+
+        passed_articles = call_kwargs["articles"]
+        passed_events = call_kwargs["events"]
+
+        # Only past article and past event should reach the ensemble
+        assert len(passed_articles) == 1
+        assert passed_articles[0].headline == past_art.headline
+
+        assert len(passed_events) == 1
+        assert passed_events[0].title == past_event.title
+
+        # Provider calls are bounded (single query)
+        assert news_provider.call_count == 1
+
+
+def test_ensemble_prediction_lookback_window_exclusion(
+    in_memory_db: sqlite3.Connection,
+    test_repo: PredictionRepository,
+    mock_prediction_service: MagicMock,
+    dummy_ensemble_result: EnsemblePredictionResult,
+):
+    """Verify that articles and events outside the lookback window are excluded."""
+    cutoff = datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc)
+
+    # Article from 20 days ago (news lookback is capped at 14 days)
+    old_art = NewsArticle(
+        headline="Old News Story from Last Month",
+        source="Economic Times",
+        published_at=cutoff - timedelta(days=20),
+        ingested_at=cutoff - timedelta(days=20),
+        symbols=("TCS",),
+    )
+    # Recent article (within 14 days)
+    recent_art = NewsArticle(
+        headline="TCS Signs Mega Cloud Deal",
+        source="LiveMint",
+        published_at=cutoff - timedelta(days=2),
+        ingested_at=cutoff - timedelta(days=2),
+        symbols=("TCS",),
+    )
+
+    # Event from 45 days ago (event lookback is capped at 30 days)
+    old_event = MacroEvent(
+        title="Old Ministry of Finance Notification",
+        category=EventCategory.GOVERNMENT,
+        event_type="notification",
+        source_org="MoF",
+        ingested_at=cutoff - timedelta(days=45),
+        published_at=cutoff - timedelta(days=45),
+    )
+    # Recent event (within 30 days)
+    recent_event = MacroEvent(
+        title="RBI Repo Rate Announcement",
+        category=EventCategory.MONETARY_POLICY,
+        event_type="rate_decision",
+        source_org="RBI",
+        ingested_at=cutoff - timedelta(days=5),
+        published_at=cutoff - timedelta(days=5),
+    )
+
+    news_provider = StubNewsProvider("stub_news", [old_art, recent_art])
+    event_provider = StubEventProvider("stub_events", [old_event, recent_event])
+
+    mock_ensemble = MagicMock(spec=EnsembleService)
+    mock_ensemble.predict_ensemble.return_value = dummy_ensemble_result
+
+    app = create_app()
+    app.dependency_overrides[get_db_connection] = lambda: in_memory_db
+    app.dependency_overrides[get_prediction_repository] = lambda: test_repo
+    app.dependency_overrides[get_prediction_service] = lambda: mock_prediction_service
+    app.dependency_overrides[get_ensemble_service] = lambda: mock_ensemble
+    app.dependency_overrides[get_news_provider] = lambda: news_provider
+    app.dependency_overrides[get_event_providers] = lambda: [event_provider]
+
+    with TestClient(app) as test_client:
+        res = test_client.post("/api/predict", json={
+            "symbol": "TCS",
+            "model_name": "ensemble",
+            "as_of_date": cutoff.isoformat(),
+            "lookback_days": 100,
+            "persist": False,
+        })
+        assert res.status_code == 200
+
+        call_kwargs = mock_ensemble.predict_ensemble.call_args.kwargs
+        passed_articles = call_kwargs["articles"]
+        passed_events = call_kwargs["events"]
+
+        assert len(passed_articles) == 1
+        assert passed_articles[0].headline == recent_art.headline
+
+        assert len(passed_events) == 1
+        assert passed_events[0].title == recent_event.title
+
+
+def test_ensemble_symbol_and_market_event_relevance_filtering(
+    in_memory_db: sqlite3.Connection,
+    test_repo: PredictionRepository,
+    mock_prediction_service: MagicMock,
+    dummy_ensemble_result: EnsemblePredictionResult,
+):
+    """Verify that events matching the target symbol or broad market are passed, but irrelevant stock events are excluded."""
+    cutoff = datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc)
+
+    # Market-wide event (no affected symbols specified)
+    broad_event = MacroEvent(
+        title="RBI Systemic Liquidity Measures",
+        category=EventCategory.MONETARY_POLICY,
+        event_type="guidance",
+        source_org="RBI",
+        ingested_at=cutoff - timedelta(days=1),
+        published_at=cutoff - timedelta(days=1),
+        affected_symbols=(),
+    )
+    # Event specifically affecting RELIANCE
+    sym_event = MacroEvent(
+        title="Ministry of Petroleum Tariff Update",
+        category=EventCategory.REGULATORY,
+        event_type="policy",
+        source_org="MoPNG",
+        ingested_at=cutoff - timedelta(days=2),
+        published_at=cutoff - timedelta(days=2),
+        affected_symbols=("RELIANCE",),
+    )
+    # Event specifically affecting a different company (INFY)
+    other_event = MacroEvent(
+        title="IT Sector Specific Regulatory Directive",
+        category=EventCategory.REGULATORY,
+        event_type="directive",
+        source_org="MeitY",
+        ingested_at=cutoff - timedelta(days=3),
+        published_at=cutoff - timedelta(days=3),
+        affected_symbols=("INFY",),
+    )
+
+    event_provider = StubEventProvider("stub_events", [broad_event, sym_event, other_event])
+    mock_ensemble = MagicMock(spec=EnsembleService)
+    mock_ensemble.predict_ensemble.return_value = dummy_ensemble_result
+
+    app = create_app()
+    app.dependency_overrides[get_db_connection] = lambda: in_memory_db
+    app.dependency_overrides[get_prediction_repository] = lambda: test_repo
+    app.dependency_overrides[get_prediction_service] = lambda: mock_prediction_service
+    app.dependency_overrides[get_ensemble_service] = lambda: mock_ensemble
+    app.dependency_overrides[get_news_provider] = lambda: StubNewsProvider("mock_news", [])
+    app.dependency_overrides[get_event_providers] = lambda: [event_provider]
+
+    with TestClient(app) as test_client:
+        res = test_client.post("/api/predict", json={
+            "symbol": "RELIANCE",
+            "model_name": "ensemble",
+            "as_of_date": cutoff.isoformat(),
+            "persist": False,
+        })
+        assert res.status_code == 200
+
+        call_kwargs = mock_ensemble.predict_ensemble.call_args.kwargs
+        passed_events = call_kwargs["events"]
+
+        # Broad event and RELIANCE event should be included; INFY event excluded
+        assert len(passed_events) == 2
+        titles = {e.title for e in passed_events}
+        assert broad_event.title in titles
+        assert sym_event.title in titles
+        assert other_event.title not in titles
+
+
+def test_ensemble_empty_news_and_events_fallback(
+    in_memory_db: sqlite3.Connection,
+    test_repo: PredictionRepository,
+    mock_prediction_service: MagicMock,
+    dummy_prediction_result: PredictionResult,
+):
+    """Verify that when news and events are empty, the ensemble safely returns ML_ONLY fallback."""
+    # Build ML_ONLY ensemble result
+    ml_only_ensemble = EnsemblePredictionResult(
+        symbol="RELIANCE",
+        prediction_timestamp="2026-10-17T09:00:00Z",
+        latest_input_timestamp="2026-10-16T15:30:00+05:30",
+        status=PredictionStatus.SUCCESS,
+        combined_direction="UP",
+        combined_label=1,
+        combined_probability_up=0.68,
+        combined_probability_down=0.32,
+        agreement_status=EnsembleAgreement.ML_ONLY,
+        weights_used={"ml": 1.0, "llm": 0.0},
+        ml_prediction=dummy_prediction_result,
+        llm_reasoning=None,
+        target_range=None,
+        model_name="ensemble",
+        model_version="ensemble_v1",
+        disclaimer="ML-only fallback disclaimer.",
+    )
+
+    mock_ensemble = MagicMock(spec=EnsembleService)
+    mock_ensemble.predict_ensemble.return_value = ml_only_ensemble
+
+    app = create_app()
+    app.dependency_overrides[get_db_connection] = lambda: in_memory_db
+    app.dependency_overrides[get_prediction_repository] = lambda: test_repo
+    app.dependency_overrides[get_prediction_service] = lambda: mock_prediction_service
+    app.dependency_overrides[get_ensemble_service] = lambda: mock_ensemble
+    app.dependency_overrides[get_news_provider] = lambda: StubNewsProvider("empty_news", [])
+    app.dependency_overrides[get_event_providers] = lambda: [StubEventProvider("empty_events", [])]
+
+    with TestClient(app) as test_client:
+        res = test_client.post("/api/predict", json={
+            "symbol": "RELIANCE",
+            "model_name": "ensemble",
+            "persist": False,
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "SUCCESS"
+        assert data["ensemble"]["agreement_status"] == EnsembleAgreement.ML_ONLY.value
+        assert data["ensemble"]["weights_used"] == {"ml": 1.0, "llm": 0.0}
+        assert data["ensemble"]["llm_direction"] is None
+        assert data["ensemble"]["llm_reasoning_summary"] is None
+        assert data["ensemble"]["llm_confidence"] is None
+
+
+def test_ensemble_provider_failure_resilience(
+    in_memory_db: sqlite3.Connection,
+    test_repo: PredictionRepository,
+    mock_prediction_service: MagicMock,
+    dummy_ensemble_result: EnsemblePredictionResult,
+):
+    """Verify that failures in news or event providers do not cause HTTP 500 errors."""
+    broken_news = StubNewsProvider("failing_news", [], fail=True)
+    broken_event = StubEventProvider("failing_event", [], fail=True)
+
+    healthy_event = MacroEvent(
+        title="Surviving Regulatory Notice",
+        category=EventCategory.REGULATORY,
+        event_type="notice",
+        source_org="SEBI",
+        ingested_at=datetime.now(timezone.utc),
+        published_at=datetime.now(timezone.utc),
+    )
+    healthy_event_provider = StubEventProvider("healthy_event", [healthy_event], fail=False)
+
+    mock_ensemble = MagicMock(spec=EnsembleService)
+    mock_ensemble.predict_ensemble.return_value = dummy_ensemble_result
+
+    app = create_app()
+    app.dependency_overrides[get_db_connection] = lambda: in_memory_db
+    app.dependency_overrides[get_prediction_repository] = lambda: test_repo
+    app.dependency_overrides[get_prediction_service] = lambda: mock_prediction_service
+    app.dependency_overrides[get_ensemble_service] = lambda: mock_ensemble
+    app.dependency_overrides[get_news_provider] = lambda: broken_news
+    app.dependency_overrides[get_event_providers] = lambda: [broken_event, healthy_event_provider]
+
+    with TestClient(app) as test_client:
+        res = test_client.post("/api/predict", json={
+            "symbol": "RELIANCE",
+            "model_name": "ensemble",
+            "persist": False,
+        })
+        # Must return 200, not 500
+        assert res.status_code == 200
+        # Articles should be empty due to news failure; healthy event survives
+        call_kwargs = mock_ensemble.predict_ensemble.call_args.kwargs
+        assert call_kwargs["articles"] == []
+        assert len(call_kwargs["events"]) == 1
+        assert call_kwargs["events"][0].title == healthy_event.title
+
+
+def test_ensemble_ollama_failure_or_timeout_fallback(
+    in_memory_db: sqlite3.Connection,
+    test_repo: PredictionRepository,
+    mock_prediction_service: MagicMock,
+    dummy_prediction_result: PredictionResult,
+):
+    """Verify controlled fallback when Ollama is unreachable or times out during qualitative synthesis."""
+    # When Ollama is offline or times out, EnsembleService returns ML_ONLY fallback
+    fallback_result = EnsemblePredictionResult(
+        symbol="INFY",
+        prediction_timestamp="2026-10-17T09:00:00Z",
+        latest_input_timestamp="2026-10-16T15:30:00+05:30",
+        status=PredictionStatus.SUCCESS,
+        combined_direction="UP",
+        combined_label=1,
+        combined_probability_up=0.68,
+        combined_probability_down=0.32,
+        agreement_status=EnsembleAgreement.ML_ONLY,
+        weights_used={"ml": 1.0, "llm": 0.0},
+        ml_prediction=dummy_prediction_result,
+        llm_reasoning=None,
+        integrated_positive_factors=("Quantitative xgboost signal indicates positive momentum",),
+        integrated_negative_factors=(),
+        downside_risks=(),
+        source_references=(),
+        target_range=None,
+        model_name="ensemble",
+        model_version="ensemble_v1",
+        disclaimer="Ollama unreachable, fallback to pure quantitative ML.",
+    )
+
+    mock_ensemble = MagicMock(spec=EnsembleService)
+    mock_ensemble.predict_ensemble.return_value = fallback_result
+
+    app = create_app()
+    app.dependency_overrides[get_db_connection] = lambda: in_memory_db
+    app.dependency_overrides[get_prediction_repository] = lambda: test_repo
+    app.dependency_overrides[get_prediction_service] = lambda: mock_prediction_service
+    app.dependency_overrides[get_ensemble_service] = lambda: mock_ensemble
+    app.dependency_overrides[get_news_provider] = lambda: StubNewsProvider("mock_news", [])
+    app.dependency_overrides[get_event_providers] = lambda: []
+
+    with TestClient(app) as test_client:
+        res = test_client.post("/api/predict", json={
+            "symbol": "INFY",
+            "model_name": "ensemble",
+            "persist": False,
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["ensemble"]["agreement_status"] == EnsembleAgreement.ML_ONLY.value
+        assert data["ensemble"]["weights_used"] == {"ml": 1.0, "llm": 0.0}
+        assert data["ensemble"]["llm_direction"] is None
+        assert data["ensemble"]["llm_reasoning_summary"] is None
+
+
+def test_ensemble_response_accurately_reports_llm_contribution(
+    in_memory_db: sqlite3.Connection,
+    test_repo: PredictionRepository,
+    mock_prediction_service: MagicMock,
+    dummy_ensemble_result: EnsemblePredictionResult,
+):
+    """Verify that response metadata accurately reports LLM direction, confidence, and reasoning."""
+    mock_ensemble = MagicMock(spec=EnsembleService)
+    mock_ensemble.predict_ensemble.return_value = dummy_ensemble_result
+
+    app = create_app()
+    app.dependency_overrides[get_db_connection] = lambda: in_memory_db
+    app.dependency_overrides[get_prediction_repository] = lambda: test_repo
+    app.dependency_overrides[get_prediction_service] = lambda: mock_prediction_service
+    app.dependency_overrides[get_ensemble_service] = lambda: mock_ensemble
+    app.dependency_overrides[get_news_provider] = lambda: StubNewsProvider("mock_news", [])
+    app.dependency_overrides[get_event_providers] = lambda: []
+
+    with TestClient(app) as test_client:
+        res = test_client.post("/api/predict", json={
+            "symbol": "RELIANCE",
+            "model_name": "ensemble",
+            "persist": False,
+        })
+        assert res.status_code == 200
+        data = res.json()
+        ens = data["ensemble"]
+        assert ens["agreement_status"] == EnsembleAgreement.STRONG_AGREEMENT.value
+        assert ens["llm_direction"] == "UP"
+        assert ens["llm_confidence"] == "HIGH"
+        assert ens["llm_reasoning_summary"] == dummy_ensemble_result.llm_reasoning.reasoning_summary
+        assert len(ens["integrated_positive_factors"]) > 0
+
+
+def test_ensemble_history_persistence_single_entry(
+    in_memory_db: sqlite3.Connection,
+    test_repo: PredictionRepository,
+    mock_prediction_service: MagicMock,
+    dummy_ensemble_result: EnsemblePredictionResult,
+):
+    """Verify that ensemble prediction with persist=True creates exactly one row in the repository."""
+    mock_ensemble = MagicMock(spec=EnsembleService)
+    mock_ensemble.predict_ensemble.return_value = dummy_ensemble_result
+
+    app = create_app()
+    app.dependency_overrides[get_db_connection] = lambda: in_memory_db
+    app.dependency_overrides[get_prediction_repository] = lambda: test_repo
+    app.dependency_overrides[get_prediction_service] = lambda: mock_prediction_service
+    app.dependency_overrides[get_ensemble_service] = lambda: mock_ensemble
+    app.dependency_overrides[get_news_provider] = lambda: StubNewsProvider("mock_news", [])
+    app.dependency_overrides[get_event_providers] = lambda: []
+
+    with TestClient(app) as test_client:
+        res = test_client.post("/api/predict", json={
+            "symbol": "RELIANCE",
+            "model_name": "ensemble",
+            "persist": True,
+        })
+        assert res.status_code == 200
+        data = res.json()
+        pred_id = data["prediction_id"]
+        assert pred_id is not None
+
+        # Verify exactly one entry is in database
+        history = test_repo.list_predictions(symbol="RELIANCE")
+        assert len(history) == 1
+        assert history[0]["model_name"] == "ensemble"
+        assert history[0]["predicted_direction"] == "UP"

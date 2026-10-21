@@ -4740,3 +4740,68 @@ Configuration consistency, relative path resolution, and non-destructive disaste
 
 ### Next Step
 Await provisioning of dedicated external staging infrastructure or operator direction for Phase 16 final milestone audit.
+
+---
+
+## DAY 50 — Fix Live Prediction Ensemble Integration (GAP-01)
+
+**Date:** 2026-10-21
+**Baseline Commit:** `7ba2c7f`
+**Status:** Completed
+**Phase 16 Status:** Strictly **IN PROGRESS** (Pending final production soak testing during live market hours).
+
+### 1. Objective & Problem Root Cause
+The comprehensive audit revealed issue GAP-01: `app/api/routes/predict.py` called `ensemble_service.predict_ensemble(...)` without passing point-in-time news articles and macroeconomic/regulatory events. Because `articles or events` evaluated to `False`, the ensemble runner silently bypassed qualitative LLM synthesis and defaulted every API ensemble prediction to `ML_ONLY`.
+
+### 2. Implementation Summary
+1. **Dependency Injection (`app/api/dependencies.py`):**
+   - Added `get_news_provider() -> BaseNewsProvider` providing `RSSNewsProvider()`.
+   - Reused existing `get_event_providers() -> List[BaseEventProvider]` supplying `[RBIEventProvider(), SEBIEventProvider()]`.
+2. **Point-in-Time Prediction Pipeline (`app/api/routes/predict.py`):**
+   - Injected `news_provider` and `event_providers` into `POST /api/predict`.
+   - Computed timezone-aware decision cutoff (`payload.as_of_date` or `datetime.now(timezone.utc)`).
+   - Acquired and deduplicated news articles via `news_provider.fetch_news(...)` and `deduplicate_news(...)`, filtered strictly point-in-time with lookback window capped at 14 days using `filter_news_point_in_time(...)`.
+   - Acquired and deduplicated macroeconomic/regulatory events via `ep.fetch_events(...)` and `deduplicate_events(...)`, filtered point-in-time with lookback window capped at 30 days using `filter_events_point_in_time(...)`, ensuring relevance to broad market or target symbol.
+   - Passed typed `articles` and `events` into `ensemble_service.predict_ensemble(...)`.
+   - Isolated external provider exceptions with safe log warnings and fallback to empty context without HTTP 500 errors.
+   - Fixed potential double-persistence issue by ensuring persistence occurs cleanly once with preserved `prediction_id`.
+3. **Model Availability & Loading (GAP-02 Distinction):**
+   - Inspected `models/` directory and confirmed zero trained model artifacts are committed (`models/.gitkeep` only).
+   - Confirmed `PredictionService` safely returns `status=PredictionStatus.MODEL_UNAVAILABLE` when artifacts are missing. No model retraining was triggered and no fake model weights were generated.
+
+### 3. Empirical Verification & Test Results
+- **Focused & Regression Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest tests/test_api.py -v
+  ```
+  **31 passed**, 1 warning in 5.31s (+8 new tests covering GAP-01):
+  - `test_ensemble_prediction_receives_pit_news_and_events`: confirms point-in-time filtering and bounded provider calls.
+  - `test_ensemble_prediction_lookback_window_exclusion`: confirms articles/events outside lookback are excluded.
+  - `test_ensemble_symbol_and_market_event_relevance_filtering`: confirms symbol relevance filtering.
+  - `test_ensemble_empty_news_and_events_fallback`: confirms clean fallback to `ML_ONLY` when context is empty.
+  - `test_ensemble_provider_failure_resilience`: confirms provider failure does not cause HTTP 500.
+  - `test_ensemble_ollama_failure_or_timeout_fallback`: confirms controlled fallback when Ollama is unreachable.
+  - `test_ensemble_response_accurately_reports_llm_contribution`: confirms truthful response metadata.
+  - `test_ensemble_history_persistence_single_entry`: confirms single immutable record written to SQLite repository.
+- **Full Regression Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **641 passed**, 1 warning in 38.17s across 45 test files (+8 tests since Day 49). Zero failures, zero regressions.
+- **Dependency Audit:**
+  ```powershell
+  .\.venv\Scripts\python -m pip check
+  ```
+  `No broken requirements found.`
+- **Git Diff Hygiene Check:**
+  ```powershell
+  git diff --check
+  ```
+  `Clean (0 whitespace errors).`
+- **Protected File Integrity Checks:**
+  - `data/predictions.db`: SHA-256 `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (100% MATCH).
+  - `models/.gitkeep`: SHA-256 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (100% MATCH).
+
+### 4. Phase 16 Status & Next Steps
+**Phase 16 remains strictly IN PROGRESS.**
+GAP-01 is repaired with zero paid dependencies and full regression coverage. GAP-02 (model artifacts and training) remains documented as a separate blocker.

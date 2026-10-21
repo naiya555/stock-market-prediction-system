@@ -15,6 +15,8 @@ from app.database.repository import PredictionRepository
 from app.events.providers.base import BaseEventProvider
 from app.events.providers.rbi_provider import RBIEventProvider
 from app.events.providers.sebi_provider import SEBIEventProvider
+from app.news.providers.base import BaseNewsProvider
+from app.news.providers.rss_provider import RSSNewsProvider
 from app.prediction.ensemble import EnsembleService
 from app.prediction.service import PredictionService
 
@@ -63,3 +65,8 @@ def get_event_providers() -> List[BaseEventProvider]:
         RBIEventProvider(),
         SEBIEventProvider(),
     ]
+
+
+def get_news_provider() -> BaseNewsProvider:
+    """Provide default active financial news provider."""
+    return RSSNewsProvider()

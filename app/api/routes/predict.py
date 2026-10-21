@@ -4,17 +4,23 @@ Executes point-in-time quantitative time-series forecasting (XGBoost/LightGBM)
 and multi-agent ensemble synthesis (ML + Gemma 3 12B LLM) through canonical service contracts.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import logging
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.dependencies import (
     get_ensemble_service,
+    get_event_providers,
+    get_news_provider,
     get_prediction_repository,
     get_prediction_service,
 )
+from app.events.cleaner import deduplicate_events, filter_events_point_in_time
+from app.events.providers.base import BaseEventProvider
+from app.news.cleaner import deduplicate_news, filter_news_point_in_time
+from app.news.providers.base import BaseNewsProvider
 from app.api.schemas import (
     DataQualityResponse,
     EnsembleDetailsResponse,
@@ -162,6 +168,8 @@ def predict(
     prediction_service: PredictionService = Depends(get_prediction_service),
     ensemble_service: EnsembleService = Depends(get_ensemble_service),
     repository: PredictionRepository = Depends(get_prediction_repository),
+    news_provider: BaseNewsProvider = Depends(get_news_provider),
+    event_providers: List[BaseEventProvider] = Depends(get_event_providers),
 ) -> PredictionResponse:
     """Validate request, run inference through existing services, and return structured response."""
     clean_symbol = payload.symbol.strip().upper()
@@ -190,9 +198,82 @@ def predict(
             include_live_quote=payload.include_live_quote,
         )
 
+        # Establish timezone-aware point-in-time information cutoff
+        if payload.as_of_date is not None:
+            if payload.as_of_date.tzinfo is None:
+                cutoff_time = payload.as_of_date.replace(tzinfo=timezone.utc)
+            else:
+                cutoff_time = payload.as_of_date
+        else:
+            cutoff_time = datetime.now(timezone.utc)
+
+        # 1a. Acquire and filter point-in-time news articles
+        articles = []
+        if news_provider is not None:
+            try:
+                raw_news = news_provider.fetch_news(
+                    symbol=clean_symbol,
+                    end_date=cutoff_time,
+                    limit=20,
+                )
+                if raw_news:
+                    cleaned_news = deduplicate_news(raw_news)
+                    news_window = timedelta(days=min(payload.lookback_days, 14))
+                    articles = filter_news_point_in_time(
+                        cleaned_news.articles,
+                        as_of_time=cutoff_time,
+                        lookback_window=news_window,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "News acquisition failed for '%s': %s. Continuing ensemble without news context.",
+                    clean_symbol,
+                    exc,
+                )
+                articles = []
+
+        # 1b. Acquire and filter point-in-time macro/regulatory events
+        events = []
+        if event_providers:
+            base_symbol = clean_symbol.rsplit(".", 1)[0]
+            raw_events = []
+            for ep in event_providers:
+                try:
+                    evs = ep.fetch_events(end_date=cutoff_time, limit=20)
+                    if evs:
+                        raw_events.extend(evs)
+                except Exception as exc:
+                    logger.warning(
+                        "Event provider '%s' failed: %s. Continuing with remaining providers.",
+                        getattr(ep, "name", type(ep).__name__),
+                        exc,
+                    )
+            if raw_events:
+                try:
+                    cleaned_evs = deduplicate_events(raw_events)
+                    events_window = timedelta(days=min(payload.lookback_days, 30))
+                    pit_events = filter_events_point_in_time(
+                        cleaned_evs.events,
+                        as_of_time=cutoff_time,
+                        lookback_window=events_window,
+                    )
+                    # Filter for relevance: general market events or matching this symbol
+                    events = [
+                        ev for ev in pit_events
+                        if not ev.affected_symbols or base_symbol in ev.affected_symbols
+                    ]
+                except Exception as exc:
+                    logger.warning(
+                        "Event cleaning or filtering failed: %s. Continuing ensemble without event context.",
+                        exc,
+                    )
+                    events = []
+
         try:
             ensemble_res = ensemble_service.predict_ensemble(
                 request=domain_req,
+                articles=articles,
+                events=events,
                 weights=custom_weights,
                 persist=payload.persist,
             )
@@ -206,8 +287,11 @@ def predict(
         # Retrieve prediction ID if persisted
         pred_id = None
         if payload.persist and ensemble_res.status == PredictionStatus.SUCCESS:
-            canonical_result = ensemble_res.to_prediction_result()
-            pred_id = repository.save_prediction(canonical_result)
+            try:
+                canonical_result = ensemble_res.to_prediction_result()
+                pred_id = repository.save_prediction(canonical_result)
+            except Exception as exc:
+                logger.error("Failed to persist ensemble prediction for %s: %s", clean_symbol, exc)
 
         dq_api = None
         if ensemble_res.ml_prediction and ensemble_res.ml_prediction.data_quality:
