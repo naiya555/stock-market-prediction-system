@@ -18,7 +18,11 @@ from app.core.schemas import MarketOHLCV, ValidationError
 from app.database.connection import create_connection
 from app.database.repository import PredictionRepository
 from app.history.verifier import OutcomeVerifier
-from app.llm.client import MockLLMClient
+from app.llm.client import (
+    LLMModelUnavailableError,
+    MockLLMClient,
+    OllamaLLMClient,
+)
 from app.llm.schemas import (
     NON_PREDICTIVE_QUALITATIVE_DISCLAIMER,
     LLMDirection,
@@ -382,6 +386,52 @@ class TestEnsembleFailureHandling:
         assert res.combined_probability_up == 0.38
         assert res.weights_used["ml"] == 1.0
         assert res.weights_used["llm"] == 0.0
+
+    def test_llm_disabled_in_predict_ensemble_falls_back_to_ml(self) -> None:
+        """When Ollama client is disabled via configuration, ensemble degrades cleanly to ML_ONLY."""
+        disabled_client = OllamaLLMClient(enabled=False)
+        disabled_service = LLMService(client=disabled_client)
+
+        class MockPredService:
+            def predict(self, *args, **kwargs):
+                return _create_mock_ml_result(symbol="INFY", direction="UP", prob_up=0.72)
+
+        service = EnsembleService(
+            prediction_service=MockPredService(),
+            llm_service=disabled_service,
+        )
+
+        req = PredictionRequest(symbol="INFY", model_name="xgboost")
+        res = service.predict_ensemble(request=req, articles=[{"headline": "Infosys quarterly update"}])
+
+        assert res.status == PredictionStatus.SUCCESS
+        assert res.agreement_status == EnsembleAgreement.ML_ONLY
+        assert res.combined_direction == "UP"
+        assert res.combined_probability_up == 0.72
+        assert res.weights_used["ml"] == 1.0
+        assert res.weights_used["llm"] == 0.0
+
+    def test_llm_model_unavailable_in_predict_ensemble_falls_back_to_ml(self) -> None:
+        """When Ollama model is missing/unavailable, ensemble degrades cleanly to ML_ONLY."""
+        mock_client = MockLLMClient(simulated_error=LLMModelUnavailableError("Model 'gemma3:12b' not found"))
+        failing_service = LLMService(client=mock_client)
+
+        class MockPredService:
+            def predict(self, *args, **kwargs):
+                return _create_mock_ml_result(symbol="TCS", direction="DOWN", prob_up=0.42)
+
+        service = EnsembleService(
+            prediction_service=MockPredService(),
+            llm_service=failing_service,
+        )
+
+        req = PredictionRequest(symbol="TCS", model_name="xgboost")
+        res = service.predict_ensemble(request=req, articles=[{"headline": "TCS announcement"}])
+
+        assert res.status == PredictionStatus.SUCCESS
+        assert res.agreement_status == EnsembleAgreement.ML_ONLY
+        assert res.combined_direction == "DOWN"
+        assert res.combined_probability_up == 0.42
 
     def test_format_summary_renders_cleanly(self) -> None:
         ml = _create_mock_ml_result(direction="UP", prob_up=0.65)

@@ -32,6 +32,11 @@ class LLMClientError(LLMError):
     pass
 
 
+class LLMModelUnavailableError(LLMClientError):
+    """Raised when the requested model is not installed or available in Ollama."""
+    pass
+
+
 class LLMResponseError(LLMError):
     """Raised when the LLM runtime returns malformed, empty, or unparseable payloads."""
     pass
@@ -44,6 +49,16 @@ class BaseLLMClient(ABC):
     @abstractmethod
     def model_name(self) -> str:
         """Return the unique model identifier (e.g., 'gemma3:12b')."""
+        pass
+
+    @abstractmethod
+    def is_available(self) -> bool:
+        """Check whether the LLM backend is reachable and ready."""
+        pass
+
+    @abstractmethod
+    def get_status(self) -> Dict[str, Any]:
+        """Return structured diagnostic status for health checks and observability."""
         pass
 
     @abstractmethod
@@ -65,6 +80,7 @@ class BaseLLMClient(ABC):
 
         Raises:
             LLMClientError: If communication or timeout fails.
+            LLMModelUnavailableError: If the specified model is not installed.
             LLMResponseError: If response payload is empty or malformed.
         """
         pass
@@ -82,24 +98,37 @@ class OllamaLLMClient(BaseLLMClient):
         base_url: Optional[str] = None,
         model_name: Optional[str] = None,
         timeout_seconds: Optional[float] = None,
+        enabled: Optional[bool] = None,
         http_opener: Optional[Callable[[urllib.request.Request, float], Any]] = None,
     ) -> None:
         """Initialize Ollama client with configurable endpoint and timeout.
 
         Configuration priority:
         1. Explicit constructor arguments
-        2. Environment variables (`OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_TIMEOUT_SECONDS`)
-        3. Built-in defaults (`http://127.0.0.1:11434`, `gemma3:12b`, 30.0s)
+        2. Environment variables (`OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_TIMEOUT_SECONDS`, `OLLAMA_ENABLED`)
+        3. Built-in defaults (`http://127.0.0.1:11434`, `gemma3:12b`, 30.0s, enabled=True)
         """
         raw_url = base_url or os.environ.get("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL)
         self._base_url = raw_url.rstrip("/")
         self._model = (model_name or os.environ.get("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)).strip()
 
+        if enabled is not None:
+            self._enabled = bool(enabled)
+        else:
+            env_enabled = os.environ.get("OLLAMA_ENABLED")
+            if env_enabled is not None:
+                self._enabled = env_enabled.lower() in ("1", "true", "yes", "on")
+            else:
+                self._enabled = True
+
         env_timeout = os.environ.get("OLLAMA_TIMEOUT_SECONDS")
         if timeout_seconds is not None:
             self._timeout = float(timeout_seconds)
         elif env_timeout:
-            self._timeout = float(env_timeout)
+            try:
+                self._timeout = float(env_timeout)
+            except ValueError:
+                self._timeout = DEFAULT_OLLAMA_TIMEOUT_SECONDS
         else:
             self._timeout = DEFAULT_OLLAMA_TIMEOUT_SECONDS
 
@@ -115,19 +144,67 @@ class OllamaLLMClient(BaseLLMClient):
         """Return the Ollama daemon base URL."""
         return self._base_url
 
+    @property
+    def is_enabled(self) -> bool:
+        """Return True if local Ollama integration is enabled via configuration."""
+        return self._enabled
+
+    @property
+    def timeout_seconds(self) -> float:
+        """Return the configured timeout in seconds."""
+        return self._timeout
+
     def _default_http_opener(self, req: urllib.request.Request, timeout: float) -> Any:
         """Standard library urllib urlopen implementation."""
         return urllib.request.urlopen(req, timeout=timeout)
 
     def is_available(self) -> bool:
         """Check whether the Ollama daemon is reachable and responding on its API."""
+        if not self._enabled:
+            return False
         check_url = f"{self._base_url}/api/tags"
         req = urllib.request.Request(check_url, headers={"User-Agent": "StockMarketPrediction/1.0"})
         try:
             with self._http_opener(req, min(self._timeout, 3.0)) as resp:
-                return resp.status == 200
+                return getattr(resp, "status", 200) == 200
         except Exception:
             return False
+
+    def check_model_availability(self) -> bool:
+        """Check whether the configured model is installed in local Ollama."""
+        if not self._enabled:
+            return False
+        check_url = f"{self._base_url}/api/tags"
+        req = urllib.request.Request(check_url, headers={"User-Agent": "StockMarketPrediction/1.0"})
+        try:
+            with self._http_opener(req, min(self._timeout, 5.0)) as resp:
+                if getattr(resp, "status", 200) != 200:
+                    return False
+                raw = resp.read().decode("utf-8", errors="replace")
+                data = json.loads(raw)
+                models = [m.get("name", "") for m in data.get("models", [])]
+                target = self._model.lower()
+                for m in models:
+                    m_lower = m.lower()
+                    if m_lower == target or m_lower.startswith(target + ":") or target.startswith(m_lower + ":"):
+                        return True
+                return False
+        except Exception:
+            return False
+
+    def get_status(self) -> Dict[str, Any]:
+        """Return structured diagnostic status for health checks and observability without exposing secrets."""
+        reachable = self.is_available()
+        model_ready = self.check_model_availability() if reachable else False
+        return {
+            "provider": "ollama",
+            "base_url": self._base_url,
+            "model": self._model,
+            "enabled": self._enabled,
+            "reachable": reachable,
+            "model_available": model_ready,
+            "timeout_seconds": self._timeout,
+        }
 
     def generate(
         self,
@@ -145,6 +222,9 @@ class OllamaLLMClient(BaseLLMClient):
         Returns:
             String response content.
         """
+        if not self._enabled:
+            raise LLMClientError("Ollama LLM integration is disabled via configuration (OLLAMA_ENABLED=false)")
+
         if not prompt or not prompt.strip():
             raise LLMResponseError("Prompt cannot be empty")
 
@@ -196,6 +276,10 @@ class OllamaLLMClient(BaseLLMClient):
                 error_body = e.read().decode("utf-8", errors="replace")[:200]
             except Exception:
                 pass
+            if e.code == 404 or "not found" in error_body.lower():
+                raise LLMModelUnavailableError(
+                    f"Model '{self._model}' is not available in Ollama (HTTP {e.code}): {error_body}"
+                ) from e
             raise LLMClientError(
                 f"Ollama HTTP error {e.code} for model '{self._model}': {e.reason} ({error_body})"
             ) from e
@@ -221,7 +305,10 @@ class OllamaLLMClient(BaseLLMClient):
         if response_text is None or not str(response_text).strip():
             # Check for error field returned by Ollama
             if "error" in data:
-                raise LLMClientError(f"Ollama engine returned error: {data['error']}")
+                err_msg = str(data["error"])
+                if "not found" in err_msg.lower():
+                    raise LLMModelUnavailableError(f"Ollama engine returned error: {err_msg}")
+                raise LLMClientError(f"Ollama engine returned error: {err_msg}")
             raise LLMResponseError("Ollama payload missing non-empty 'response' field")
 
         return str(response_text).strip()
@@ -241,6 +328,7 @@ class MockLLMClient(BaseLLMClient):
         responses: Optional[Dict[str, str]] = None,
         responder: Optional[Callable[[str, Optional[str]], str]] = None,
         simulated_error: Optional[Exception] = None,
+        enabled: bool = True,
     ) -> None:
         """Initialize mock client with pre-configured responses or simulated errors."""
         self._model = model_name
@@ -248,12 +336,33 @@ class MockLLMClient(BaseLLMClient):
         self._responses = responses or {}
         self._responder = responder
         self._simulated_error = simulated_error
+        self._enabled = enabled
         self.calls: List[Dict[str, Any]] = []
 
     @property
     def model_name(self) -> str:
         """Return the mock model name."""
         return self._model
+
+    def is_available(self) -> bool:
+        """Check whether mock backend is available."""
+        return self._enabled and self._simulated_error is None
+
+    def check_model_availability(self) -> bool:
+        """Check whether mock model is available."""
+        return self._enabled and not isinstance(self._simulated_error, LLMModelUnavailableError)
+
+    def get_status(self) -> Dict[str, Any]:
+        """Return structured diagnostic status."""
+        return {
+            "provider": "mock",
+            "base_url": "mock://localhost",
+            "model": self._model,
+            "enabled": self._enabled,
+            "reachable": self.is_available(),
+            "model_available": self.check_model_availability(),
+            "timeout_seconds": 0.0,
+        }
 
     def generate(
         self,
@@ -262,6 +371,9 @@ class MockLLMClient(BaseLLMClient):
         format_json: bool = True,
     ) -> str:
         """Return programmed response or trigger simulated exception."""
+        if not self._enabled:
+            raise LLMClientError("Ollama LLM integration is disabled via configuration (OLLAMA_ENABLED=false)")
+
         self.calls.append({
             "prompt": prompt,
             "system": system,

@@ -8,6 +8,7 @@ from app.llm.client import (
     BaseLLMClient,
     LLMClientError,
     LLMError,
+    LLMModelUnavailableError,
     LLMResponseError,
     MockLLMClient,
     OllamaLLMClient,
@@ -42,6 +43,7 @@ __all__ = [
     # Exceptions
     "LLMError",
     "LLMClientError",
+    "LLMModelUnavailableError",
     "LLMResponseError",
     "LLMServiceError",
     "LLMParseError",

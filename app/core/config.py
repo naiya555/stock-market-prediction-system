@@ -55,6 +55,12 @@ class Settings:
         )
     )
 
+    # Local Ollama LLM integration settings
+    ollama_base_url: str = "http://127.0.0.1:11434"
+    ollama_model: str = "gemma3:12b"
+    ollama_timeout_seconds: float = 30.0
+    ollama_enabled: bool = True
+
     @classmethod
     def from_env(cls) -> "Settings":
         """Load settings from environment variables with safe defaults."""
@@ -93,6 +99,17 @@ class Settings:
                         f"Insecure HTTP origin '{origin}' is strictly prohibited in production CORS settings (must use HTTPS)."
                     )
 
+        # Ollama settings from environment
+        ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
+        ollama_model = os.getenv("OLLAMA_MODEL", "gemma3:12b").strip()
+        try:
+            ollama_timeout = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "30.0"))
+        except ValueError:
+            ollama_timeout = 30.0
+
+        ollama_enabled_raw = os.getenv("OLLAMA_ENABLED", "true").lower()
+        ollama_enabled = ollama_enabled_raw in ("1", "true", "yes", "on")
+
         return cls(
             app_name=os.getenv("APP_NAME", "Indian Stock Market Prediction System"),
             environment=env,
@@ -104,6 +121,10 @@ class Settings:
             model_dir=resolved_model_dir,
             database_path=resolved_db_path,
             cors_origins=cors_list,
+            ollama_base_url=ollama_base_url,
+            ollama_model=ollama_model,
+            ollama_timeout_seconds=ollama_timeout,
+            ollama_enabled=ollama_enabled,
         )
 
     def is_production(self) -> bool:

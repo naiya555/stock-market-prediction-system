@@ -27,6 +27,10 @@ def test_default_settings_load():
     assert settings.model_dir.name == "models"
     assert settings.database_path.name == "predictions.db"
     assert settings.is_production() is False
+    assert settings.ollama_base_url == "http://127.0.0.1:11434"
+    assert settings.ollama_model == "gemma3:12b"
+    assert settings.ollama_timeout_seconds == 30.0
+    assert settings.ollama_enabled is True
 
 
 def test_settings_environment_override(monkeypatch):
@@ -38,6 +42,10 @@ def test_settings_environment_override(monkeypatch):
     monkeypatch.setenv("APP_TIMEZONE", "UTC")
     monkeypatch.setenv("APP_MODEL_DIR", "custom_models")
     monkeypatch.setenv("DATABASE_PATH", "custom_data/custom_predictions.db")
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://192.168.1.100:11434")
+    monkeypatch.setenv("OLLAMA_MODEL", "gemma3:12b-instruct")
+    monkeypatch.setenv("OLLAMA_TIMEOUT_SECONDS", "45.0")
+    monkeypatch.setenv("OLLAMA_ENABLED", "false")
 
     settings = Settings.from_env()
     assert settings.app_name == "Test Prediction System"
@@ -48,6 +56,10 @@ def test_settings_environment_override(monkeypatch):
     assert settings.model_dir.name == "custom_models"
     assert settings.database_path.name == "custom_predictions.db"
     assert settings.is_production() is True
+    assert settings.ollama_base_url == "http://192.168.1.100:11434"
+    assert settings.ollama_model == "gemma3:12b-instruct"
+    assert settings.ollama_timeout_seconds == 45.0
+    assert settings.ollama_enabled is False
 
 
 def test_settings_relative_paths_resolve_against_project_root(monkeypatch):

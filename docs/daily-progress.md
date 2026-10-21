@@ -4985,3 +4985,80 @@ The official Nifty Indices historical response returns `OPEN`, `HIGH`, and `LOW`
 ### 4. Phase 16 Status
 **Phase 16 remains strictly IN PROGRESS.**
 Remediation of Nifty Telecommunications data integrity is complete. The 84-day roadmap and Phase 16 external staging criteria remain unchanged.
+
+---
+
+## Day 54 — Local LLM Integration: Environment and Architecture Audit
+
+### 1. Objective & Baseline Verification
+Prepare the project for local LLM integration using Ollama and Gemma 3 12B (`gemma3:12b`). Verify the local runtime environment, audit existing LLM and ensemble abstractions, and establish a safe, testable integration boundary with zero-cost local execution before connecting the LLM to the prediction workflow.
+- **Baseline Commit Verified:** `9f73200` (Day 53 Nifty Telecommunications Data Integrity Remediation).
+- **Working Tree:** Clean, synchronized with `origin/main`.
+- **Roadmap Invariant:** The original 84-day roadmap is preserved. Phase 16 remains strictly **IN PROGRESS**.
+
+### 2. Local Environment & Hardware Audit
+- **Ollama Runtime:**
+  - Installed and reachable at `http://127.0.0.1:11434`.
+  - Version: `0.40.6` (verified via `ollama --version` and `GET http://127.0.0.1:11434/api/version`).
+- **Model Availability:**
+  - `gemma3:12b` is **already pulled and resident locally**:
+    - Tag: `gemma3:12b:latest`
+    - Model ID: `f4031aab637d`
+    - Architecture: Gemma 3 (12.2B parameters, Q4_K_M quantization)
+    - Local Size: 8.15 GB
+  - **Zero Cloud / Cost Guarantee:** No models were downloaded; zero cloud/API costs incurred.
+- **System Resources:**
+  - System RAM: 16.0 GB total (~2.5 GB free physical memory under current OS load).
+  - GPU: NVIDIA GeForce RTX 5050 Laptop GPU (Driver Version: 576.88).
+  - VRAM: 8,151 MiB total (~7,862 MiB free, 289 MiB utilized).
+  - Execution Feasibility: Gemma 3 12B in Q4_K_M fits into ~8.15 GB. When loaded, Ollama dynamically splits layers between GPU VRAM (~7.5 GB offloaded) and system RAM as needed.
+
+### 3. Integration Contract & Governance Boundary
+Audit of `app/llm` and `app/prediction/ensemble.py` confirmed that high-level qualitative reasoning interfaces were established in Days 31–32. Day 54 formalizes and hardens the integration contract:
+1. **Environment-Driven Configuration (`app/core/config.py`):**
+   - `OLLAMA_BASE_URL` (default: `http://127.0.0.1:11434`): Ollama daemon endpoint.
+   - `OLLAMA_MODEL` (default: `gemma3:12b`): Local model identifier.
+   - `OLLAMA_TIMEOUT_SECONDS` (default: `30.0`): Explicit connection and response timeout.
+   - `OLLAMA_ENABLED` (default: `True`): Master toggle for offline or bypass execution.
+2. **Typed Availability & Model Verification (`app/llm/client.py`):**
+   - Added `LLMModelUnavailableError(LLMClientError)` to distinguish missing models from network or daemon failures.
+   - Implemented `is_available()` and `check_model_availability()` to query `GET /api/tags`, verifying that the configured model is installed locally before triggering generation.
+   - Implemented `get_status()` returning sanitized operational diagnostics (`enabled`, `model`, `base_url`, `timeout_seconds`, `reachable`, `model_available`) with zero secret leakage.
+3. **Disabled & Failure Isolation:**
+   - When `OLLAMA_ENABLED=False` or `enabled=False` is passed, `OllamaLLMClient` immediately raises `LLMClientError("Ollama LLM client is disabled by configuration")` without attempting network calls.
+   - `EnsembleService.predict_ensemble()` catches all `LLMClientError` subclasses (including timeouts, unreachability, disabled state, and missing models), logs a diagnostic warning, and degrades seamlessly to `ML_ONLY` mode (100% quantitative weight).
+4. **Intended Role & Strict Separation:**
+   - The LLM synthesizes supplied, verified point-in-time news and regulatory events into qualitative factors and risks.
+   - The LLM **never**:
+     - Invents market prices, volumes, or official regulatory statements.
+     - Replaces or alters quantitative ML features or probabilities.
+     - Presents generated opinions as verified market facts.
+     - Overwrites verified historical records in `data/predictions.db`.
+
+### 4. Empirical Verification & Test Results
+- **Unit & Integration Tests:**
+  - Added unit tests in `tests/test_core.py` covering Ollama configuration and environment variable overrides.
+  - Added 6 unit tests in `tests/test_llm_service.py` verifying disabled client execution, model availability tag queries, 404/not-found mapping to `LLMModelUnavailableError`, and sanitized status reporting.
+  - Added 2 integration tests in `tests/test_ensemble_service.py` confirming graceful fallback to `ML_ONLY` when the LLM is disabled or the model is missing.
+- **Full Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **676 passed**, 1 warning in 28.70s across all 47 test modules (+8 new tests since Day 53). Zero failures, zero regressions.
+- **Dependency Audit:**
+  ```powershell
+  .\.venv\Scripts\python -m pip check
+  ```
+  `No broken requirements found.`
+- **Git Diff Hygiene Check:**
+  ```powershell
+  git diff --check
+  ```
+  `Clean (0 whitespace errors).`
+- **Protected File Integrity Checks:**
+  - `data/predictions.db`: SHA-256 `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (100% UNCHANGED).
+  - `models/.gitkeep`: SHA-256 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (100% UNCHANGED).
+
+### 5. Phase 16 Status & Next Steps
+**Phase 16 remains strictly IN PROGRESS.**
+Environment audit, model verification, and safe isolation contracts for local Ollama integration are established and verified. Next step: Connect verified local LLM inference to live contextual inputs in subsequent scheduled phases while maintaining complete offline testability.

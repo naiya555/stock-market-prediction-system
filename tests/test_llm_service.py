@@ -24,6 +24,7 @@ from app.llm.client import (
     BaseLLMClient,
     LLMClientError,
     LLMError,
+    LLMModelUnavailableError,
     LLMResponseError,
     MockLLMClient,
     OllamaLLMClient,
@@ -187,17 +188,17 @@ class TestLLMClients:
 
     def test_ollama_client_http_error(self) -> None:
         def http_error_opener(req: urllib.request.Request, timeout: float) -> None:
-            fp = io.BytesIO(b'{"error": "model gemma3:12b not found"}')
+            fp = io.BytesIO(b'{"error": "CUDA out of memory"}')
             raise urllib.error.HTTPError(
                 url="http://127.0.0.1:11434/api/generate",
-                code=404,
-                msg="Not Found",
+                code=500,
+                msg="Internal Server Error",
                 hdrs={},  # type: ignore
                 fp=fp,
             )
 
         client = OllamaLLMClient(http_opener=http_error_opener)
-        with pytest.raises(LLMClientError, match="Ollama HTTP error 404"):
+        with pytest.raises(LLMClientError, match="Ollama HTTP error 500"):
             client.generate("Hello")
 
     def test_ollama_client_malformed_json_response(self) -> None:
@@ -244,6 +245,102 @@ class TestLLMClients:
 
         client_bad = OllamaLLMClient(http_opener=failing_opener)
         assert client_bad.is_available() is False
+
+    def test_ollama_client_disabled_via_config(self) -> None:
+        """Disabled Ollama client immediately reports unavailable and refuses generation."""
+        client_disabled = OllamaLLMClient(enabled=False)
+        assert client_disabled.is_enabled is False
+        assert client_disabled.is_available() is False
+        assert client_disabled.check_model_availability() is False
+        with pytest.raises(LLMClientError, match="disabled via configuration"):
+            client_disabled.generate("Should not execute")
+
+    def test_ollama_client_disabled_via_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Environment variable OLLAMA_ENABLED=false disables client."""
+        monkeypatch.setenv("OLLAMA_ENABLED", "false")
+        client = OllamaLLMClient()
+        assert client.is_enabled is False
+        assert client.is_available() is False
+
+    def test_ollama_client_model_unavailable_error(self) -> None:
+        """HTTP 404 or model not found error raises LLMModelUnavailableError."""
+        def not_found_opener(req: urllib.request.Request, timeout: float) -> None:
+            fp = io.BytesIO(b'{"error": "model \'gemma3:12b\' not found, try pulling it first"}')
+            raise urllib.error.HTTPError(
+                url="http://127.0.0.1:11434/api/generate",
+                code=404,
+                msg="Not Found",
+                hdrs={},  # type: ignore
+                fp=fp,
+            )
+
+        client = OllamaLLMClient(http_opener=not_found_opener)
+        with pytest.raises(LLMModelUnavailableError, match="not available in Ollama"):
+            client.generate("Test prompt")
+
+    def test_ollama_client_check_model_availability(self) -> None:
+        """check_model_availability verifies presence of model in Ollama tags list."""
+        class FakeTagsResponse:
+            status = 200
+            def __init__(self, models: list) -> None:
+                self._data = json.dumps({"models": models}).encode("utf-8")
+            def read(self) -> bytes:
+                return self._data
+            def __enter__(self) -> "FakeTagsResponse":
+                return self
+            def __exit__(self, *args: Any) -> None:
+                pass
+
+        # 1. Model present
+        opener_has_model = lambda req, timeout: FakeTagsResponse([{"name": "gemma3:12b"}])
+        c1 = OllamaLLMClient(model_name="gemma3:12b", http_opener=opener_has_model)
+        assert c1.check_model_availability() is True
+
+        # 2. Model missing
+        opener_no_model = lambda req, timeout: FakeTagsResponse([{"name": "llama3:8b"}])
+        c2 = OllamaLLMClient(model_name="gemma3:12b", http_opener=opener_no_model)
+        assert c2.check_model_availability() is False
+
+    def test_ollama_client_get_status_diagnostics(self) -> None:
+        """get_status emits safe structured diagnostics without exposing secrets."""
+        class FakeHealthyTags:
+            status = 200
+            def read(self) -> bytes:
+                return json.dumps({"models": [{"name": "gemma3:12b"}]}).encode("utf-8")
+            def __enter__(self) -> "FakeHealthyTags":
+                return self
+            def __exit__(self, *args: Any) -> None:
+                pass
+
+        client = OllamaLLMClient(
+            base_url="http://127.0.0.1:11434",
+            model_name="gemma3:12b",
+            timeout_seconds=25.0,
+            http_opener=lambda req, timeout: FakeHealthyTags(),
+        )
+        status = client.get_status()
+        assert status["provider"] == "ollama"
+        assert status["base_url"] == "http://127.0.0.1:11434"
+        assert status["model"] == "gemma3:12b"
+        assert status["enabled"] is True
+        assert status["reachable"] is True
+        assert status["model_available"] is True
+        assert status["timeout_seconds"] == 25.0
+
+    def test_mock_client_status_and_disabled(self) -> None:
+        """MockLLMClient supports enabled flag and get_status."""
+        m_enabled = MockLLMClient()
+        assert m_enabled.is_available() is True
+        assert m_enabled.check_model_availability() is True
+        st = m_enabled.get_status()
+        assert st["provider"] == "mock"
+        assert st["enabled"] is True
+
+        m_disabled = MockLLMClient(enabled=False)
+        assert m_disabled.is_available() is False
+        assert m_disabled.check_model_availability() is False
+        with pytest.raises(LLMClientError, match="disabled via configuration"):
+            m_disabled.generate("Prompt")
 
 
 # ==============================================================================

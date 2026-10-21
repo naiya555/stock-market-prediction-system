@@ -1100,8 +1100,15 @@ Phase 11 implements the local LLM integration foundation, connecting the local O
 - **Architectural Tenets:**
   1. **Standard Library Over Framework Bloat:** Uses native `urllib.request` rather than heavy third-party agent frameworks (LangChain, LlamaIndex), preserving the lean, high-performance architecture mandated by Ponytail / Senior Dev rules.
   2. **Security & Anti-Prompt-Injection:** Qualitative context from news feeds is explicitly encapsulated inside XML-like `<source_context>` tags with delimiter neutralization. System prompts strictly instruct the LLM to treat source text as untrusted data rather than system directives.
-  3. **Zero Fabrication & Error Integrity:** In the event of network disruption, daemon unavailability, or malformed JSON responses, the service raises typed errors (`LLMClientError`, `LLMParseError`, `LLMValidationError`). Under no circumstances is a synthetic "NEUTRAL" or fabricated reasoning summary substituted.
+  3. **Zero Fabrication & Error Integrity:** In the event of network disruption, daemon unavailability, or malformed JSON responses, the service raises typed errors (`LLMClientError`, `LLMModelUnavailableError`, `LLMParseError`, `LLMValidationError`). Under no circumstances is a synthetic "NEUTRAL" or fabricated reasoning summary substituted.
   4. **Strict Temporal Integrity:** Callers must pass news and events filtered by existing point-in-time engines (`filter_news_point_in_time`, `filter_events_point_in_time`). Qualitative reasoning can never access future-published information.
+  5. **Environment-Driven Configuration Contract (Day 54):** All runtime parameters are governed by typed settings in `app/core/config.py` read from environment variables:
+     - `OLLAMA_BASE_URL` (default: `http://127.0.0.1:11434`): Ollama daemon HTTP endpoint.
+     - `OLLAMA_MODEL` (default: `gemma3:12b`): Target local model tag.
+     - `OLLAMA_TIMEOUT_SECONDS` (default: `30.0`): Explicit connection and response timeout.
+     - `OLLAMA_ENABLED` (default: `True`): Global toggle allowing immediate offline bypass.
+  6. **Proactive Model Verification & Sanitized Diagnostics (Day 54):** `OllamaLLMClient` provides `is_available()` and `check_model_availability()` querying `/api/tags` to ensure the requested model is pulled and resident before inference, raising `LLMModelUnavailableError` on 404 or missing tag. `get_status()` exposes sanitized operational readiness without leaking secrets or system paths.
+  7. **Resilient Degradation Boundary:** When Ollama is unreachable, disabled, or the model is missing, `EnsembleService` automatically catches the exception, logs a warning, and falls back cleanly to `ML_ONLY` prediction mode with 100% quantitative weight, guaranteeing zero interruption to the production prediction API.
 
 ---
 
