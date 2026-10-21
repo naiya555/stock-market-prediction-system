@@ -49,6 +49,10 @@ from scripts.staging_soak_test import (
 )
 
 
+ES_CONTINUOUS = 0x80000000
+ES_SYSTEM_REQUIRED = 0x00000001
+
+
 @contextlib.contextmanager
 def prevent_windows_sleep():
     """Temporarily prevent Windows from entering idle sleep during test execution.
@@ -58,23 +62,31 @@ def prevent_windows_sleep():
     persistent system power settings.
     """
     enabled = False
+    kernel32 = None
     if sys.platform == "win32":
         try:
             import ctypes
-            ES_CONTINUOUS = 0x80000000
-            ES_SYSTEM_REQUIRED = 0x00000001
-            ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
-            enabled = True
+            windll = getattr(ctypes, "windll", None)
+            if windll is not None and hasattr(windll, "kernel32"):
+                kernel32 = windll.kernel32
+                kernel32.SetThreadExecutionState.restype = ctypes.c_uint32
+                kernel32.SetThreadExecutionState.argtypes = [ctypes.c_uint32]
+
+                prev_state = kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
+                if prev_state != 0:
+                    confirmed_state = kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
+                    if confirmed_state != 0 and (confirmed_state & ES_SYSTEM_REQUIRED):
+                        enabled = True
+                    else:
+                        kernel32.SetThreadExecutionState(ES_CONTINUOUS)
         except Exception:
             enabled = False
     try:
         yield enabled
     finally:
-        if enabled:
+        if enabled and kernel32 is not None:
             try:
-                import ctypes
-                ES_CONTINUOUS = 0x80000000
-                ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
+                kernel32.SetThreadExecutionState(ES_CONTINUOUS)
             except Exception:
                 pass
 
@@ -752,7 +764,7 @@ def main() -> int:
     print(f"  Monotonic Elapsed:      {report.load_test_duration_seconds:.2f} s")
     print(f"  Active Duration:        {report.active_duration_seconds:.2f} s")
     print(f"  Suspension Gap:         {report.suspension_gap_seconds:.2f} s ({'DETECTED' if report.suspension_detected else 'None detected'})")
-    print(f"  Sleep Prevention:       {'ACTIVE (Win32 ES_CONTINUOUS|ES_SYSTEM_REQUIRED)' if report.sleep_prevention_active else 'INACTIVE / Non-Windows'}")
+    print(f"  Sleep Prevention:       {'ACTIVE (Win32 ES_CONTINUOUS|ES_SYSTEM_REQUIRED)' if report.sleep_prevention_active else 'INACTIVE / Non-Windows or API call failed'}")
     print(f"  Run Integrity:          {'INCOMPLETE / INTERRUPTED' if report.is_interrupted else 'COMPLETE (Uninterrupted)'}")
     if report.is_interrupted:
         print(f"  Interruption Reason:    {report.interruption_reason}")

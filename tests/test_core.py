@@ -25,6 +25,7 @@ def test_default_settings_load():
     assert settings.timezone == "Asia/Kolkata"
     assert settings.data_dir.name == "data"
     assert settings.model_dir.name == "models"
+    assert settings.database_path.name == "predictions.db"
     assert settings.is_production() is False
 
 
@@ -35,6 +36,8 @@ def test_settings_environment_override(monkeypatch):
     monkeypatch.setenv("APP_DEBUG", "true")
     monkeypatch.setenv("APP_LOG_LEVEL", "DEBUG")
     monkeypatch.setenv("APP_TIMEZONE", "UTC")
+    monkeypatch.setenv("APP_MODEL_DIR", "custom_models")
+    monkeypatch.setenv("DATABASE_PATH", "custom_data/custom_predictions.db")
 
     settings = Settings.from_env()
     assert settings.app_name == "Test Prediction System"
@@ -42,6 +45,8 @@ def test_settings_environment_override(monkeypatch):
     assert settings.debug is True
     assert settings.log_level == "DEBUG"
     assert settings.timezone == "UTC"
+    assert settings.model_dir.name == "custom_models"
+    assert settings.database_path.name == "custom_predictions.db"
     assert settings.is_production() is True
 
 

@@ -206,12 +206,115 @@ def test_prevent_windows_sleep_safety():
         assert isinstance(active, bool)
 
 
-def test_prevent_windows_sleep_exception_propagation():
-    """Verify prevent_windows_sleep propagates exceptions cleanly without RuntimeError after throw."""
+def test_prevent_windows_sleep_successful_activation():
+    """Verify successful activation on Windows when API succeeds and flags are accepted."""
+    from scripts.run_local_staging import ES_CONTINUOUS, ES_SYSTEM_REQUIRED, prevent_windows_sleep
+
+    mock_kernel32 = MagicMock()
+    # Call 1 (prev state): 0x80000000; Call 2 (confirmed state): 0x80000001; Cleanup call: 0x80000000
+    mock_kernel32.SetThreadExecutionState.side_effect = [0x80000000, 0x80000001, 0x80000000]
+
+    mock_windll = MagicMock()
+    mock_windll.kernel32 = mock_kernel32
+
+    with patch("sys.platform", "win32"):
+        with patch("ctypes.windll", mock_windll, create=True):
+            with prevent_windows_sleep() as active:
+                assert active is True
+                assert mock_kernel32.SetThreadExecutionState.call_count == 2
+                # Check arguments
+                mock_kernel32.SetThreadExecutionState.assert_any_call(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
+
+            # After exit, cleanup must restore ES_CONTINUOUS
+            assert mock_kernel32.SetThreadExecutionState.call_count == 3
+            mock_kernel32.SetThreadExecutionState.assert_called_with(ES_CONTINUOUS)
+
+
+def test_prevent_windows_sleep_api_failure_zero_return():
+    """Verify sleep prevention yields False and avoids invalid cleanup when API call returns 0."""
     from scripts.run_local_staging import prevent_windows_sleep
-    with pytest.raises(RuntimeError, match="custom_sleep_test_error"):
-        with prevent_windows_sleep():
-            raise RuntimeError("custom_sleep_test_error")
+
+    mock_kernel32 = MagicMock()
+    mock_kernel32.SetThreadExecutionState.return_value = 0  # NULL / failure
+
+    mock_windll = MagicMock()
+    mock_windll.kernel32 = mock_kernel32
+
+    with patch("sys.platform", "win32"):
+        with patch("ctypes.windll", mock_windll, create=True):
+            with prevent_windows_sleep() as active:
+                assert active is False
+
+            # Cleanup should NOT be attempted when activation failed
+            assert mock_kernel32.SetThreadExecutionState.call_count == 1
+
+
+def test_prevent_windows_sleep_api_failure_flags_rejected():
+    """Verify sleep prevention yields False and resets state when required flags are rejected."""
+    from scripts.run_local_staging import ES_CONTINUOUS, prevent_windows_sleep
+
+    mock_kernel32 = MagicMock()
+    # Call 1 succeeds (0x80000000), but Call 2 shows flag was not accepted (still 0x80000000 without 0x1)
+    mock_kernel32.SetThreadExecutionState.side_effect = [0x80000000, 0x80000000, 0x80000000]
+
+    mock_windll = MagicMock()
+    mock_windll.kernel32 = mock_kernel32
+
+    with patch("sys.platform", "win32"):
+        with patch("ctypes.windll", mock_windll, create=True):
+            with prevent_windows_sleep() as active:
+                assert active is False
+
+            # State was reset to ES_CONTINUOUS upon rejection
+            mock_kernel32.SetThreadExecutionState.assert_called_with(ES_CONTINUOUS)
+
+
+def test_prevent_windows_sleep_api_exception_handled():
+    """Verify ctypes/OS exceptions during API call are handled safely without unhandled errors."""
+    from scripts.run_local_staging import prevent_windows_sleep
+
+    mock_kernel32 = MagicMock()
+    mock_kernel32.SetThreadExecutionState.side_effect = OSError("Access denied")
+
+    mock_windll = MagicMock()
+    mock_windll.kernel32 = mock_kernel32
+
+    with patch("sys.platform", "win32"):
+        with patch("ctypes.windll", mock_windll, create=True):
+            with prevent_windows_sleep() as active:
+                assert active is False
+
+
+@pytest.mark.parametrize("unsupported_platform", ["linux", "darwin", "freebsd"])
+def test_prevent_windows_sleep_unsupported_platforms(unsupported_platform):
+    """Verify non-Windows platforms safely yield False without invoking Windows APIs."""
+    from scripts.run_local_staging import prevent_windows_sleep
+
+    with patch("sys.platform", unsupported_platform):
+        with prevent_windows_sleep() as active:
+            assert active is False
+
+
+def test_prevent_windows_sleep_exception_propagation_and_cleanup():
+    """Verify exceptions inside block propagate cleanly and execution-state cleanup runs."""
+    from scripts.run_local_staging import ES_CONTINUOUS, prevent_windows_sleep
+
+    mock_kernel32 = MagicMock()
+    mock_kernel32.SetThreadExecutionState.side_effect = [0x80000000, 0x80000001, 0x80000000]
+
+    mock_windll = MagicMock()
+    mock_windll.kernel32 = mock_kernel32
+
+    with patch("sys.platform", "win32"):
+        with patch("ctypes.windll", mock_windll, create=True):
+            with pytest.raises(RuntimeError, match="interrupted_run_simulation"):
+                with prevent_windows_sleep() as active:
+                    assert active is True
+                    raise RuntimeError("interrupted_run_simulation")
+
+            # Cleanup must run even on unhandled exception
+            assert mock_kernel32.SetThreadExecutionState.call_count == 3
+            mock_kernel32.SetThreadExecutionState.assert_called_with(ES_CONTINUOUS)
 
 
 def test_interruption_and_suspension_detection_classification():

@@ -4586,4 +4586,71 @@ Audit all open CodeRabbit review findings, harden the local staging runner and c
 Zero-cost deployment packaging, configuration templates, and local staging validation are verified and complete. The final acceptance criterion — a multi-hour soak test on dedicated production-equivalent external infrastructure during live NSE market hours — remains pending external infrastructure provisioning.
 
 ### Next Step
+Execute Day 48 CodeRabbit review audit, verify deployment safety, and align configuration and backup procedures.
+
+---
+
+## Day 48 - CodeRabbit Findings Remediation & Deployment Safety Verification
+
+### Goal
+Review and resolve the four CodeRabbit review findings on deployment packaging and staging reliability: replace machine-specific template links with repository-relative paths, align model directory variables, harden Windows sleep prevention state tracking and API return value handling, align production database configuration with backup/disaster recovery procedures, and empirically verify deployment safety while keeping Phase 16 strictly in progress under zero-cost constraints.
+
+### 1. Git Baseline & Initial Integrity Check
+- **Baseline Commit:** `ae95719` (`feat(phase-16): audit coderabbit findings and add zero-cost deployment packaging`)
+- **Remote Synchronization:** Working tree clean; local `main` synchronized with `origin/main` at `ae9571938b2d2aa767652c0bd8cfa4fddbb6cf6e`.
+- **Pre-Test Data Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e`
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
+
+---
+
+### 2. CodeRabbit Review Findings & Remediation Matrix
+
+| Finding | Affected Location | Root Cause | Remediation & Fix | Test Verification |
+| :--- | :--- | :--- | :--- | :--- |
+| **Finding A: Template Link** | [`docs/deployment-runbook.md`](docs/deployment-runbook.md) | Absolute file URI (`file:///d:/...`) was machine-specific and broke on non-Windows/other environments. | Replaced with repository-relative markdown link (`[`.env.production.example`](../.env.production.example)`). Verified file exists on disk. | Added `test_deployment_runbook_consistency_and_links()` verifying all links resolve without `file:///` or drive letters. |
+| **Finding B: Model-Directory Variable** | [`docs/deployment-runbook.md`](docs/deployment-runbook.md), [`app/core/config.py`](app/core/config.py) | Runbook referenced `MODEL_DIR`, while deployment template and config used `APP_MODEL_DIR`. | Aligned runbook table, Bash/PowerShell commands, and tests to `APP_MODEL_DIR`. Added fallback in `Settings.from_env()`. Documented default (`models/`) and override behavior. | `test_core.py::test_settings_environment_override`, `test_deployment_runbook.py::test_health_check_with_isolated_storage`. |
+| **Finding C: Windows Sleep Prevention** | [`scripts/run_local_staging.py`](scripts/run_local_staging.py) | `prevent_windows_sleep` ignored Win32 API return value (could return 0 or fail to accept flags), silently claiming machine was kept awake. | Configured `kernel32.SetThreadExecutionState.restype = ctypes.c_uint32`, verified non-zero return value, and confirmed `ES_SYSTEM_REQUIRED` was accepted via second query call. If rejected or failed, safely yields `False` and restores continuous state. Handled unsupported platforms safely. | Added 7 deterministic tests in `tests/test_local_staging.py` covering successful activation, zero-return failure, flag rejection, API exception, non-Windows platforms, and exception propagation/cleanup. |
+| **Finding D: Database Backup Path** | [`.env.production.example`](.env.production.example), [`docs/deployment-runbook.md`](docs/deployment-runbook.md), [`app/core/config.py`](app/core/config.py), [`app/database/connection.py`](app/database/connection.py) | Runbook backup commands targeted `/var/lib/stock-predictor/predictions.db`, whereas template set `APP_DATA_DIR=/var/lib/stock-predictor/data` and `DATABASE_PATH=/var/lib/stock-predictor/data/predictions.db`. App lacked direct `DATABASE_PATH` wiring. | Added `database_path` to `Settings` with fallback to `resolved_data_dir / "predictions.db"`. Updated `get_default_db_path()` to return `settings.database_path`. Aligned runbook backup/restore/wal commands to `/var/lib/stock-predictor/data/predictions.db`. | `test_deployment_runbook_consistency_and_links`, `test_health_check_with_isolated_storage` (verifying isolated temporary db path). |
+
+---
+
+### 3. Empirical Verification & Test Results
+
+- **Full Regression Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **628 passed**, 1 warning (`StarletteDeprecationWarning`) in 42.89s across 45 test files (+8 tests since Day 47/49). Zero failures, zero regressions.
+- **Dependency Audit:**
+  ```powershell
+  .\.venv\Scripts\python -m pip check
+  ```
+  `No broken requirements found.`
+- **Git Diff Hygiene Check:**
+  ```powershell
+  git diff --check
+  ```
+  `Clean (0 whitespace errors, 0 trailing blank lines).`
+- **Local Staging Smoke Test:**
+  ```powershell
+  .\.venv\Scripts\python scripts/run_local_staging.py --host 127.0.0.1 --port 8899 --requests 20 --concurrency 2
+  ```
+  - **Checklist:** All 8 items **PASS** (Loopback, Startup, Health, Security Headers, Docs 404, Smoke Tests, Dev DB Untouched, Models Untouched).
+  - **Sleep Prevention:** `ACTIVE (Win32 ES_CONTINUOUS|ES_SYSTEM_REQUIRED)`.
+  - **Requests:** 20/20 completed (100.00% 2xx, 0 errors, 103.87 req/s, p50: 18.50ms, p95: 26.57ms).
+- **Data & Model Immutability Verification:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% Match — 0 bytes mutated**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% Match — 0 bytes mutated**)
+- **Zero-Cost & Credential Controls:**
+  - No secrets, API keys, passwords, paid services, or cloud infrastructure introduced.
+
+---
+
+### 4. Phase 16 Status & Remaining Blockers
+
+**Phase 16 remains strictly IN PROGRESS.**
+All local staging reliability, configuration templates, and review findings are remediated and verified. Formal Phase 16 completion and milestone sign-off await provisioning of dedicated external staging infrastructure for the multi-hour soak test during live NSE market hours.
+
+### Next Step
 Await provisioning of dedicated external staging infrastructure or operator direction for Phase 16 final milestone audit.

@@ -15,7 +15,7 @@ from app.core.config import get_settings
 def get_default_db_path() -> Path:
     """Return the default SQLite database path configured in settings."""
     settings = get_settings()
-    return settings.data_dir / "predictions.db"
+    return settings.database_path
 
 
 def create_connection(

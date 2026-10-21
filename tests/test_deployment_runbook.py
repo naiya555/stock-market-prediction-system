@@ -65,11 +65,14 @@ def test_health_check_with_isolated_storage():
             os.environ,
             {
                 "DATABASE_PATH": str(temp_db),
-                "MODEL_DIR": str(temp_models),
+                "APP_MODEL_DIR": str(temp_models),
                 "APP_ENV": "development",
             },
         ):
-            get_settings(reload=True)
+            settings = get_settings(reload=True)
+            assert settings.database_path == temp_db
+            assert settings.model_dir == temp_models
+
             app = create_app()
             client = TestClient(app)
 
@@ -101,11 +104,14 @@ def test_soak_external_http_execution_and_data_isolation():
             os.environ,
             {
                 "DATABASE_PATH": str(temp_db),
-                "MODEL_DIR": str(temp_models),
+                "APP_MODEL_DIR": str(temp_models),
                 "APP_ENV": "development",
             },
         ):
-            get_settings(reload=True)
+            settings = get_settings(reload=True)
+            assert settings.database_path == temp_db
+            assert settings.model_dir == temp_models
+
             app = create_app()
 
             config = uvicorn.Config(app=app, host="127.0.0.1", port=test_port, log_level="warning")
@@ -131,12 +137,13 @@ def test_soak_external_http_execution_and_data_isolation():
             assert server_ready is True, "Test Uvicorn server failed to initialize on test port."
 
             try:
-                # Execute bounded soak simulation over real TCP sockets
+                # Execute bounded soak simulation over real TCP sockets with resilient read timeout
                 summary = run_soak_simulation(
                     total_requests=20,
                     concurrency=3,
                     base_url=base_url,
                     in_process=False,
+                    request_timeout=(2.0, 15.0),
                 )
 
                 assert summary.total_requests == 20
@@ -204,6 +211,45 @@ def test_env_templates_hygiene_and_security():
     for token in forbidden_tokens:
         assert token not in dev_content.lower()
         assert token not in prod_content.lower()
+
+    # 6. Storage variables alignment
+    assert "APP_MODEL_DIR" in dev_content
+    assert "APP_MODEL_DIR=" in prod_content
+    assert "APP_DATA_DIR=" in prod_content
+    assert "DATABASE_PATH=/var/lib/stock-predictor/data/predictions.db" in prod_content
+
+
+def test_deployment_runbook_consistency_and_links():
+    """Verify deployment runbook links exist, no absolute paths, and configuration variables are aligned."""
+    import re
+    project_root = Path(__file__).resolve().parent.parent
+    runbook_path = project_root / "docs" / "deployment-runbook.md"
+    assert runbook_path.exists(), "docs/deployment-runbook.md must exist."
+    content = runbook_path.read_text(encoding="utf-8")
+
+    # 1. No machine-specific absolute file URIs or windows drive letters in links
+    assert "file:///" not in content
+    assert "d:/share_market_predictor" not in content.lower()
+
+    # 2. All markdown links must resolve to existing files
+    links = re.findall(r'\[([^\]]+)\]\(([^)]+)\)', content)
+    assert len(links) > 0, "Runbook should contain reference links."
+    docs_dir = runbook_path.parent
+    for text, link in links:
+        if link.startswith("#"):
+            continue
+        resolved_link = (docs_dir / link).resolve()
+        assert resolved_link.exists(), f"Broken link in runbook: {text} -> {link} (resolved: {resolved_link})"
+
+    # 3. Model directory variable consistency
+    assert "APP_MODEL_DIR" in content
+    assert 'export APP_MODEL_DIR="/var/lib/stock-predictor/models"' in content
+    assert '$env:APP_MODEL_DIR = "models"' in content
+
+    # 4. Database path alignment across runbook, template, and recovery
+    assert "DATABASE_PATH" in content
+    assert "/var/lib/stock-predictor/data/predictions.db" in content
+    assert 'sqlite3 /var/lib/stock-predictor/data/predictions.db ".backup' in content
 
 
 def test_gitignore_deployment_safeguards():

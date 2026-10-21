@@ -329,6 +329,7 @@ def run_soak_simulation(
     concurrency: int = 5,
     base_url: Optional[str] = None,
     in_process: bool = True,
+    request_timeout: Union[float, Tuple[float, float]] = (2.0, 5.0),
 ) -> SoakSummary:
     """Run a bounded soak load test either in-process or against a target base URL."""
     summary = SoakSummary(total_requests=total_requests)
@@ -371,6 +372,7 @@ def run_soak_simulation(
             method=scenario["method"],
             path=scenario["path"],
             payload=scenario["payload"],
+            timeout=request_timeout,
             session=session,
         )
 

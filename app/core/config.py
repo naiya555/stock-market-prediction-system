@@ -33,6 +33,7 @@ class Settings:
     base_dir: Path = field(default_factory=lambda: PROJECT_ROOT)
     data_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "data")
     model_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "models")
+    database_path: Path = field(default_factory=lambda: PROJECT_ROOT / "data" / "predictions.db")
 
     # Security & CORS origins (restricted to trusted local web environments by default)
     cors_origins: tuple = field(
@@ -53,7 +54,12 @@ class Settings:
         timezone = os.getenv("APP_TIMEZONE", "Asia/Kolkata")
 
         custom_data_dir = os.getenv("APP_DATA_DIR")
-        custom_model_dir = os.getenv("APP_MODEL_DIR")
+        custom_model_dir = os.getenv("APP_MODEL_DIR") or os.getenv("MODEL_DIR")
+        custom_db_path = os.getenv("DATABASE_PATH")
+
+        resolved_data_dir = Path(custom_data_dir).resolve() if custom_data_dir else PROJECT_ROOT / "data"
+        resolved_model_dir = Path(custom_model_dir).resolve() if custom_model_dir else PROJECT_ROOT / "models"
+        resolved_db_path = Path(custom_db_path).resolve() if custom_db_path else resolved_data_dir / "predictions.db"
 
         cors_env = os.getenv("APP_CORS_ORIGINS")
         if cors_env:
@@ -84,8 +90,9 @@ class Settings:
             log_level=log_level,
             timezone=timezone,
             base_dir=PROJECT_ROOT,
-            data_dir=Path(custom_data_dir).resolve() if custom_data_dir else PROJECT_ROOT / "data",
-            model_dir=Path(custom_model_dir).resolve() if custom_model_dir else PROJECT_ROOT / "models",
+            data_dir=resolved_data_dir,
+            model_dir=resolved_model_dir,
+            database_path=resolved_db_path,
             cors_origins=cors_list,
         )
 

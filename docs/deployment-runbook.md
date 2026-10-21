@@ -43,7 +43,7 @@ The stock market directional prediction system is an on-premise / virtual-machin
 
 ## 2. Environment Variables & Production Defaults
 
-All configuration parameters are managed via environment variables and loaded through `app.core.config.Settings.from_env()`. A validated production template with safe placeholders is provided at [`.env.production.example`](file:///d:/Share_market_predictor/.env.production.example).
+All configuration parameters are managed via environment variables and loaded through `app.core.config.Settings.from_env()`. A validated production template with safe placeholders is provided at [`.env.production.example`](../.env.production.example).
 
 > [!SECURITY]
 > **Strict `.gitignore` Policy:** Real `.env` files (e.g. `.env`, `.env.production`, `.env.local`) are strictly excluded by `.gitignore` to prevent database paths, model locations, credentials, or internal domains from being committed to Git. Only `.env.example` and `.env.production.example` are tracked.
@@ -54,11 +54,16 @@ All configuration parameters are managed via environment variables and loaded th
 | `APP_ENV` | `production` | `development` | Setting to `production` disables OpenAPI `/docs`, `/redoc`, and `/openapi.json`, and enforces production CORS. |
 | `APP_DEBUG` | `false` | `false` | **Must be `false`**. Setting to `true` in production causes startup failure (`ValueError`). |
 | `APP_CORS_ORIGINS` | `https://trusted1.com,https://trusted2.com` | *None* | Comma-separated list of trusted origins. **Wildcards (`*`) and plain HTTP public origins are rejected at startup.** |
-| `DATABASE_PATH` | `/var/lib/stock-predictor/predictions.db` | `predictions.db` | Path to persistent SQLite database file. Must be on persistent SSD storage. |
-| `MODEL_DIR` | `/var/lib/stock-predictor/models` | `models` | Directory housing active model weights and archive subdirectories. |
+| `APP_DATA_DIR` | `/var/lib/stock-predictor/data` | `data` | Directory for persistent application data and default SQLite storage. |
+| `DATABASE_PATH` | `/var/lib/stock-predictor/data/predictions.db` | `<APP_DATA_DIR>/predictions.db` | Path to persistent SQLite database file. Defaults to `data/predictions.db` (or `<APP_DATA_DIR>/predictions.db`). Can be explicitly overridden. |
+| `APP_MODEL_DIR` | `/var/lib/stock-predictor/models` | `models` | Directory housing active model weights and archive subdirectories. Defaults to `models/` relative to project root. Can be overridden via `APP_MODEL_DIR`. |
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | `http://127.0.0.1:11434` | URL of local Ollama server running Gemma 3 12B. |
 | `OLLAMA_MODEL` | `gemma3:12b` | `gemma3:12b` | Target LLM model tag in Ollama. |
 | `LOG_LEVEL` | `INFO` | `INFO` | Logging level (`INFO`, `WARNING`, `ERROR`). |
+
+#### Storage & Path Configuration Notes
+- **Configurable Database Path (`DATABASE_PATH`):** By default, the application resolves its SQLite database to `predictions.db` inside `APP_DATA_DIR` (or `data/predictions.db` relative to the project root). Setting `DATABASE_PATH` explicitly overrides this and points the application directly to the specified file.
+- **Configurable Model Directory (`APP_MODEL_DIR`):** Defaults to `models/` relative to the project root. Operators can override this by setting `APP_MODEL_DIR` to an absolute path on a persistent SSD volume. For backward compatibility, `MODEL_DIR` is also accepted as a fallback if `APP_MODEL_DIR` is unset.
 
 ---
 
@@ -103,8 +108,9 @@ cp .env.production.example .env
 export APP_ENV=production
 export APP_DEBUG=false
 export APP_CORS_ORIGINS="https://trading.yourfirm.in"
-export DATABASE_PATH="/var/lib/stock-predictor/predictions.db"
-export MODEL_DIR="/var/lib/stock-predictor/models"
+export APP_DATA_DIR="/var/lib/stock-predictor/data"
+export APP_MODEL_DIR="/var/lib/stock-predictor/models"
+export DATABASE_PATH="/var/lib/stock-predictor/data/predictions.db"
 
 # Start Uvicorn ASGI server with 4 worker processes bound to localhost
 uvicorn app.api.app:app \
@@ -121,8 +127,9 @@ uvicorn app.api.app:app \
 $env:APP_ENV = "production"
 $env:APP_DEBUG = "false"
 $env:APP_CORS_ORIGINS = "https://trading.yourfirm.in"
+$env:APP_DATA_DIR = "data"
+$env:APP_MODEL_DIR = "models"
 $env:DATABASE_PATH = "data/predictions.db"
-$env:MODEL_DIR = "models"
 
 # Note: On Windows, single worker is recommended for local staging; multi-worker requires spawn-safe entrypoint
 python -m uvicorn app.api.app:app --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers
@@ -209,15 +216,15 @@ The SQLite database initializes automatically when `PredictionRepository` instan
 SQLite supports concurrent online backup without locking the database or taking the API offline:
 ```bash
 # Execute safe point-in-time online backup
-sqlite3 /var/lib/stock-predictor/predictions.db ".backup /var/backups/stock-predictor/predictions_$(date +%Y%m%d_%H%M%S).db"
+sqlite3 /var/lib/stock-predictor/data/predictions.db ".backup /var/backups/stock-predictor/predictions_$(date +%Y%m%d_%H%M%S).db"
 ```
 Schedule this command via `cron` daily at 00:00 UTC.
 
 ### 5.3 Disaster Recovery Procedure
 1. Stop Uvicorn service: `sudo systemctl stop stock-predictor`
-2. Move corrupt database file aside: `mv /var/lib/stock-predictor/predictions.db /var/lib/stock-predictor/predictions_corrupt.db`
-3. Restore last verified backup: `cp /var/backups/stock-predictor/predictions_latest.db /var/lib/stock-predictor/predictions.db`
-4. Verify database file integrity: `sqlite3 /var/lib/stock-predictor/predictions.db "PRAGMA integrity_check;"` (must output `ok`).
+2. Move corrupt database file aside: `mv /var/lib/stock-predictor/data/predictions.db /var/lib/stock-predictor/data/predictions_corrupt.db`
+3. Restore last verified backup: `cp /var/backups/stock-predictor/predictions_latest.db /var/lib/stock-predictor/data/predictions.db`
+4. Verify database file integrity: `sqlite3 /var/lib/stock-predictor/data/predictions.db "PRAGMA integrity_check;"` (must output `ok`).
 5. Restart Uvicorn service: `sudo systemctl start stock-predictor`
 6. Verify service health: `curl -s http://127.0.0.1:8000/api/health | jq .`
 
@@ -294,7 +301,7 @@ curl -s http://127.0.0.1:8000/api/health
 ### 7.3 Incident Response Runbook
 | Symptom / Alert | Root Cause | Immediate Remediation |
 | :--- | :--- | :--- |
-| `HTTP 503` on `/api/health` | SQLite database lock contention or disk write failure | Check disk space (`df -h`). Inspect `/var/lib/stock-predictor/predictions.db-wal` size. Run `PRAGMA integrity_check;`. |
+| `HTTP 503` on `/api/health` | SQLite database lock contention or disk write failure | Check disk space (`df -h`). Inspect `/var/lib/stock-predictor/data/predictions.db-wal` size. Run `PRAGMA integrity_check;`. |
 | Elevated latency (>2000ms) on `/api/predict` | Ollama LLM inference queue backlog or CPU throttling | Verify Ollama status (`curl http://127.0.0.1:11434/api/tags`). Switch client requests to quantitative ML (`model_name: "xgboost"`). |
 | High rate of `STALE_DATA` warnings | Yahoo Finance rate limiting or market holiday gap | Verify symbol format (`.NS` suffix). Check national holiday calendar. Review quote provider logs. |
 | Model candidate rejected during retraining | Candidate model failed one of the 6 validation gates | Inspect `model_releases` table for failing gate name and observed metric. Active model remains 100% untouched. |
