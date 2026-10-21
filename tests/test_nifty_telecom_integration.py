@@ -20,7 +20,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.core.schemas import MarketOHLCV
+from app.core.schemas import MarketOHLCV, ValidationError
 from app.market.benchmark import (
     TELECOM_BENCHMARK,
     compute_relative_performance,
@@ -117,6 +117,56 @@ class TestInstrumentIdentityAndSeparation:
         assert get_sector_benchmark("nifty_telecom") == TELECOM_BENCHMARK
         assert TELECOM_BENCHMARK == "NIFTY_TELECOMMUNICATIONS"
 
+    def test_genuine_equity_ohlc_preservation(self) -> None:
+        """Genuine equity bars continue to require and preserve full OHLCV observations."""
+        eq_bar = MarketOHLCV(
+            symbol="BHARTIARTL",
+            timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
+            open=1020.0,
+            high=1035.0,
+            low=1015.0,
+            close=1030.0,
+            volume=450000,
+            source="yfinance",
+        )
+        assert eq_bar.symbol == "BHARTIARTL"
+        assert eq_bar.has_intraday_ohl is True
+        assert eq_bar.is_close_only is False
+        assert eq_bar.is_volume_available is True
+        assert eq_bar.volume_reported is True
+        assert eq_bar.open == 1020.0
+        assert eq_bar.high == 1035.0
+        assert eq_bar.low == 1015.0
+        assert eq_bar.close == 1030.0
+        assert eq_bar.volume == 450000
+
+        # Physical geometry violations are strictly rejected for equity
+        with pytest.raises(ValidationError, match="high .* cannot be lower than open"):
+            MarketOHLCV(
+                symbol="BHARTIARTL",
+                timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                open=1040.0,
+                high=1035.0,
+                low=1015.0,
+                close=1030.0,
+                volume=450000,
+                source="yfinance",
+            )
+
+    def test_invalid_partial_ohlc_rejected(self) -> None:
+        """Partial OHLC specifications (e.g. open provided but high is None) are rejected."""
+        with pytest.raises(ValidationError, match="Partial OHLC data is invalid"):
+            MarketOHLCV(
+                symbol="NIFTY_TELECOMMUNICATIONS",
+                timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                open=2500.0,
+                high=None,
+                low=2480.0,
+                close=2510.0,
+                volume=0,
+                source="nifty_indices",
+            )
+
 
 class TestNiftyIndicesProvider:
     """Validate official provider fetching, parsing, data transformation, and rejection rules."""
@@ -166,24 +216,34 @@ class TestNiftyIndicesProvider:
         bars = provider._parse_rows(raw_rows, "NIFTY_TELECOMMUNICATIONS")
         assert len(bars) == 3
 
-        # First bar: hyphenated OHLC set to close
+        # First bar: hyphenated OHLC preserved truthfully as unavailable (None)
         b0 = bars[0]
         assert b0.symbol == "NIFTY_TELECOMMUNICATIONS"
         assert b0.timestamp.year == 2024 and b0.timestamp.month == 1 and b0.timestamp.day == 1
         assert b0.close == 2450.75
-        assert b0.open == 2450.75
-        assert b0.high == 2450.75
-        assert b0.low == 2450.75
-        assert b0.volume == 0  # Zero volume strictly preserved, no fabrication
+        assert b0.open is None
+        assert b0.high is None
+        assert b0.low is None
+        assert b0.has_intraday_ohl is False
+        assert b0.is_close_only is True
+        assert b0.volume == 0
+        assert b0.volume_reported is False
+        assert b0.is_volume_available is False
+        assert b0.synthetic_open == 2450.75
+        assert b0.synthetic_high == 2450.75
+        assert b0.synthetic_low == 2450.75
         assert b0.source == "nifty_indices"
 
-        # Third bar: explicit OHLC
+        # Third bar: explicit OHLC provided
         b2 = bars[2]
         assert b2.open == 2485.0
         assert b2.high == 2500.0
         assert b2.low == 2475.0
         assert b2.close == 2495.5
+        assert b2.has_intraday_ohl is True
+        assert b2.is_close_only is False
         assert b2.volume == 0
+        assert b2.volume_reported is False
 
     def test_chronological_ordering_and_duplicate_deduplication(self) -> None:
         provider = NiftyIndicesProvider()
@@ -201,6 +261,25 @@ class TestNiftyIndicesProvider:
         assert bars[0].close == 2450.00
         assert bars[1].close == 2460.00
         assert bars[2].close == 2500.00
+        assert all(b.is_close_only for b in bars)
+        assert all(b.open is None for b in bars)
+
+    def test_duplicate_and_malformed_records_handling(self) -> None:
+        """Malformed provider rows and duplicate close-only bars are handled safely."""
+        provider = NiftyIndicesProvider()
+        raw_rows = [
+            {"HistoricalDate": "", "CLOSE": "2500.00"},  # empty date
+            {"HistoricalDate": "invalid-date", "CLOSE": "2500.00"},  # malformed date
+            {"HistoricalDate": "01 Jan 2024", "CLOSE": "-"},  # missing close
+            {"HistoricalDate": "01 Jan 2024", "CLOSE": "-10.0"},  # non-positive close
+            {"HistoricalDate": "02 Jan 2024", "CLOSE": "2600.00"},  # valid
+            {"HistoricalDate": "02 Jan 2024", "CLOSE": "2600.00"},  # identical duplicate
+        ]
+        bars = provider._parse_rows(raw_rows, "NIFTY_TELECOMMUNICATIONS")
+        assert len(bars) == 1
+        assert bars[0].close == 2600.00
+        assert bars[0].open is None
+        assert bars[0].is_close_only is True
 
     def test_provider_network_failure_handling(self) -> None:
         mock_client = MagicMock()
@@ -254,11 +333,11 @@ class TestNiftyIndicesProvider:
 
 
 class TestFeatureMatrixAndPipelineCompatibility:
-    """Verify that market data pipeline and feature generation support index bars with zero volume."""
+    """Verify that market data pipeline and feature generation support close-only index bars."""
 
     @pytest.fixture
     def sample_index_bars(self) -> list[MarketOHLCV]:
-        """Generate 60 bars of valid daily index data with zero volume."""
+        """Generate 60 bars of valid daily close-only index data with unavailable OHLC and volume."""
         bars = []
         base_price = 2500.0
         start = datetime(2024, 1, 1, tzinfo=timezone.utc)
@@ -269,12 +348,14 @@ class TestFeatureMatrixAndPipelineCompatibility:
                 MarketOHLCV(
                     symbol="NIFTY_TELECOMMUNICATIONS",
                     timestamp=ts,
-                    open=price,
-                    high=price + 5.0,
-                    low=price - 5.0,
+                    open=None,
+                    high=None,
+                    low=None,
                     close=price,
-                    volume=0,  # Zero volume
+                    volume=0,
                     source="nifty_indices",
+                    is_close_only=True,
+                    volume_reported=False,
                 )
             )
         return bars
@@ -293,6 +374,18 @@ class TestFeatureMatrixAndPipelineCompatibility:
         assert result.cleaning_summary.output_count == len(sample_index_bars)
         assert result.cleaning_summary.invalid_records_count == 0
 
+        # Close-based indicators are computed
+        assert len(result.features) == len(sample_index_bars)
+        assert len(result.indicators) == len(sample_index_bars)
+
+        # Candlestick features are safely unavailable (all None)
+        assert all(c.candle_body is None for c in result.candlesticks)
+        assert all(c.candle_range is None for c in result.candlesticks)
+        assert all(c.candle_direction is None for c in result.candlesticks)
+
+        # Market structure / trend engine safely returns INSUFFICIENT_DATA
+        assert result.trend.classification is None
+
     def test_feature_matrix_assembly_with_zero_volume(self, sample_index_bars: list[MarketOHLCV]) -> None:
         mock_provider = MagicMock()
         mock_provider.name = "nifty_indices"
@@ -308,8 +401,26 @@ class TestFeatureMatrixAndPipelineCompatibility:
         assert list(dataset.X.columns) == FEATURE_COLUMNS
         # Isolation check
         validate_feature_matrix_isolation(dataset.X)
-        # Zero volume integrity check (no volume fabrication)
+        # Volume column is 0
         assert (dataset.X["volume"] == 0).all()
+
+        # Intraday OHLC and candlestick geometry columns are strictly NaN (no fabrication)
+        assert dataset.X["open"].isna().all()
+        assert dataset.X["high"].isna().all()
+        assert dataset.X["low"].isna().all()
+        assert dataset.X["candle_body"].isna().all()
+        assert dataset.X["candle_range"].isna().all()
+        assert dataset.X["candle_upper_wick"].isna().all()
+        assert dataset.X["candle_lower_wick"].isna().all()
+        assert dataset.X["atr_14"].isna().all()
+
+        # Close-based features are successfully populated
+        assert dataset.X["close"].notna().all()
+        assert dataset.X["sma_5"].iloc[10:].notna().all()
+        assert dataset.X["rsi_14"].iloc[15:].notna().all()
+        assert dataset.X["macd"].iloc[30:].notna().all()
+        assert dataset.X["bb_middle"].iloc[25:].notna().all()
+        assert dataset.X["roc_10"].iloc[15:].notna().all()
 
 
 class TestPredictionServiceSafeBehavior:
@@ -389,22 +500,26 @@ class TestRelativePerformanceContext:
             MarketOHLCV(
                 symbol="NIFTY_TELECOMMUNICATIONS",
                 timestamp=datetime(2024, 1, 1, tzinfo=timezone.utc),
-                open=2500.0,
-                high=2500.0,
-                low=2500.0,
+                open=None,
+                high=None,
+                low=None,
                 close=2500.0,
                 volume=0,
                 source="nifty_indices",
+                is_close_only=True,
+                volume_reported=False,
             ),
             MarketOHLCV(
                 symbol="NIFTY_TELECOMMUNICATIONS",
                 timestamp=datetime(2024, 1, 2, tzinfo=timezone.utc),
-                open=2500.0,
-                high=2550.0,
-                low=2500.0,
+                open=None,
+                high=None,
+                low=None,
                 close=2550.0,  # +2%
                 volume=0,
                 source="nifty_indices",
+                is_close_only=True,
+                volume_reported=False,
             ),
         ]
 

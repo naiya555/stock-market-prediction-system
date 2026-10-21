@@ -4935,3 +4935,53 @@ The objective was to integrate official Nifty Telecommunications index data into
 **Phase 16 remains strictly IN PROGRESS.**
 GAP-05 (Nifty Telecommunications Index Integration) is complete and verified with official source data and model safety guarantees. Index-specific predictive model training is documented as a separate future follow-up.
 
+---
+
+## Day 53 — Nifty Telecommunications Data Integrity Remediation
+
+### 1. Objective & Background
+Audit and correct the Nifty Telecommunications OHLC data representation introduced in commit `9925238`.
+The official Nifty Indices historical response returns `OPEN`, `HIGH`, and `LOW` as `"-"` and does not report trading volume for sectoral indices. Previously, closing levels were copied into open/high/low as a synthetic convenience, which created false candlestick signals. Day 53 establishes truthful close-only source data semantics while preserving full equity ingestion, feature calculation, and repository integrity.
+
+### 2. Remediation Summary
+1. **Canonical Schema Support for Close-Only Bars (`app/core/schemas.py`):**
+   - Updated `MarketOHLCV` to support optional intraday OHLC (`open=None, high=None, low=None`) and close-only flag (`is_close_only=True`).
+   - Added explicit provenance properties: `has_intraday_ohl` (False for close-only), `is_volume_available` (False when volume is not reported), and labeled synthetic fallbacks `synthetic_open`, `synthetic_high`, `synthetic_low` for legacy calculations that cannot be mistaken for observed market quotes.
+   - Enforced strict physical OHLC geometry and positive bounds for equities when intraday fields are provided; rejected partial OHLC specifications.
+2. **Data Cleaner Close-Only Support (`app/market/cleaner.py`):**
+   - Updated `clean_market_data` to permit close-only bars where intraday OHL are `None`, while maintaining strict missing-field rejection for equities.
+   - Implemented `_field_isclose` helper to safely compare and collapse identical duplicate records with `None` values without raising `TypeError`.
+3. **Truthful Provider Ingestion (`app/market/providers/nifty_indices_provider.py`):**
+   - Discontinued copying `CLOSE` into `OPEN`, `HIGH`, `LOW`. When official fields are hyphenated (`"-"`), records are instantiated with `open=None, high=None, low=None, is_close_only=True, volume_reported=False`.
+   - Updated `fetch_quote` to reflect `open_price=None, day_high=None, day_low=None, volume=None` with an explicit disclaimer.
+4. **Leakage-Safe Feature Matrix Assembly (`app/training/feature_matrix.py`):**
+   - Guarded numeric casting to map `None` in `open`, `high`, `low`, and `volume` safely to `np.nan`, adhering to the Natural Missing Values Policy.
+5. **Feature Scope & Candlestick Integrity:**
+   - **Supported on Genuine Close:** Daily returns, rolling returns (3d, 5d), rolling volatility (5d, annualized), SMAs (5, 10), EMAs (5, 10), RSI (14), MACD (12/26/9), Bollinger Bands (20/2.0), Rate of Change (10), and relative performance alpha against `BHARTIARTL`.
+   - **Safely Skipped / Unavailable:** Candlestick body, range, wicks, ratios, direction, Average True Range (ATR-14), and intraday swing pivot geometry strictly evaluate to `None` / `NaN` without fabricating candle shapes.
+
+### 3. Empirical Verification & Test Results
+- **Integration & Regression Tests (`tests/test_nifty_telecom_integration.py`):**
+  - **22 passed** in 2.64s (+3 new tests covering equity OHLC preservation, partial OHLC rejection, close-based indicator generation without candle fabrication, and duplicate collapse with None values).
+- **Full Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **668 passed**, 1 warning in 34.46s across 47 test modules. Zero regressions.
+- **Dependency Audit:**
+  ```powershell
+  .\.venv\Scripts\python -m pip check
+  ```
+  `No broken requirements found.`
+- **Git Diff Hygiene Check:**
+  ```powershell
+  git diff --check
+  ```
+  `Clean (0 whitespace errors).`
+- **Protected File Integrity Checks:**
+  - `data/predictions.db`: SHA-256 `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (100% UNCHANGED).
+  - `models/.gitkeep`: SHA-256 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (100% UNCHANGED).
+
+### 4. Phase 16 Status
+**Phase 16 remains strictly IN PROGRESS.**
+Remediation of Nifty Telecommunications data integrity is complete. The 84-day roadmap and Phase 16 external staging criteria remain unchanged.

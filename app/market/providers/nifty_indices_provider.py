@@ -238,20 +238,39 @@ class NiftyIndicesProvider(BaseMarketDataProvider):
 
             # Parse Open, High, Low
             # Nifty sectoral indices publish daily closing levels and return '-' for OHL.
-            # In accordance with physical candle geometry, when OHL spreads are not traded,
-            # open = high = low = close.
+            # Never copy closing values into open/high/low as observed market data.
+            # When OHL are unavailable ('-'), preserve truthful semantics with open=None, high=None, low=None, is_close_only=True.
             open_raw = row.get("OPEN")
             high_raw = row.get("HIGH")
             low_raw = row.get("LOW")
 
-            try:
-                open_ = round(float(str(open_raw).replace(",", "")), 4) if open_raw not in (None, "-", "") else close
-                high = round(float(str(high_raw).replace(",", "")), 4) if high_raw not in (None, "-", "") else max(open_, close)
-                low = round(float(str(low_raw).replace(",", "")), 4) if low_raw not in (None, "-", "") else min(open_, close)
-            except ValueError:
-                open_, high, low = close, close, close
+            open_: Optional[float] = None
+            high: Optional[float] = None
+            low: Optional[float] = None
+            is_close_only = False
+
+            if (
+                open_raw not in (None, "-", "")
+                and high_raw not in (None, "-", "")
+                and low_raw not in (None, "-", "")
+            ):
+                try:
+                    open_candidate = round(float(str(open_raw).replace(",", "")), 4)
+                    high_candidate = round(float(str(high_raw).replace(",", "")), 4)
+                    low_candidate = round(float(str(low_raw).replace(",", "")), 4)
+                    if open_candidate > 0 and high_candidate > 0 and low_candidate > 0:
+                        open_ = open_candidate
+                        high = high_candidate
+                        low = low_candidate
+                    else:
+                        is_close_only = True
+                except ValueError:
+                    is_close_only = True
+            else:
+                is_close_only = True
 
             # Volume: Zero-fabrication guarantee. Nifty Indices does not report index volume.
+            # volume=0 with volume_reported=False denotes unavailable / not reported trading volume.
             volume = 0
 
             try:
@@ -264,6 +283,8 @@ class NiftyIndicesProvider(BaseMarketDataProvider):
                     close=close,
                     volume=volume,
                     source=self.name,
+                    is_close_only=is_close_only,
+                    volume_reported=False,
                 )
                 records.append(record)
                 seen_timestamps.add(ts)
@@ -301,8 +322,11 @@ class NiftyIndicesProvider(BaseMarketDataProvider):
             day_high=latest.high,
             day_low=latest.low,
             previous_close=records[-2].close if len(records) > 1 else None,
-            volume=latest.volume,
+            volume=latest.volume if latest.is_volume_available else None,
             is_delayed=True,
             delay_minutes=0,
-            disclaimer="Official end-of-day index closing level from NSE Indices Limited.",
+            disclaimer=(
+                "Official end-of-day index closing level from NSE Indices Limited. "
+                "Intraday OHLC and volume not reported by exchange for this index."
+            ),
         )

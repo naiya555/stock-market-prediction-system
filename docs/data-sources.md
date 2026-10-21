@@ -165,4 +165,21 @@ This document catalogs the candidate data sources required for the Indian Stock 
 2. **Missing/Delisted Symbols:** Yahoo Finance returns an empty DataFrame rather than an explicit JSON error for delisted or nonexistent tickers. The adapter differentiates network exceptions from empty result sets.
 3. **Burst Rate Limiting:** High-frequency consecutive requests can trigger Yahoo crumb expiration or rate limits. The adapter isolates upstream exceptions and raises actionable errors with logging.
 
+---
 
+## 13. Official Nifty Indices Provider & Sectoral Index Data Contract
+
+### 13.1. Official Source & Endpoint
+- **Index Target:** Nifty Telecommunications (`NIFTY_TELECOMMUNICATIONS`)
+- **Official Source:** NSE Indices Limited (`niftyindices.com`)
+- **Historical Endpoint:** `POST https://www.niftyindices.com/BackPage/getHistoricaldatatabletoString`
+- **Payload Schema:** `{"cinfo": "{'name':'NIFTY TELECOMMUNICATIONS','startDate':'DD-Mon-YYYY','endDate':'DD-Mon-YYYY','indexName':'Nifty Telecommunications'}"}`
+
+### 13.2. Data Availability and Truthful Representation
+1. **Official Close Only:** The official NSE Indices historical response returns `CLOSE` (or `TotalReturnsIndex`) while `OPEN`, `HIGH`, and `LOW` are reported as `"-"` for sectoral indices.
+2. **Zero OHLC Fabrication:** The system never copies `CLOSE` into `OPEN`, `HIGH`, or `LOW` as observed market data. Close-only index bars are strictly typed with `is_close_only=True`, with `open=None`, `high=None`, `low=None`, and `has_intraday_ohl=False`.
+3. **Explicit Synthetic Properties:** Where legacy mathematical operations require non-null values, explicitly named accessors `synthetic_open`, `synthetic_high`, and `synthetic_low` fall back to `close`, ensuring they can never be mistaken for actual observed market quotes.
+4. **Volume Availability:** Sectoral indices do not report trading volume. `volume=0` is accompanied by `volume_reported=False` and `is_volume_available=False` to document that trading volume is unavailable/not reported, rather than observed zero trading volume.
+5. **Feature Scope & Limitations:**
+   - **Supported Features (Clean Close Basis):** Daily returns, rolling returns (3d, 5d), rolling volatility (5d, annualized), Simple Moving Averages (SMA-5, SMA-10), Exponential Moving Averages (EMA-5, EMA-10), RSI-14, MACD (12/26/9), Bollinger Bands (20/2.0), Rate of Change (ROC-10), and relative performance alpha against single stocks (`BHARTIARTL`).
+   - **Unavailable / Safely Skipped Features:** Candlestick patterns, wick/body ratios, candle direction, intra-session range, Average True Range (ATR-14), and intraday swing pivot geometry strictly evaluate to `None` / `NaN` without fabricating candle shapes.

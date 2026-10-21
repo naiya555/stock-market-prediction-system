@@ -56,6 +56,15 @@ def _is_missing(val: Any) -> bool:
     return False
 
 
+def _field_isclose(a: Optional[float], b: Optional[float], abs_tol: float = 1e-5) -> bool:
+    """Compare two float values for near-equality, treating None == None as True."""
+    if a is None and b is None:
+        return True
+    if a is None or b is None:
+        return False
+    return math.isclose(a, b, abs_tol=abs_tol)
+
+
 def _normalize_datetime(dt: Any, tz: ZoneInfo) -> Optional[datetime]:
     """Normalize timestamp to timezone-aware datetime in target timezone.
 
@@ -90,6 +99,7 @@ def clean_market_data(
 
     Rules applied:
     1. Missing Values: Records with missing/null/NaN required fields are quarantined/rejected.
+       (For close-only indices, intraday open/high/low are allowed to be None).
     2. Invalid Values: Non-positive prices, negative volume, or violated OHLC candle
        geometry are rejected.
     3. Timestamp Normalization: Standardized to target timezone (Asia/Kolkata) without shifting dates.
@@ -128,6 +138,8 @@ def clean_market_data(
             close_val = item.close
             volume_val = item.volume
             source = item.source
+            is_close_only = item.is_close_only
+            volume_reported = item.volume_reported
         elif isinstance(item, dict):
             symbol = item.get("symbol")
             raw_ts = item.get("timestamp")
@@ -135,8 +147,13 @@ def clean_market_data(
             high_val = item.get("high")
             low_val = item.get("low")
             close_val = item.get("close")
-            volume_val = item.get("volume")
+            volume_val = item.get("volume", 0)
             source = item.get("source")
+            is_close_only = bool(
+                item.get("is_close_only", False)
+                or (open_val is None and high_val is None and low_val is None)
+            )
+            volume_reported = bool(item.get("volume_reported", True))
         else:
             invalid_records_count += 1
             msg = f"Record at index {idx} has unsupported type {type(item).__name__}"
@@ -144,22 +161,38 @@ def clean_market_data(
             logger.warning(msg)
             continue
 
+        # Determine whether record is close-only
+        is_close_record = is_close_only or (open_val is None and high_val is None and low_val is None)
+
         # Check required fields for missing values
-        if (
-            _is_missing(symbol)
-            or _is_missing(raw_ts)
-            or _is_missing(open_val)
-            or _is_missing(high_val)
-            or _is_missing(low_val)
-            or _is_missing(close_val)
-            or _is_missing(volume_val)
-            or _is_missing(source)
-        ):
-            missing_records_count += 1
-            msg = f"Record at index {idx} ({symbol}) rejected due to missing required field(s)"
-            rejection_reasons.append(msg)
-            logger.warning(msg)
-            continue
+        if is_close_record:
+            if (
+                _is_missing(symbol)
+                or _is_missing(raw_ts)
+                or _is_missing(close_val)
+                or _is_missing(source)
+            ):
+                missing_records_count += 1
+                msg = f"Record at index {idx} ({symbol}) rejected due to missing required field(s)"
+                rejection_reasons.append(msg)
+                logger.warning(msg)
+                continue
+        else:
+            if (
+                _is_missing(symbol)
+                or _is_missing(raw_ts)
+                or _is_missing(open_val)
+                or _is_missing(high_val)
+                or _is_missing(low_val)
+                or _is_missing(close_val)
+                or _is_missing(volume_val)
+                or _is_missing(source)
+            ):
+                missing_records_count += 1
+                msg = f"Record at index {idx} ({symbol}) rejected due to missing required field(s)"
+                rejection_reasons.append(msg)
+                logger.warning(msg)
+                continue
 
         # Normalize timestamp
         norm_ts = _normalize_datetime(raw_ts, tz)
@@ -170,39 +203,59 @@ def clean_market_data(
             logger.warning(msg)
             continue
 
-        # Validate numeric types
-        try:
-            open_flt = float(open_val)
-            high_flt = float(high_val)
-            low_flt = float(low_val)
-            close_flt = float(close_val)
-            volume_int = int(volume_val)
-        except (ValueError, TypeError) as exc:
-            invalid_records_count += 1
-            msg = f"Record at index {idx} ({symbol}) rejected due to non-numeric price/volume: {exc}"
-            rejection_reasons.append(msg)
-            logger.warning(msg)
-            continue
+        # Validate numeric types & physical domain constraints
+        if is_close_record:
+            try:
+                close_flt = float(close_val)
+                volume_int = int(volume_val) if volume_val is not None else 0
+                open_flt = None
+                high_flt = None
+                low_flt = None
+            except (ValueError, TypeError) as exc:
+                invalid_records_count += 1
+                msg = f"Record at index {idx} ({symbol}) rejected due to non-numeric price/volume: {exc}"
+                rejection_reasons.append(msg)
+                logger.warning(msg)
+                continue
 
-        # Check physical domain constraints
-        if (
-            open_flt <= 0
-            or high_flt <= 0
-            or low_flt <= 0
-            or close_flt <= 0
-            or volume_int < 0
-            or high_flt < low_flt
-            or high_flt < max(open_flt, close_flt)
-            or low_flt > min(open_flt, close_flt)
-        ):
-            invalid_records_count += 1
-            msg = (
-                f"Record at index {idx} ({symbol} on {norm_ts.date()}) rejected for invalid/impossible OHLCV: "
-                f"O={open_flt}, H={high_flt}, L={low_flt}, C={close_flt}, V={volume_int}"
-            )
-            rejection_reasons.append(msg)
-            logger.warning(msg)
-            continue
+            if close_flt <= 0 or volume_int < 0:
+                invalid_records_count += 1
+                msg = f"Record at index {idx} ({symbol} on {norm_ts.date()}) rejected for non-positive close or negative volume"
+                rejection_reasons.append(msg)
+                logger.warning(msg)
+                continue
+        else:
+            try:
+                open_flt = float(open_val)
+                high_flt = float(high_val)
+                low_flt = float(low_val)
+                close_flt = float(close_val)
+                volume_int = int(volume_val)
+            except (ValueError, TypeError) as exc:
+                invalid_records_count += 1
+                msg = f"Record at index {idx} ({symbol}) rejected due to non-numeric price/volume: {exc}"
+                rejection_reasons.append(msg)
+                logger.warning(msg)
+                continue
+
+            if (
+                open_flt <= 0
+                or high_flt <= 0
+                or low_flt <= 0
+                or close_flt <= 0
+                or volume_int < 0
+                or high_flt < low_flt
+                or high_flt < max(open_flt, close_flt)
+                or low_flt > min(open_flt, close_flt)
+            ):
+                invalid_records_count += 1
+                msg = (
+                    f"Record at index {idx} ({symbol} on {norm_ts.date()}) rejected for invalid/impossible OHLCV: "
+                    f"O={open_flt}, H={high_flt}, L={low_flt}, C={close_flt}, V={volume_int}"
+                )
+                rejection_reasons.append(msg)
+                logger.warning(msg)
+                continue
 
         # Attempt canonical contract instantiation
         try:
@@ -215,6 +268,8 @@ def clean_market_data(
                 close=close_flt,
                 volume=volume_int,
                 source=str(source),
+                is_close_only=is_close_record,
+                volume_reported=volume_reported if volume_val is not None else False,
             )
             valid_candidates.append(canonical_bar)
         except ValidationError as exc:
@@ -237,14 +292,15 @@ def clean_market_data(
         if len(group) == 1:
             deduplicated_records.append(group[0])
         else:
-            # Check if all records in group are identical in price and volume
+            # Check if all records in group are identical in price, volume, and close-only mode
             first = group[0]
             all_identical = all(
-                math.isclose(b.open, first.open, abs_tol=1e-5)
-                and math.isclose(b.high, first.high, abs_tol=1e-5)
-                and math.isclose(b.low, first.low, abs_tol=1e-5)
-                and math.isclose(b.close, first.close, abs_tol=1e-5)
+                _field_isclose(b.open, first.open)
+                and _field_isclose(b.high, first.high)
+                and _field_isclose(b.low, first.low)
+                and _field_isclose(b.close, first.close)
                 and b.volume == first.volume
+                and b.is_close_only == first.is_close_only
                 for b in group
             )
             if all_identical:

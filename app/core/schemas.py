@@ -39,16 +39,23 @@ class DataSourceMetadata:
 
 @dataclass(frozen=True)
 class MarketOHLCV:
-    """Canonical point-in-time OHLCV bar for an individual equity or index."""
+    """Canonical point-in-time OHLCV bar for an individual equity or index.
+
+    Supports both full intraday OHLCV bars (standard for equities) and
+    close-only index observations where intraday open/high/low and volume
+    are unavailable or not reported by the exchange.
+    """
 
     symbol: str
     timestamp: datetime
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: int
-    source: str
+    open: Optional[float] = None
+    high: Optional[float] = None
+    low: Optional[float] = None
+    close: float = 0.0
+    volume: Optional[int] = 0
+    source: str = ""
+    is_close_only: bool = False
+    volume_reported: bool = True
 
     def __post_init__(self) -> None:
         # Validate symbol
@@ -60,40 +67,88 @@ class MarketOHLCV:
         if not isinstance(self.timestamp, datetime):
             raise ValidationError("timestamp must be a valid datetime instance")
 
-        # Validate numeric types & bounds
-        for price_field in ("open", "high", "low", "close"):
-            val = getattr(self, price_field)
-            if not isinstance(val, (int, float)) or isinstance(val, bool):
-                raise ValidationError(f"{price_field} must be a numeric value")
-            if val <= 0:
-                raise ValidationError(f"{price_field} must be strictly positive (got {val})")
+        # Validate close (mandatory strictly positive for all instruments)
+        if not isinstance(self.close, (int, float)) or isinstance(self.close, bool):
+            raise ValidationError("close must be a numeric value")
+        if self.close <= 0:
+            raise ValidationError(f"close must be strictly positive (got {self.close})")
 
-        if not isinstance(self.volume, int) or isinstance(self.volume, bool):
-            raise ValidationError(f"volume must be an integer (got {self.volume})")
-        if self.volume < 0:
-            raise ValidationError(f"volume cannot be negative (got {self.volume})")
+        # Check OHLC completeness
+        has_open = self.open is not None
+        has_high = self.high is not None
+        has_low = self.low is not None
+
+        if has_open and has_high and has_low:
+            for price_field in ("open", "high", "low"):
+                val = getattr(self, price_field)
+                if not isinstance(val, (int, float)) or isinstance(val, bool):
+                    raise ValidationError(f"{price_field} must be a numeric value")
+                if val <= 0:
+                    raise ValidationError(f"{price_field} must be strictly positive (got {val})")
+
+            # Physical OHLC boundary checks
+            if self.high < self.low:
+                raise ValidationError(f"high ({self.high}) cannot be less than low ({self.low})")
+            if self.high < max(self.open, self.close):
+                raise ValidationError(
+                    f"high ({self.high}) cannot be lower than open ({self.open}) or close ({self.close})"
+                )
+            if self.low > min(self.open, self.close):
+                raise ValidationError(
+                    f"low ({self.low}) cannot be greater than open ({self.open}) or close ({self.close})"
+                )
+        elif not has_open and not has_high and not has_low:
+            object.__setattr__(self, "is_close_only", True)
+        else:
+            raise ValidationError(
+                "Partial OHLC data is invalid: open, high, and low must either all be provided as numeric values or all be None."
+            )
+
+        # Validate volume
+        if self.volume is not None:
+            if not isinstance(self.volume, int) or isinstance(self.volume, bool):
+                raise ValidationError(f"volume must be an integer (got {self.volume})")
+            if self.volume < 0:
+                raise ValidationError(f"volume cannot be negative (got {self.volume})")
+        else:
+            object.__setattr__(self, "volume_reported", False)
 
         # Validate source
         if not self.source or not self.source.strip():
             raise ValidationError("source cannot be empty")
         object.__setattr__(self, "source", self.source.strip())
 
-        # Physical OHLC boundary checks
-        if self.high < self.low:
-            raise ValidationError(f"high ({self.high}) cannot be less than low ({self.low})")
-        if self.high < max(self.open, self.close):
-            raise ValidationError(
-                f"high ({self.high}) cannot be lower than open ({self.open}) or close ({self.close})"
-            )
-        if self.low > min(self.open, self.close):
-            raise ValidationError(
-                f"low ({self.low}) cannot be greater than open ({self.open}) or close ({self.close})"
-            )
+    @property
+    def has_intraday_ohl(self) -> bool:
+        """Return True if real intraday open, high, and low were observed."""
+        return self.open is not None and self.high is not None and self.low is not None and not self.is_close_only
+
+    @property
+    def is_volume_available(self) -> bool:
+        """Return True if trading volume was reported by source exchange."""
+        return self.volume is not None and self.volume_reported
+
+    @property
+    def synthetic_open(self) -> float:
+        """Synthetic fallback for legacy calculations; explicitly distinct from observed open."""
+        return self.open if self.open is not None else self.close
+
+    @property
+    def synthetic_high(self) -> float:
+        """Synthetic fallback for legacy calculations; explicitly distinct from observed high."""
+        return self.high if self.high is not None else self.close
+
+    @property
+    def synthetic_low(self) -> float:
+        """Synthetic fallback for legacy calculations; explicitly distinct from observed low."""
+        return self.low if self.low is not None else self.close
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize record to dictionary with ISO formatted timestamp."""
         data = asdict(self)
         data["timestamp"] = self.timestamp.isoformat()
+        data["has_intraday_ohl"] = self.has_intraday_ohl
+        data["is_volume_available"] = self.is_volume_available
         return data
 
 

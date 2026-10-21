@@ -409,11 +409,11 @@ def assemble_feature_matrix(
             "target_direction": target.target_direction,
             "target_binary": float(target.target_binary) if target.target_binary is not None else np.nan,
             # OHLCV Features
-            "open": float(bar.open),
-            "high": float(bar.high),
-            "low": float(bar.low),
+            "open": float(bar.open) if bar.open is not None else np.nan,
+            "high": float(bar.high) if bar.high is not None else np.nan,
+            "low": float(bar.low) if bar.low is not None else np.nan,
             "close": float(bar.close),
-            "volume": float(bar.volume),
+            "volume": float(bar.volume) if bar.volume is not None else np.nan,
             # Returns & Realized Volatility
             "daily_return": ret.daily_return if ret else None,
             "rolling_return_3d": ret.rolling_return_3d if ret else None,
