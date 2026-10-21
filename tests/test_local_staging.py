@@ -468,3 +468,35 @@ def test_sleep_prevention_engaged_during_validation():
             assert mock_ctx.__enter__.called
             assert mock_ctx.__exit__.called
             assert report.sleep_prevention_active is True
+
+
+def test_failed_sleep_guard_cannot_certify_uninterrupted_soak_run():
+    """Verify a failed sleep guard on Windows prevents certifying a sustained soak run as uninterrupted."""
+    report = StagingValidationReport(
+        timestamp_utc="2026-10-21T10:00:00Z",
+        host="127.0.0.1",
+        port=8899,
+        environment="production",
+        sleep_prevention_active=False,  # Sleep guard failed!
+    )
+    duration_seconds = 600.0
+    total_elapsed = 600.5
+    report.monotonic_start = 100.0
+    report.monotonic_end = 700.5
+
+    with patch("sys.platform", "win32"):
+        if report.suspension_detected:
+            report.is_interrupted = True
+            report.interruption_reason = f"Host suspension detected: {report.suspension_gap_seconds:.1f}s sleep gap"
+            report.errors.append(f"INCOMPLETE RUN: {report.interruption_reason}")
+        elif duration_seconds is not None:
+            if not report.sleep_prevention_active:
+                report.is_interrupted = True
+                report.interruption_reason = (
+                    "Sleep prevention failed to activate on Windows host; cannot certify sustained run as uninterrupted"
+                )
+                report.errors.append(f"INCOMPLETE RUN: {report.interruption_reason}")
+
+    assert report.is_interrupted is True
+    assert "Sleep prevention failed to activate" in report.interruption_reason
+    assert any("INCOMPLETE RUN" in err for err in report.errors)

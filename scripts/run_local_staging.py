@@ -627,7 +627,13 @@ def run_local_staging_validation(
             )
             report.errors.append(f"INCOMPLETE RUN: {report.interruption_reason}")
         elif duration_seconds is not None:
-            if total_elapsed < (duration_seconds - 5.0):
+            if sys.platform == "win32" and not report.sleep_prevention_active:
+                report.is_interrupted = True
+                report.interruption_reason = (
+                    "Sleep prevention failed to activate on Windows host; cannot certify sustained run as uninterrupted"
+                )
+                report.errors.append(f"INCOMPLETE RUN: {report.interruption_reason}")
+            elif total_elapsed < (duration_seconds - 5.0):
                 report.is_interrupted = True
                 report.interruption_reason = (
                     f"Run terminated early: measured {total_elapsed:.1f}s vs target {duration_seconds:.0f}s"

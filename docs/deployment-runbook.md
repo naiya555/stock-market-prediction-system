@@ -228,6 +228,27 @@ Schedule this command via `cron` daily at 00:00 UTC.
 5. Restart Uvicorn service: `sudo systemctl start stock-predictor`
 6. Verify service health: `curl -s http://127.0.0.1:8000/api/health | jq .`
 
+### 5.4 Non-Destructive Backup & Restore Verification
+To verify that backup snapshots exist, are uncorrupted, and can be restored without risking or overwriting the active live production database:
+1. **Verify Backup File Presence & Timestamp:**
+   ```bash
+   ls -lh /var/backups/stock-predictor/predictions_*.db
+   ```
+2. **In-Place SQLite Integrity Check on Backup:**
+   ```bash
+   sqlite3 /var/backups/stock-predictor/predictions_latest.db "PRAGMA integrity_check;"
+   # Expected output: ok
+   ```
+3. **Isolated Dry-Run Restoration Drill (Zero Live Mutation):**
+   Restore the backup to an ephemeral temporary directory to test data accessibility without touching the active production database:
+   ```bash
+   mkdir -p /tmp/stock-predictor-verify
+   cp /var/backups/stock-predictor/predictions_latest.db /tmp/stock-predictor-verify/verify.db
+   sqlite3 /tmp/stock-predictor-verify/verify.db "SELECT count(*) AS total_predictions FROM predictions; SELECT count(*) AS releases FROM model_releases;"
+   rm -rf /tmp/stock-predictor-verify
+   ```
+   This proves recovery readiness while ensuring the live database at `/var/lib/stock-predictor/data/predictions.db` remains completely untouched.
+
 ---
 
 ## 6. Model Artifact Storage, Promotion & Rollback

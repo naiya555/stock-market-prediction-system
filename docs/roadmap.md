@@ -250,7 +250,7 @@ This roadmap outlines the planned multi-phase evolution of the Indian Stock Mark
   - Fixed Finding B: aligned model-directory variable to `APP_MODEL_DIR` across `docs/deployment-runbook.md`, configuration, environment templates, and tests, explaining defaults and overrides.
   - Fixed Finding C: hardened `prevent_windows_sleep()` in `scripts/run_local_staging.py` to check Win32 `SetThreadExecutionState` return values and verify required flags were accepted; added 7 deterministic tests covering activation, API failure, unsupported platforms, exception propagation, and cleanup.
   - Fixed Finding D: aligned SQLite database path (`/var/lib/stock-predictor/data/predictions.db`) and backup/restore commands across `.env.production.example`, `docs/deployment-runbook.md`, `Settings.database_path`, and `get_default_db_path()`.
-  - Verified 628 passing unit tests (0 failures, +8 new tests), zero pip check issues, zero git diff hygiene warnings, and 100% data immutability on `data/predictions.db`.
+  - Verified 629 passing unit tests (0 failures, +9 new tests), zero pip check issues, zero git diff hygiene warnings, and 100% data immutability on `data/predictions.db`.
   - Maintained Phase 16 strictly IN PROGRESS pending dedicated external staging cluster provisioning.
 - Remaining Phase 16 acceptance criteria:
   - Multi-hour soak testing on dedicated production-equivalent staging infrastructure during live exchange market hours once external host cluster is provisioned.
