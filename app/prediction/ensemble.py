@@ -32,6 +32,8 @@ from app.llm.client import MockLLMClient
 from app.llm.schemas import (
     NON_PREDICTIVE_QUALITATIVE_DISCLAIMER,
     LLMDirection,
+    LLMExplanationResult,
+    LLMExplanationStatus,
     LLMReasoningResult,
 )
 from app.llm.service import LLMService
@@ -139,6 +141,7 @@ class EnsemblePredictionResult:
     disclaimer: str = ENSEMBLE_DISCLAIMER
     error_message: Optional[str] = None
     quote_context: Optional[QuoteContext] = None
+    explanation: Optional[LLMExplanationResult] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert ensemble result to serializable dictionary."""
@@ -162,6 +165,7 @@ class EnsemblePredictionResult:
             "source_references": list(self.source_references),
             "target_range": self.target_range.to_dict() if self.target_range else None,
             "quote_context": self.quote_context.to_dict() if self.quote_context else None,
+            "explanation": self.explanation.to_dict() if self.explanation else None,
             "model_name": self.model_name,
             "model_version": self.model_version,
             "disclaimer": self.disclaimer,
@@ -195,6 +199,7 @@ class EnsemblePredictionResult:
             "has_llm_reasoning": self.llm_reasoning is not None,
             "has_sentiment": self.sentiment_summary is not None,
             "integrated_factors_count": len(self.integrated_positive_factors) + len(self.integrated_negative_factors),
+            "explanation_status": self.explanation.status.value if self.explanation else None,
         }
 
         # Expected movement can be derived from target range if calculated
@@ -385,6 +390,7 @@ class EnsembleService:
         atr_value: Optional[float] = None,
         weights: Optional[EnsembleWeights] = None,
         quote_context: Optional[QuoteContext] = None,
+        explanation: Optional[LLMExplanationResult] = None,
     ) -> EnsemblePredictionResult:
         """Synthesize pre-computed ML prediction and qualitative LLM reasoning.
 
@@ -398,6 +404,7 @@ class EnsembleService:
             atr_value: Optional 14-period Average True Range value in INR.
             weights: Optional custom weights overriding default.
             quote_context: Optional verified current market quote context.
+            explanation: Optional evidence-grounded LLMExplanationResult.
 
         Returns:
             Validated EnsemblePredictionResult.
@@ -428,6 +435,7 @@ class EnsembleService:
                 llm_reasoning=llm_result,
                 sentiment_summary=sentiment_summary,
                 quote_context=resolved_quote,
+                explanation=explanation,
                 error_message=f"ML prediction failed: {ml_result.error_message}",
             )
 
@@ -529,6 +537,7 @@ class EnsembleService:
             source_references=tuple(dict.fromkeys(sources)),
             target_range=target_range,
             quote_context=resolved_quote,
+            explanation=explanation,
             model_name="ensemble",
             model_version="ensemble_v1",
         )
@@ -547,7 +556,7 @@ class EnsembleService:
         """Execute full multi-agent ensemble prediction pipeline.
 
         1. Calls PredictionService for quantitative ML inference.
-        2. Calls LLMService for qualitative LLM reasoning if qualitative context is supplied.
+        2. Calls LLMService for qualitative LLM reasoning and explanation if context is supplied.
         3. Synthesizes outputs into EnsemblePredictionResult.
         4. Optionally persists to SQLite via PredictionRepository.
 
@@ -572,21 +581,47 @@ class EnsembleService:
             preloaded_model=preloaded_ml_model,
         )
 
-        # Step 2: Run Qualitative LLM Reasoning (if articles/events provided)
+        # Step 2: Run Qualitative LLM Reasoning / Evidence-Grounded Explanation
         llm_result: Optional[LLMReasoningResult] = None
-        if articles or events:
+        explanation: Optional[LLMExplanationResult] = None
+
+        if not articles and not events:
+            explanation = LLMExplanationResult.no_context(
+                symbol=request.symbol,
+                model=getattr(self.llm_service.client, "model_name", "gemma3:12b") if hasattr(self.llm_service, "client") else "gemma3:12b",
+            )
+        else:
             try:
                 logger.info("Executing qualitative LLM reasoning for '%s'", clean_sym)
-                llm_result = self.llm_service.generate_qualitative_reasoning(
-                    symbol=request.symbol,
-                    articles=articles or [],
-                    events=events or [],
-                )
+                if hasattr(self.llm_service, "explain_prediction"):
+                    explanation = self.llm_service.explain_prediction(
+                        symbol=request.symbol,
+                        articles=articles or [],
+                        events=events or [],
+                        cutoff_time=request.as_of_date,
+                        quantitative_direction=ml_result.predicted_direction,
+                        quantitative_probability=ml_result.probability_up,
+                    )
+                    if explanation.status == LLMExplanationStatus.SUCCESS:
+                        llm_result = explanation.to_reasoning_result()
+                else:
+                    llm_result = self.llm_service.generate_qualitative_reasoning(
+                        symbol=request.symbol,
+                        articles=articles or [],
+                        events=events or [],
+                    )
+                    if llm_result:
+                        explanation = llm_result.to_explanation()
             except Exception as exc:
                 logger.warning(
                     "Qualitative LLM reasoning failed for '%s': %s. Proceeding with ML-only fallback.",
                     clean_sym,
                     exc,
+                )
+                explanation = LLMExplanationResult.failed(
+                    symbol=request.symbol,
+                    model=getattr(self.llm_service.client, "model_name", "gemma3:12b") if hasattr(self.llm_service, "client") else "gemma3:12b",
+                    error_message=str(exc),
                 )
                 llm_result = None
 
@@ -598,6 +633,7 @@ class EnsembleService:
             atr_value=atr_value,
             weights=weights,
             quote_context=ml_result.quote_context,
+            explanation=explanation,
         )
 
         # Step 4: Optional Persistence

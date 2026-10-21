@@ -24,11 +24,13 @@ from app.news.providers.base import BaseNewsProvider
 from app.api.schemas import (
     DataQualityResponse,
     EnsembleDetailsResponse,
+    LLMExplanationResponse,
     PredictionResponse,
     PredictRequest,
     QuoteContextResponse,
     TargetRangeResponse,
 )
+from app.llm.schemas import LLMExplanationResult
 from app.database.repository import PredictionRepository
 from app.prediction.contract import (
     PredictionDataQuality,
@@ -94,6 +96,23 @@ def _map_data_quality(dq: Optional[PredictionDataQuality]) -> Optional[DataQuali
     )
 
 
+def _map_llm_explanation(exp: Optional[LLMExplanationResult]) -> Optional[LLMExplanationResponse]:
+    """Map domain LLMExplanationResult to API LLMExplanationResponse schema."""
+    if not exp:
+        return None
+    return LLMExplanationResponse(
+        status=exp.status.value if hasattr(exp.status, "value") else str(exp.status),
+        summary=exp.summary,
+        supporting_evidence=list(exp.supporting_evidence),
+        limitations=list(exp.limitations),
+        model=exp.model,
+        generated_at=exp.generated_at,
+        direction=exp.direction,
+        confidence=exp.confidence,
+        disclaimer=exp.disclaimer,
+    )
+
+
 def _map_ensemble_details(res: EnsemblePredictionResult) -> EnsembleDetailsResponse:
     """Map EnsemblePredictionResult to API EnsembleDetailsResponse schema."""
     tr = None
@@ -130,6 +149,7 @@ def _map_ensemble_details(res: EnsemblePredictionResult) -> EnsembleDetailsRespo
         llm_direction=llm_dir,
         llm_reasoning_summary=llm_summary,
         llm_confidence=llm_conf,
+        explanation=_map_llm_explanation(res.explanation),
     )
 
 
@@ -319,6 +339,7 @@ def predict(
             probability_calibration="uncalibrated",
             data_quality=dq_api,
             ensemble=_map_ensemble_details(ensemble_res),
+            explanation=_map_llm_explanation(ensemble_res.explanation),
             quote_context=_map_quote_context(ens_quote_ctx),
             error_message=_sanitize_public_error_message(ensemble_res.error_message, "ensemble"),
             disclaimer=ensemble_res.disclaimer,

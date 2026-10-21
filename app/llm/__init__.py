@@ -15,12 +15,15 @@ from app.llm.client import (
 )
 from app.llm.prompts import (
     build_context_extraction_prompt,
+    build_prediction_explanation_prompt,
     build_qualitative_reasoning_prompt,
 )
 from app.llm.schemas import (
     NON_PREDICTIVE_QUALITATIVE_DISCLAIMER,
     LLMContextExtraction,
     LLMDirection,
+    LLMExplanationResult,
+    LLMExplanationStatus,
     LLMReasoningResult,
 )
 from app.llm.service import (
@@ -35,6 +38,8 @@ __all__ = [
     "LLMDirection",
     "LLMContextExtraction",
     "LLMReasoningResult",
+    "LLMExplanationStatus",
+    "LLMExplanationResult",
     "NON_PREDICTIVE_QUALITATIVE_DISCLAIMER",
     # Clients
     "BaseLLMClient",
@@ -50,6 +55,7 @@ __all__ = [
     "LLMValidationError",
     # Prompts
     "build_context_extraction_prompt",
+    "build_prediction_explanation_prompt",
     "build_qualitative_reasoning_prompt",
     # Service
     "LLMService",

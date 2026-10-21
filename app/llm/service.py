@@ -17,16 +17,20 @@ from app.llm.client import (
     BaseLLMClient,
     LLMClientError,
     LLMError,
+    LLMModelUnavailableError,
     LLMResponseError,
     OllamaLLMClient,
 )
 from app.llm.prompts import (
     build_context_extraction_prompt,
+    build_prediction_explanation_prompt,
     build_qualitative_reasoning_prompt,
 )
 from app.llm.schemas import (
     LLMContextExtraction,
     LLMDirection,
+    LLMExplanationResult,
+    LLMExplanationStatus,
     LLMReasoningResult,
 )
 from app.news.schemas import NewsArticle
@@ -270,3 +274,236 @@ class LLMService:
             )
         except ValidationError as e:
             raise LLMValidationError(f"Qualitative reasoning schema validation failed: {e}") from e
+
+    def explain_prediction(
+        self,
+        symbol: str,
+        articles: Sequence[Union[NewsArticle, Dict[str, Any]]],
+        events: Optional[Sequence[Union[MacroEvent, Dict[str, Any]]]] = None,
+        cutoff_time: Optional[datetime] = None,
+        quantitative_direction: Optional[str] = None,
+        quantitative_probability: Optional[float] = None,
+        max_articles: int = 10,
+        max_events: int = 10,
+    ) -> LLMExplanationResult:
+        """Generate an evidence-grounded qualitative explanation for a prediction (Day 55).
+
+        Synthesizes point-in-time verified news articles and regulatory events into
+        a validated LLMExplanationResult without mutating numerical predictions.
+
+        Args:
+            symbol: Target stock ticker.
+            articles: Ingested financial news articles.
+            events: Ingested macroeconomic and regulatory events.
+            cutoff_time: Optional point-in-time reference timestamp.
+            quantitative_direction: Optional directional forecast from quantitative ML.
+            quantitative_probability: Optional probability from quantitative ML.
+            max_articles: Maximum number of articles to pass into prompt (default 10).
+            max_events: Maximum number of events to pass into prompt (default 10).
+
+        Returns:
+            Validated LLMExplanationResult.
+        """
+        clean_sym = symbol.strip().upper() if symbol else "UNKNOWN"
+        if clean_sym.endswith(".NS") or clean_sym.endswith(".BO"):
+            clean_sym = clean_sym.rsplit(".", 1)[0]
+
+        # 1. Check if LLM client is disabled
+        if not getattr(self._client, "is_enabled", True):
+            return LLMExplanationResult.disabled(symbol=clean_sym, model=self._client.model_name)
+
+        # 2. Point-in-time filtering & bounding
+        filtered_articles: List[Union[NewsArticle, Dict[str, Any]]] = []
+        for art in articles or []:
+            if cutoff_time is not None:
+                pub = getattr(art, "published_at", None)
+                if pub is None and isinstance(art, dict):
+                    pub_val = art.get("published_at")
+                    if isinstance(pub_val, datetime):
+                        pub = pub_val
+                    elif isinstance(pub_val, str):
+                        try:
+                            pub = datetime.fromisoformat(pub_val.replace("Z", "+00:00"))
+                        except ValueError:
+                            pub = None
+                if pub is not None:
+                    # Align timezones
+                    if pub.tzinfo is None and cutoff_time.tzinfo is not None:
+                        pub = pub.replace(tzinfo=timezone.utc)
+                    elif pub.tzinfo is not None and cutoff_time.tzinfo is None:
+                        cutoff_time = cutoff_time.replace(tzinfo=timezone.utc)
+                    if pub > cutoff_time:
+                        continue
+            filtered_articles.append(art)
+
+        filtered_events: List[Union[MacroEvent, Dict[str, Any]]] = []
+        for ev in events or []:
+            if cutoff_time is not None:
+                pub = getattr(ev, "published_at", None)
+                if pub is None and isinstance(ev, dict):
+                    pub_val = ev.get("published_at")
+                    if isinstance(pub_val, datetime):
+                        pub = pub_val
+                    elif isinstance(pub_val, str):
+                        try:
+                            pub = datetime.fromisoformat(pub_val.replace("Z", "+00:00"))
+                        except ValueError:
+                            pub = None
+                if pub is not None:
+                    if pub.tzinfo is None and cutoff_time.tzinfo is not None:
+                        pub = pub.replace(tzinfo=timezone.utc)
+                    elif pub.tzinfo is not None and cutoff_time.tzinfo is None:
+                        cutoff_time = cutoff_time.replace(tzinfo=timezone.utc)
+                    if pub > cutoff_time:
+                        continue
+            filtered_events.append(ev)
+
+        # 3. Empty context check
+        if not filtered_articles and not filtered_events:
+            return LLMExplanationResult.no_context(symbol=clean_sym, model=self._client.model_name)
+
+        # 4. Check model availability
+        if hasattr(self._client, "check_model_availability"):
+            try:
+                self._client.check_model_availability()
+            except LLMModelUnavailableError as e:
+                return LLMExplanationResult.unavailable(
+                    symbol=clean_sym,
+                    model=self._client.model_name,
+                    reason=f"Target model unavailable: {e}",
+                )
+            except LLMClientError as e:
+                return LLMExplanationResult.unavailable(
+                    symbol=clean_sym,
+                    model=self._client.model_name,
+                    reason=f"Ollama connection check failed: {e}",
+                )
+
+        # 5. Build prompt with provenance
+        system_instruction, user_prompt, known_provenance = build_prediction_explanation_prompt(
+            symbol=clean_sym,
+            articles=filtered_articles[:max_articles],
+            events=filtered_events[:max_events],
+            quantitative_direction=quantitative_direction,
+            quantitative_probability=quantitative_probability,
+        )
+
+        # 6. Execute model inference
+        try:
+            logger.info("Calling LLM explanation prompt for '%s'", clean_sym)
+            raw_response = self._client.generate(
+                prompt=user_prompt,
+                system=system_instruction,
+                format_json=True,
+            )
+        except LLMModelUnavailableError as e:
+            return LLMExplanationResult.unavailable(
+                symbol=clean_sym,
+                model=self._client.model_name,
+                reason=f"Model unavailable: {e}",
+            )
+        except LLMClientError as e:
+            err_str = str(e).lower()
+            if "timeout" in err_str or "timed out" in err_str:
+                return LLMExplanationResult.timeout(symbol=clean_sym, model=self._client.model_name)
+            if "disabled" in err_str:
+                return LLMExplanationResult.disabled(symbol=clean_sym, model=self._client.model_name)
+            return LLMExplanationResult.unavailable(
+                symbol=clean_sym,
+                model=self._client.model_name,
+                reason=f"Ollama client error: {e}",
+            )
+        except Exception as e:
+            return LLMExplanationResult.failed(
+                symbol=clean_sym,
+                model=self._client.model_name,
+                error_message=f"Generation failed: {e}",
+            )
+
+        # 7. Extract JSON and parse schema
+        try:
+            parsed_data = _extract_json_object(raw_response)
+        except Exception as e:
+            return LLMExplanationResult.failed(
+                symbol=clean_sym,
+                model=self._client.model_name,
+                error_message=f"Model response was not valid JSON: {e}",
+            )
+
+        # 8. Validate supporting evidence against provenance
+        verified_evidence, unverified_notes = _validate_supporting_evidence(
+            parsed_data.get("supporting_evidence", ()),
+            known_provenance,
+        )
+
+        limitations_input = parsed_data.get("limitations", ())
+        if isinstance(limitations_input, (list, tuple)):
+            limitations_list = [str(x).strip() for x in limitations_input if str(x).strip()]
+        elif isinstance(limitations_input, str) and limitations_input.strip():
+            limitations_list = [limitations_input.strip()]
+        else:
+            limitations_list = []
+        limitations_list.extend(unverified_notes)
+
+        # Truncation note if input exceeded max bounds
+        if len(filtered_articles) > max_articles or len(filtered_events) > max_events:
+            limitations_list.append(
+                f"Input context was bounded to the {max_articles} most recent articles and {max_events} events."
+            )
+
+        summary = str(parsed_data.get("summary", "")).strip() or "Market context analyzed."
+        direction = parsed_data.get("direction")
+        confidence = str(parsed_data.get("confidence", "LOW")).strip().upper()
+
+        return LLMExplanationResult(
+            status=LLMExplanationStatus.SUCCESS,
+            summary=summary,
+            supporting_evidence=verified_evidence,
+            limitations=tuple(limitations_list),
+            model=self._client.model_name,
+            generated_at=datetime.now(timezone.utc).isoformat(),
+            symbol=clean_sym,
+            direction=str(direction).strip().upper() if direction else None,
+            confidence=confidence if confidence in ("LOW", "MEDIUM", "HIGH") else "LOW",
+            raw_response=raw_response,
+        )
+
+
+def _validate_supporting_evidence(
+    raw_evidence: Any,
+    known_provenance: Dict[str, str],
+) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
+    """Validate supporting evidence items against supplied source records."""
+    if not raw_evidence:
+        return (), ()
+
+    if isinstance(raw_evidence, (list, tuple)):
+        items = [str(x).strip() for x in raw_evidence if str(x).strip()]
+    elif isinstance(raw_evidence, str) and raw_evidence.strip():
+        items = [raw_evidence.strip()]
+    else:
+        return (), ()
+
+    verified: List[str] = []
+    unverified_notes: List[str] = []
+
+    if not known_provenance:
+        return (), ("Supporting evidence could not be matched against verified sources.",)
+
+    for item in items:
+        item_lower = item.lower()
+        # Verify if citation explicitly names any known source tag, publisher, org, or snippet
+        is_grounded = any(
+            token in item_lower
+            for token in known_provenance.keys()
+            if len(token) >= 3
+        )
+        if is_grounded:
+            verified.append(item)
+        else:
+            if any(k in item_lower for k in ("[news", "[event", "article", "report", "reuters", "rbi", "sebi", "nse")):
+                verified.append(item)
+            else:
+                unverified_notes.append(f"Unverified citation omitted: '{item[:60]}...'")
+
+    return tuple(verified), tuple(unverified_notes)

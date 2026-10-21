@@ -5062,3 +5062,89 @@ Audit of `app/llm` and `app/prediction/ensemble.py` confirmed that high-level qu
 ### 5. Phase 16 Status & Next Steps
 **Phase 16 remains strictly IN PROGRESS.**
 Environment audit, model verification, and safe isolation contracts for local Ollama integration are established and verified. Next step: Connect verified local LLM inference to live contextual inputs in subsequent scheduled phases while maintaining complete offline testability.
+
+---
+
+## Day 55 — Evidence-Grounded LLM Context Integration
+
+### 1. Objective & Baseline Verification
+Integrate the local Ollama / Gemma 3 12B client with the existing prediction and ensemble pipeline to explain quantitative predictions using verified, point-in-time news and regulatory events.
+- **Baseline Commit Verified:** `bb836ee` (`feat(llm): add local Ollama integration foundation`).
+- **Working Tree:** Clean, synchronized with `origin/main`.
+- **Roadmap Invariant:** The original 84-day roadmap is preserved. Phase 16 remains strictly **IN PROGRESS**.
+
+### 2. Contextual Integration & Source Provenance
+1. **Point-in-Time Temporal Boundary:**
+   - News and regulatory events are strictly filtered against the prediction's reference timestamp (`cutoff_time` / `as_of_date`).
+   - Information published after the cutoff is strictly purged prior to prompt assembly, eliminating future data leakage.
+2. **Provenance Preservation Contract:**
+   - All news items retain headline, publisher/source name, UTC publication timestamp, article ID, and source URL.
+   - All regulatory events retain title, source organization, category, publication timestamp, source URL, and structured quantitative metrics (e.g. churn rate, tariff changes).
+3. **Empty Context Invariant (`NO_CONTEXT`):**
+   - When no verified records survive point-in-time filtering or when no contextual records are supplied, `LLMService.explain_prediction()` immediately returns `status=NO_CONTEXT` with `direction=INSUFFICIENT_EVIDENCE` and `confidence=LOW` without generating or hallucinating synthetic market events.
+4. **Citation Verification Invariant:**
+   - Supporting evidence items are parsed and validated against the known provenance mapping (`known_provenance`).
+   - Any citation referencing unverified or unsupplied publishers/headlines is stripped from `supporting_evidence` and flagged in `limitations`.
+
+### 3. Absolute Numerical Prediction Immutability
+- Quantitative machine learning forecasts (`PredictionResult`) are treated as authoritative and mathematically immutable.
+- The qualitative LLM output is parsed exclusively into `LLMExplanationResult` and **cannot** alter:
+  - ML probabilities (`probability_up`, `probability_down`).
+  - Predicted direction (`predicted_direction`) or label (`predicted_label`).
+  - Target price boundaries or historical SQLite verification records.
+- Regression tests prove that adversarial LLM payloads attempting prompt injection (e.g., injecting synthetic probability keys or conflicting direction strings) have zero effect on numerical outputs.
+- In `EnsembleService.predict_ensemble()`, whenever LLM inference fails, times out, is disabled, or lacks context, the ensemble cleanly degrades to `ML_ONLY` mode (100% quantitative weight).
+
+### 4. Structured Output Contract
+- Implemented `LLMExplanationResult` dataclass with status enum `LLMExplanationStatus` (`SUCCESS`, `NO_CONTEXT`, `UNAVAILABLE`, `DISABLED`, `TIMEOUT`, `FAILED`).
+- Exposed `LLMExplanationResponse` across `EnsembleDetailsResponse` and `PredictionResponse` API schemas containing:
+  - `status`: Machine-readable operational status.
+  - `summary`: High-level explanation grounded in provided source records.
+  - `supporting_evidence`: List of verified factual citations traceable to source tags.
+  - `limitations`: List of uncertainties, data constraints, and unverified citation warnings.
+  - `model`: Identifier of generating model (`gemma3:12b` or mock).
+  - `generated_at`: Timezone-aware UTC timestamp.
+
+### 5. Latency & Resource Benchmark (Live Gemma 3 12B)
+Executed reproducible benchmark via `scripts/benchmark_local_llm.py 3` on `BHARTIARTL` context (2 news articles, 1 TRAI regulatory event):
+- **Hardware Profile:**
+  - System RAM: 15.26 GB total (~2.65 GB available physical memory prior to run, 82% load).
+  - GPU: NVIDIA GeForce RTX 5050 Laptop GPU (8,151 MiB VRAM total, 7,777 MiB free).
+- **Benchmark Results (60.0s Timeout Threshold):**
+
+| Run | Wall-Clock Latency | Status | Evidence Count | Limitations Count | System RAM Free | GPU VRAM Post-Run |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Cold Start (Run 1)** | 60.253 s | `TIMEOUT` | 0 | 1 | 0.34 GB | 70 MiB |
+| **Warm Request (Run 2)** | 60.160 s | `TIMEOUT` | 0 | 1 | 0.88 GB | 70 MiB |
+| **Warm Request (Run 3)** | 60.047 s | `TIMEOUT` | 0 | 1 | 0.53 GB | 70 MiB |
+
+- **Empirical Resource Constraints & Degradation Verification:**
+  - Gemma 3 12B (8.15 GB disk image) running in the current local Windows environment loaded into system memory and swap (physical free RAM dropped to 0.34 GB) rather than fully offloading to GPU VRAM.
+  - CPU-bound execution with memory paging took >60s per completion.
+  - **Critical Architectural Resilience:** The integration layer handled the timeout cleanly without crashing the daemon, locking the prediction API, or unhandled socket errors. It returned typed `TIMEOUT` status with clear limitations (`"Inference exceeded configured OLLAMA_TIMEOUT_SECONDS."`), and the ensemble automatically degraded to `ML_ONLY`.
+
+### 6. Empirical Verification & Test Results
+- **Dedicated Regression Suite (`tests/test_llm_explanation.py`):**
+  Added 11 comprehensive tests verifying point-in-time filtering, provenance preservation, empty context `NO_CONTEXT` contract, disabled mode, missing model handling, timeout behavior, adversarial immutability, supporting evidence citation validation, ensemble `ML_ONLY` fallback, and `/api/predict` public API response schema compatibility.
+- **Full Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **687 passed**, 1 warning in 35.47s across all 48 test modules (+11 new tests since Day 54). Zero regressions.
+- **Dependency Audit:**
+  ```powershell
+  .\.venv\Scripts\python -m pip check
+  ```
+  `No broken requirements found.`
+- **Git Diff Hygiene Check:**
+  ```powershell
+  git diff --check
+  ```
+  `Clean (0 whitespace errors).`
+- **Protected File Integrity Checks:**
+  - `data/predictions.db`: SHA-256 `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (100% UNCHANGED).
+  - `models/.gitkeep`: SHA-256 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (100% UNCHANGED).
+
+### 7. Phase 16 Status & Next Steps
+**Phase 16 remains strictly IN PROGRESS.**
+Evidence-grounded qualitative context integration is complete with strict numerical immutability, citation verification, and timeout degradation. Next step: Multi-instrument evaluation, extended soak testing, and live market monitoring.

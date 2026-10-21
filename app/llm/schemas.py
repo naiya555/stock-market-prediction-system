@@ -213,3 +213,238 @@ class LLMReasoningResult:
             "disclaimer": self.disclaimer,
             "raw_response": self.raw_response,
         }
+
+    def to_explanation(
+        self,
+        status: "LLMExplanationStatus" = None,
+    ) -> "LLMExplanationResult":
+        """Adapt LLMReasoningResult to canonical LLMExplanationResult."""
+        stat = status or LLMExplanationStatus.SUCCESS
+        evidence = list(self.source_references)
+        for f in self.positive_factors:
+            if f not in evidence:
+                evidence.append(f)
+        for f in self.negative_factors:
+            if f not in evidence:
+                evidence.append(f)
+        return LLMExplanationResult(
+            status=stat,
+            summary=self.reasoning_summary,
+            supporting_evidence=tuple(evidence),
+            limitations=self.downside_risks,
+            model=self.model_version,
+            generated_at=self.generated_at.isoformat(),
+            symbol=self.symbol,
+            direction=self.direction.value,
+            confidence=self.confidence_assessment,
+            disclaimer=self.disclaimer,
+            raw_response=self.raw_response,
+        )
+
+
+class LLMExplanationStatus(str, Enum):
+    """Operational status of qualitative prediction explanation generation."""
+
+    SUCCESS = "SUCCESS"
+    NO_CONTEXT = "NO_CONTEXT"
+    UNAVAILABLE = "UNAVAILABLE"
+    DISABLED = "DISABLED"
+    TIMEOUT = "TIMEOUT"
+    FAILED = "FAILED"
+
+
+@dataclass(frozen=True)
+class LLMExplanationResult:
+    """Canonical representation of an evidence-grounded qualitative prediction explanation.
+
+    Synthesizes point-in-time financial news and regulatory events to explain quantitative forecasts
+    without altering numerical prediction probabilities, directions, or target prices.
+    """
+
+    status: LLMExplanationStatus
+    summary: str
+    supporting_evidence: Tuple[str, ...] = field(default_factory=tuple)
+    limitations: Tuple[str, ...] = field(default_factory=tuple)
+    model: str = "gemma3:12b"
+    generated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    symbol: Optional[str] = None
+    direction: Optional[str] = None
+    confidence: Optional[str] = None
+    disclaimer: str = NON_PREDICTIVE_QUALITATIVE_DISCLAIMER
+    raw_response: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if isinstance(self.status, str):
+            try:
+                object.__setattr__(self, "status", LLMExplanationStatus(self.status.strip().upper()))
+            except ValueError:
+                object.__setattr__(self, "status", LLMExplanationStatus.FAILED)
+        elif not isinstance(self.status, LLMExplanationStatus):
+            raise ValidationError("status must be an instance of LLMExplanationStatus")
+
+        if not self.summary or not str(self.summary).strip():
+            object.__setattr__(self, "summary", "No qualitative summary generated.")
+        else:
+            object.__setattr__(self, "summary", str(self.summary).strip())
+
+        object.__setattr__(
+            self,
+            "supporting_evidence",
+            _normalize_string_tuple(self.supporting_evidence, "supporting_evidence"),
+        )
+        object.__setattr__(
+            self,
+            "limitations",
+            _normalize_string_tuple(self.limitations, "limitations"),
+        )
+
+        if not self.model or not str(self.model).strip():
+            object.__setattr__(self, "model", "gemma3:12b")
+        else:
+            object.__setattr__(self, "model", str(self.model).strip())
+
+        if self.symbol:
+            clean_sym = str(self.symbol).strip().upper()
+            if clean_sym.endswith(".NS") or clean_sym.endswith(".BO"):
+                clean_sym = clean_sym.rsplit(".", 1)[0]
+            object.__setattr__(self, "symbol", clean_sym)
+
+        if self.direction:
+            object.__setattr__(self, "direction", str(self.direction).strip().upper())
+
+        if self.confidence:
+            object.__setattr__(self, "confidence", str(self.confidence).strip().upper())
+        else:
+            object.__setattr__(self, "confidence", "LOW")
+
+        if not self.disclaimer or not str(self.disclaimer).strip():
+            object.__setattr__(self, "disclaimer", NON_PREDICTIVE_QUALITATIVE_DISCLAIMER)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert explanation result to canonical dictionary."""
+        return {
+            "status": self.status.value,
+            "summary": self.summary,
+            "supporting_evidence": list(self.supporting_evidence),
+            "limitations": list(self.limitations),
+            "model": self.model,
+            "generated_at": self.generated_at,
+            "symbol": self.symbol,
+            "direction": self.direction,
+            "confidence": self.confidence,
+            "disclaimer": self.disclaimer,
+            "raw_response": self.raw_response,
+        }
+
+    def to_reasoning_result(self) -> LLMReasoningResult:
+        """Convert successful explanation into standard LLMReasoningResult for ensemble synthesis."""
+        dir_val = LLMDirection.INSUFFICIENT_EVIDENCE
+        if self.direction:
+            try:
+                dir_val = LLMDirection(self.direction.upper())
+            except ValueError:
+                dir_val = LLMDirection.INSUFFICIENT_EVIDENCE
+
+        pos_factors = tuple(
+            e for e in self.supporting_evidence
+            if any(w in e.lower() for w in ("positive", "gain", "growth", "support", "upside", "expansion"))
+        ) or self.supporting_evidence
+
+        neg_factors = tuple(
+            e for e in self.supporting_evidence
+            if any(w in e.lower() for w in ("negative", "loss", "decline", "risk", "downside", "penalty", "adverse"))
+        )
+
+        return LLMReasoningResult(
+            symbol=self.symbol or "UNKNOWN",
+            direction=dir_val,
+            reasoning_summary=self.summary,
+            positive_factors=pos_factors,
+            negative_factors=neg_factors,
+            downside_risks=self.limitations,
+            source_references=self.supporting_evidence,
+            confidence_assessment=self.confidence or "LOW",
+            model_version=self.model,
+            disclaimer=self.disclaimer,
+            raw_response=self.raw_response,
+        )
+
+    @classmethod
+    def no_context(cls, symbol: str, model: str = "gemma3:12b") -> "LLMExplanationResult":
+        """Factory for empty point-in-time context."""
+        return cls(
+            status=LLMExplanationStatus.NO_CONTEXT,
+            summary="No verified point-in-time news or regulatory events available within the lookback window.",
+            supporting_evidence=(),
+            limitations=("No external contextual records met point-in-time filters as of the prediction cutoff.",),
+            model=model,
+            symbol=symbol,
+            direction=LLMDirection.INSUFFICIENT_EVIDENCE.value,
+            confidence="LOW",
+        )
+
+    @classmethod
+    def disabled(cls, symbol: str, model: str = "gemma3:12b") -> "LLMExplanationResult":
+        """Factory for disabled LLM configuration."""
+        return cls(
+            status=LLMExplanationStatus.DISABLED,
+            summary="Local LLM service is disabled by configuration (OLLAMA_ENABLED=False).",
+            supporting_evidence=(),
+            limitations=("Qualitative LLM explanation was skipped by administrative configuration.",),
+            model=model,
+            symbol=symbol,
+            direction=LLMDirection.INSUFFICIENT_EVIDENCE.value,
+            confidence="LOW",
+        )
+
+    @classmethod
+    def unavailable(
+        cls,
+        symbol: str,
+        model: str = "gemma3:12b",
+        reason: str = "Local LLM service or model is unavailable.",
+    ) -> "LLMExplanationResult":
+        """Factory for unavailable local Ollama daemon or model."""
+        return cls(
+            status=LLMExplanationStatus.UNAVAILABLE,
+            summary=f"Local LLM service is unavailable: {reason}",
+            supporting_evidence=(),
+            limitations=(reason,),
+            model=model,
+            symbol=symbol,
+            direction=LLMDirection.INSUFFICIENT_EVIDENCE.value,
+            confidence="LOW",
+        )
+
+    @classmethod
+    def timeout(cls, symbol: str, model: str = "gemma3:12b") -> "LLMExplanationResult":
+        """Factory for request timeout."""
+        return cls(
+            status=LLMExplanationStatus.TIMEOUT,
+            summary="Local LLM explanation request timed out before receiving a response.",
+            supporting_evidence=(),
+            limitations=("Inference exceeded configured OLLAMA_TIMEOUT_SECONDS.",),
+            model=model,
+            symbol=symbol,
+            direction=LLMDirection.INSUFFICIENT_EVIDENCE.value,
+            confidence="LOW",
+        )
+
+    @classmethod
+    def failed(
+        cls,
+        symbol: str,
+        model: str = "gemma3:12b",
+        error_message: str = "LLM explanation generation failed.",
+    ) -> "LLMExplanationResult":
+        """Factory for generation or parsing failures."""
+        return cls(
+            status=LLMExplanationStatus.FAILED,
+            summary="Qualitative explanation could not be generated from market context.",
+            supporting_evidence=(),
+            limitations=(error_message,),
+            model=model,
+            symbol=symbol,
+            direction=LLMDirection.INSUFFICIENT_EVIDENCE.value,
+            confidence="LOW",
+        )

@@ -1109,6 +1109,13 @@ Phase 11 implements the local LLM integration foundation, connecting the local O
      - `OLLAMA_ENABLED` (default: `True`): Global toggle allowing immediate offline bypass.
   6. **Proactive Model Verification & Sanitized Diagnostics (Day 54):** `OllamaLLMClient` provides `is_available()` and `check_model_availability()` querying `/api/tags` to ensure the requested model is pulled and resident before inference, raising `LLMModelUnavailableError` on 404 or missing tag. `get_status()` exposes sanitized operational readiness without leaking secrets or system paths.
   7. **Resilient Degradation Boundary:** When Ollama is unreachable, disabled, or the model is missing, `EnsembleService` automatically catches the exception, logs a warning, and falls back cleanly to `ML_ONLY` prediction mode with 100% quantitative weight, guaranteeing zero interruption to the production prediction API.
+  8. **Evidence-Grounded Prediction Explanations (Day 55):** `LLMService.explain_prediction()` synthesizes point-in-time verified news and regulatory announcements into a structured `LLMExplanationResult`:
+     - **Response Contract:** Typed fields `status` (`SUCCESS`, `NO_CONTEXT`, `UNAVAILABLE`, `DISABLED`, `TIMEOUT`, `FAILED`), `summary`, `supporting_evidence`, `limitations`, `model`, `generated_at`.
+     - **Strict Provenance Preservation:** Every context item retains headline/title, publisher/source org, UTC publication timestamp, article ID, and source URL.
+     - **Citation Verification Invariant:** Supporting evidence items are verified against supplied source tags and publishers; unverified or hallucinated citations are stripped and flagged under `limitations`.
+     - **No-Context Invariant:** If no verified records fall within the lookback window or survive the cutoff filter, the service immediately returns `status=NO_CONTEXT` without fabricating market reasons.
+     - **Absolute Numerical Immutability:** Qualitative explanations are completely decoupled from quantitative models. Mathematical probabilities, directions, labels, and database records can never be overwritten by LLM text.
+     - **Empirical Resource Profile:** On memory-constrained local host environments where 12B weights exceed available physical RAM, requests reaching the timeout threshold gracefully transition to `TIMEOUT` status without process hangs.
 
 ---
 

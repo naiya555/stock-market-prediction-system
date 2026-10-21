@@ -173,6 +173,20 @@ class QuoteContextResponse(BaseModel):
     error_message: Optional[str] = None
 
 
+class LLMExplanationResponse(BaseModel):
+    """Evidence-grounded qualitative context explanation (Day 55)."""
+
+    status: str
+    summary: str
+    supporting_evidence: List[str] = Field(default_factory=list)
+    limitations: List[str] = Field(default_factory=list)
+    model: str
+    generated_at: str
+    direction: Optional[str] = None
+    confidence: Optional[str] = None
+    disclaimer: Optional[str] = None
+
+
 class EnsembleDetailsResponse(BaseModel):
     """Detailed multi-agent ensemble synthesis breakdown."""
 
@@ -188,6 +202,7 @@ class EnsembleDetailsResponse(BaseModel):
     llm_direction: Optional[str] = None
     llm_reasoning_summary: Optional[str] = None
     llm_confidence: Optional[str] = None
+    explanation: Optional[LLMExplanationResponse] = None
 
 
 class PredictionResponse(BaseModel):
@@ -211,6 +226,7 @@ class PredictionResponse(BaseModel):
     probability_calibration: str = "uncalibrated"
     data_quality: Optional[DataQualityResponse] = None
     ensemble: Optional[EnsembleDetailsResponse] = None
+    explanation: Optional[LLMExplanationResponse] = None
     quote_context: Optional[QuoteContextResponse] = None
     error_message: Optional[str] = None
     disclaimer: str
