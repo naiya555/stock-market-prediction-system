@@ -732,6 +732,10 @@
     const hasProbUp = probUp !== null;
     const hasProbDown = probDown !== null;
 
+    const fillEl = document.getElementById('res-probability-fill');
+    const probUpEl = document.getElementById('res-prob-up');
+    const probDownEl = document.getElementById('res-prob-down');
+
     if (hasProbUp) {
       if (fillEl) fillEl.style.width = `${Math.max(0, Math.min(100, probUp * 100)).toFixed(1)}%`;
       if (probUpEl) probUpEl.textContent = `P(UP): ${(probUp * 100).toFixed(1)}% [Uncalibrated]`;

@@ -1,2 +1,3 @@
-2026/10/23-01:18:06.987 4f88 Creating DB D:\Share_market_predictor\scratch\chrome_test_profile\Default\Sync Data\LevelDB since it was missing.
-2026/10/23-01:18:06.995 4f88 Reusing MANIFEST D:\Share_market_predictor\scratch\chrome_test_profile\Default\Sync Data\LevelDB/MANIFEST-000001
+2026/10/23-01:19:51.871 75f4 Reusing MANIFEST D:\Share_market_predictor\scratch\chrome_test_profile\Default\Sync Data\LevelDB/MANIFEST-000001
+2026/10/23-01:19:51.872 75f4 Recovering log #3
+2026/10/23-01:19:51.872 75f4 Reusing old log D:\Share_market_predictor\scratch\chrome_test_profile\Default\Sync Data\LevelDB/000003.log 
