@@ -5508,3 +5508,82 @@ Empirical data-readiness audit completed; historical evaluation protocol codifie
 1. Multi-instrument evaluation under concurrent simulated user load.
 2. Extended soak testing across multi-day session boundaries.
 3. Live operational monitoring, error budget alerting, and performance drift telemetry.
+---
+
+## Day 61: Independent ML Baseline Reproducibility & Temporal-Leakage Audit
+
+### 1. Executive Summary
+- **Baseline Commit:** `b876225` (`audit(evaluation): assess historical data readiness`).
+- **Goal Achieved:** Independently recomputed, audited, and verified the reported 240-session out-of-sample ML evaluation for `BHARTIARTL` across market data, target formulation, embargo isolation, probability outputs, Brier scores, and committed metadata artifacts.
+- **Reproducibility Status:** **`REPRODUCIBLE`** (on canonical training snapshot cutoff). All reported metrics, sample sizes, class distributions, confusion matrices, and Brier scores reproduced with 100% precision.
+- **Integrity & Quality Gates:** All **757 tests passing** (+10 new deterministic tests covering Brier formulation, majority probability specification, target equality handling, temporal embargo boundaries, anti-leakage guards, and run-to-run bit-identical determinism) across 51 test modules. Zero regressions. `pip check` clean. `git diff --check` clean. Protected database and model artifact hashes verified 100% bit-identical.
+- **Roadmap Invariant:** **Phase 16 remains strictly IN PROGRESS.**
+
+### 2. Independent Recomputed Evaluation Table ($N = 240$ Holdout)
+| Model Architecture | Sample Size | Accuracy | Precision (UP) | Recall (UP) | F1 (UP) | Brier Score | Confusion Matrix [[TN, FP], [FN, TP]] | Status |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Majority Baseline** | 240 | 49.58% | 0.4958 | 1.0000 | 0.6630 | 0.5042 | `[[0, 121], [0, 119]]` | REPRODUCED |
+| **XGBoost Classifier** | 240 | 51.25% | 0.5066 | 0.6471 | 0.5683 | 0.2556 | `[[46, 75], [42, 77]]` | REPRODUCED |
+| **LightGBM Classifier** | 240 | 53.75% | 0.5267 | 0.6639 | 0.5874 | 0.2562 | `[[50, 71], [40, 79]]` | REPRODUCED |
+
+- **Run-to-Run Determinism:** Pass 1 vs Pass 2 confirmed bit-identical arrays for predicted labels, probabilities, and metric summaries (`max_abs_diff = 0.0`).
+- **Class Balance:** 119 UP (49.58%), 121 DOWN (50.42%).
+
+### 3. Temporal Alignment & Anti-Leakage Audit
+- **Session Definitions & Forward Horizon:**
+  - Feature observation sessions: `2025-10-29` to `2026-10-19` ($N = 240$).
+  - Target outcome realization sessions: `2025-10-30` to `2026-10-21`.
+  - Target formulation: $y_t = 1$ if $\text{Close}_{t+1} > \text{Close}_t$ else $0$. Zero return / flat closes map deterministically to DOWN ($0$) with zero sample discarding.
+  - Non-trading days (weekends, NSE holidays) are handled naturally via chronological indexing of consecutive session bars.
+- **Embargo Boundary Isolation:**
+  - Training window: 958 sessions from `2021-12-10` to `2025-10-27`.
+  - Final training bar target realization date: `2025-10-28`.
+  - Embargo session: `2025-10-28` (1 boundary session purged from both training and holdout).
+  - Holdout start date: `2025-10-29`.
+  - Strict invariant verified: `train_outcome_cutoff` (`2025-10-28`) < `holdout_start_date` (`2025-10-29`). Zero temporal leakage exists across partitions.
+- **Feature Matrix Isolation:**
+  - `validate_feature_matrix_isolation` guarantees feature matrix $X$ is strictly isolated from forward target columns (`target_`, `next_`, `future`, `outcome`).
+  - Technical indicators (SMA, EMA, RSI, MACD, Bollinger Bands, ATR, ROC, Candlesticks) are strictly backward-looking.
+
+### 4. Probability Metrics & Calibration Audit
+- **Class Probability Alignment:**
+  - Column 0 represents $P(\text{DOWN})$; Column 1 represents $P(\text{UP})$.
+  - Verified for both XGBoost and LightGBM that $P(\text{DOWN}) + P(\text{UP}) = 1.0$ everywhere.
+- **Brier Score Calculation:**
+  - Computed on genuine continuous model probability outputs: $BS = \frac{1}{N} \sum (P(UP)_i - y_i)^2$.
+  - Majority baseline probability is explicitly specified as $P(\text{UP}) = 1.0$ unconditionally, yielding $BS = \frac{121}{240} = 0.5042$.
+  - Tree model Brier scores: XGBoost ($0.2556$), LightGBM ($0.2562$).
+  - **Calibration Caveat:** While Brier score is superior to majority baseline ($0.5042$), scores around $0.255$ are close to uninformative guessing ($0.2500$ for constant $p=0.5$). Probabilities are clustered in $[0.30, 0.77]$ around a mean of $\sim 0.53$, slightly over-predicting the actual holdout base rate of $0.4958$. They must not be treated as fully calibrated posterior probabilities without explicit isotonic/Platt calibration.
+
+### 5. Audit of Day 60 Claims & Discrepancies
+- **Date Clarification:** Day 60 reported holdout dates as `2025-10-29 through 2026-10-20`. The audit establishes that prediction feature sessions run from `2025-10-29` to `2026-10-19` ($N=240$), while the realized target outcome sessions span `2025-10-30` through `2026-10-21`.
+- **Dynamic Live Rolling-Window Shift:** In `train_models.py`, `start_time = now - timedelta(days=1825)` uses a dynamic rolling window. If executed with live `datetime.now()` without pinning to the training cutoff, the 20% holdout window shifts forward by 1-2 trading days.
+- **Resolution:** Created `app/history/reproducibility.py` anchoring evaluation to canonical snapshot cutoff `CANONICAL_TRAIN_CUTOFF_UTC` (`2026-10-21T17:16:42Z`), guaranteeing 100% deterministic reproducibility.
+
+### 6. Verification & Quality Gates
+- **Programmatic Reproducibility Tool:**
+  - Executed `scripts/evaluate_ensemble_backtest.py` with live `--recompute` pass.
+- **Targeted Test Execution:**
+  - `tests/test_ml_baseline_reproducibility.py`: **10 passed** in 4.47s (+10 new deterministic tests).
+- **Full Repository Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **757 passed**, 1 warning in 46.10s across all 51 test modules (0 failures, 0 regressions).
+- **Dependency Audit:**
+  ```powershell
+  .\.venv\Scripts\python -m pip check
+  ```
+  `No broken requirements found.`
+- **Git Diff Whitespace Check:**
+  ```powershell
+  git diff --check
+  ```
+  `Clean (0 whitespace errors).`
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (100% UNCHANGED).
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (100% UNCHANGED).
+
+### 7. Phase 16 Status & Next Steps
+**Phase 16 remains strictly IN PROGRESS.**
+Independent reproducibility of numerical ML baselines confirmed; temporal embargo and anti-leakage invariants verified; probability calibration limitations documented.

@@ -19,6 +19,14 @@ from app.history.contract import (
 from app.history.evaluator import PredictionEvaluator
 from app.history.verifier import OutcomeVerifier, parse_session_date
 
+from app.history.reproducibility import (
+    BaselineReproducibilityReport,
+    BaselineReproducibilityStatus,
+    ModelEvaluationRun,
+    TemporalAlignmentAudit,
+    audit_baseline_reproducibility,
+)
+
 __all__ = [
     "ActualOutcome",
     "EvaluationMetrics",
@@ -31,4 +39,9 @@ __all__ = [
     "ComparativeEvaluationReport",
     "ModelPerformanceRow",
     "PairwiseComparison",
+    "BaselineReproducibilityReport",
+    "BaselineReproducibilityStatus",
+    "ModelEvaluationRun",
+    "TemporalAlignmentAudit",
+    "audit_baseline_reproducibility",
 ]

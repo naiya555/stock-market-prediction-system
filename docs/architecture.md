@@ -1425,3 +1425,46 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
   1. Point-in-time news database storing `(symbol, published_at_utc, ingested_at_utc, title, text_snippet, source_url, source_domain)`.
   2. Point-in-time macroeconomic/regulatory calendar with verified timestamped releases.
   3. GPU-accelerated local inference or approved batch LLM pipeline to process $N \ge 240$ sessions without latency timeouts.
+
+---
+
+### 4.33 Independent Numerical ML Baseline Reproducibility & Temporal-Leakage Audit (Day 61)
+- **Objective & Architectural Scope:**
+  Independently audit and recompute the reported 240-session out-of-sample ML evaluation for `BHARTIARTL`, verify temporal alignment and anti-leakage invariants, audit probability calibration and Brier score formulation, and assess run-to-run repeatability from active artifacts without parameter tuning.
+- **Independent Recomputed Results on Canonical Holdout ($N = 240$):**
+  - **Temporal Partitions:**
+    - Training Partition: 958 sessions from `2021-12-10` to `2025-10-27`.
+    - Temporal Embargo: 1 session (`2025-10-28`), enforcing `train_outcome_cutoff < holdout_start_date`.
+    - Holdout Feature Sessions: 240 sessions from `2025-10-29` to `2026-10-19`.
+    - Holdout Target Outcome Realization: Realized across sessions `2025-10-30` through `2026-10-21`.
+    - Class Distribution: 119 UP sessions (49.58%), 121 DOWN sessions (50.42%).
+  - **Empirical Metric Table:**
+    | Model / Strategy | Sample Size | Accuracy | Precision (UP) | Recall (UP) | F1 (UP) | Brier Score | Confusion Matrix [[TN, FP], [FN, TP]] | Status |
+    | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+    | **Majority Baseline** | 240 | 49.58% | 0.4958 | 1.0000 | 0.6630 | 0.5042 | `[[0, 121], [0, 119]]` | REPRODUCED |
+    | **XGBoost Classifier** | 240 | 51.25% | 0.5066 | 0.6471 | 0.5683 | 0.2556 | `[[46, 75], [42, 77]]` | REPRODUCED |
+    | **LightGBM Classifier** | 240 | 53.75% | 0.5267 | 0.6639 | 0.5874 | 0.2562 | `[[50, 71], [40, 79]]` | REPRODUCED |
+  - **Determinism Check:** Run 1 vs. Run 2 on the canonical snapshot confirmed 100% bit-identical predictions, probabilities, and metric summaries (`diff = 0.0`).
+- **Temporal Alignment & Anti-Leakage Audit Findings:**
+  1. **Session-Level Target Alignment:**
+     - Target formula: $y_t = 1$ if $\text{Close}_{t+1} > \text{Close}_t$ else $0$.
+     - Flat/equal sessions ($\text{Close}_{t+1} == \text{Close}_t$) evaluate deterministically to DOWN ($0$) with zero data dropping.
+     - Weekends and exchange holidays are handled naturally via chronological indexing of consecutive trading bars.
+  2. **Boundary Embargo Isolation:**
+     - The training set outcome date for the final training bar (`2025-10-27`) is session $t+1$ (`2025-10-28`).
+     - Session `2025-10-28` is embargoed (purged from both train and test partitions).
+     - Holdout prediction begins on session `2025-10-29`, strictly subsequent to the training outcome boundary (`train_outcome_cutoff < holdout_start_date`). Zero lookahead leakage exists across the boundary.
+  3. **Feature-Input Isolation:**
+     - Feature matrix $X$ undergoes strict anti-leakage validation (`validate_feature_matrix_isolation`), barring target-derived prefixes/suffixes (`target_`, `next_`, `future`, `outcome`).
+     - Rolling windows (SMA, EMA, RSI, MACD, Bollinger Bands, ATR, ROC) are backward-looking and use only data available at or before session $t$.
+- **Probability & Calibration Audit:**
+  - Class column alignment: Column 0 represents $P(\text{DOWN})$, Column 1 represents $P(\text{UP})$.
+  - Both XGBoost and LightGBM output narrow probability distributions clustered around 0.50–0.53 (XGBoost mean: 0.5333, LightGBM mean: 0.5310).
+  - Brier score for the majority baseline (predicting $P(\text{UP})=1.0$ unconditionally) is $N_{DOWN} / N_{TOTAL} = 121 / 240 = 0.5042$.
+  - The tree model Brier scores (0.2556 and 0.2562) indicate that directional probability estimates are modest and near the uninformative 0.25 baseline; they are not fully calibrated posterior probabilities.
+- **Audit of Reported Claims & Discrepancies:**
+  - **Date Clarification:** Day 60 reported the test period as `2025-10-29 through 2026-10-20`. The audit establishes that feature observation sessions run from `2025-10-29` to `2026-10-19` ($N=240$), while the realized target outcome sessions span `2025-10-30` through `2026-10-21`.
+  - **Dynamic Rolling Window Shift:** Unanchored evaluation using `datetime.now()` causes the 20% holdout window to drift forward as new trading days occur. Reproducible verification requires anchoring data fetching to the recorded cutoff timestamp (`2026-10-21T17:16:42Z`).
+- **Reproducibility Classification:**
+  - Pinned Evaluation: **`REPRODUCIBLE`** (100% matched down to 4 decimal places).
+  - Live Unanchored Window: **`PARTIALLY REPRODUCIBLE`** (subject to rolling window drift unless pinned to the training cutoff).

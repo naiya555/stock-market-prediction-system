@@ -107,7 +107,11 @@ def compute_majority_baseline(sample_size: int, class_balance: Dict[str, int]) -
     )
 
 
-def run_evaluation() -> Dict[str, Any]:
+import argparse
+from app.history.reproducibility import audit_baseline_reproducibility, BaselineReproducibilityStatus
+
+
+def run_evaluation(recompute: bool = True) -> Dict[str, Any]:
     """Execute evaluation and print formatted audit report."""
     models_dir = project_root / "models"
     xgb_meta_path = models_dir / "xgboost_metadata.json"
@@ -121,11 +125,13 @@ def run_evaluation() -> Dict[str, Any]:
     maj_summary = compute_majority_baseline(xgb_summary.sample_size, xgb_summary.class_balance)
 
     print("=" * 90)
-    print("DAY 59: MULTI-INSTRUMENT VALIDATION & CHRONOLOGICAL ML EVALUATION REPORT")
+    print("DAY 61: INDEPENDENT ML BASELINE REPRODUCIBILITY & TEMPORAL LEAKAGE AUDIT")
     print("=" * 90)
     print(f"Supported Instrument:     BHARTIARTL (Equity)")
     print(f"Holdout Sample Size:      N = {xgb_summary.sample_size} trading sessions")
     print(f"Chronological Cutoff:     Evaluation after 2025-10-27 (Zero Lookahead Leakage)")
+    print(f"Feature Session Dates:    2025-10-29 through 2026-10-19")
+    print(f"Target Outcome Dates:     2025-10-30 through 2026-10-21")
     print(f"Class Distribution:       UP = {xgb_summary.class_balance['UP']} ({xgb_summary.class_balance['UP']/xgb_summary.sample_size:.1%}), "
           f"DOWN = {xgb_summary.class_balance['DOWN']} ({xgb_summary.class_balance['DOWN']/xgb_summary.sample_size:.1%})")
     print("-" * 90)
@@ -141,6 +147,35 @@ def run_evaluation() -> Dict[str, Any]:
     print(f"  Majority Baseline:  {maj_summary.confusion_matrix}")
     print(f"  XGBoost Classifier: {xgb_summary.confusion_matrix}")
     print(f"  LightGBM Classifier:{lgb_summary.confusion_matrix}")
+
+    repro_report = None
+    if recompute:
+        print("\n" + "=" * 90)
+        print("FRESH INDEPENDENT RECOMPUTATION & DETERMINISTIC VERIFICATION")
+        print("=" * 90)
+        try:
+            repro_report = audit_baseline_reproducibility(
+                symbol="BHARTIARTL",
+                models_dir=models_dir,
+            )
+            print(f"Reproducibility Status:   {repro_report.status.value}")
+            print(f"Run-to-Run Identical:     {repro_report.run_to_run_identical}")
+            print(f"Metadata Match Verified:  {repro_report.metadata_match_verified}")
+            print(f"Temporal Embargo Check:   {'PASS' if repro_report.temporal_audit.is_embargo_strictly_isolating else 'FAIL'}")
+            print(f"  - Training Window:      {repro_report.temporal_audit.train_start_date} to {repro_report.temporal_audit.train_end_date} (N = {repro_report.temporal_audit.train_sample_count})")
+            print(f"  - Embargo Boundary:     {repro_report.temporal_audit.train_outcome_cutoff} (1 session gap)")
+            print(f"  - Holdout Window:       {repro_report.temporal_audit.holdout_start_date} to {repro_report.temporal_audit.holdout_end_date} (N = {repro_report.temporal_audit.holdout_sample_count})")
+            print(f"  - Forward Outcome Date: {repro_report.temporal_audit.holdout_final_target_session}")
+
+            if repro_report.discrepancies:
+                print("Discrepancies:")
+                for d in repro_report.discrepancies:
+                    print(f"  [DISCREPANCY] {d}")
+            else:
+                print("  [OK] All freshly recomputed metrics match model_metadata.json exactly (0 discrepancies).")
+
+        except Exception as exc:
+            print(f"Warning: Live recomputation could not complete: {exc}")
 
     print("\n" + "=" * 90)
     print("INSTRUMENT COMPATIBILITY MATRIX & EVALUATION STATUS")
@@ -189,8 +224,12 @@ def run_evaluation() -> Dict[str, Any]:
         "majority": maj_summary,
         "xgboost": xgb_summary,
         "lightgbm": lgb_summary,
+        "reproducibility": repro_report,
     }
 
 
 if __name__ == "__main__":
-    run_evaluation()
+    parser = argparse.ArgumentParser(description="Evaluate ML baseline and check reproducibility.")
+    parser.add_argument("--metadata-only", action="store_true", help="Only read saved metadata without live recomputation.")
+    args = parser.parse_args()
+    run_evaluation(recompute=not args.metadata_only)
