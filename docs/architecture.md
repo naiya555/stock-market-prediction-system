@@ -1380,3 +1380,48 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
      - Untrained instruments (`TCS`, `RELIANCE`, `NIFTY_TELECOMMUNICATIONS`) are reported as `BLOCKED (MODEL_UNAVAILABLE)`, never as 0% accuracy or success.
      - LLM polarity-to-probability mapping ($0.50 + 0.50 \times \text{polarity}$) is recognized as heuristic and uncalibrated.
      - In the absence of an empirical historical point-in-time news backtesting corpus, multi-instrument blended ensemble performance is strictly labeled `NOT EVALUATED`.
+
+---
+
+### 4.32 Historical Evaluation Data-Readiness Audit & Protocol (Day 60)
+- **Objective & Architectural Scope:**
+  Audit repository data availability, historical news archives, event feeds, market label definitions, and temporal cutoff enforcement to determine whether a valid, point-in-time historical evaluation of ML-only predictions against an LLM-assisted or blended approach is feasible.
+- **Repository Data Inventory:**
+  - `data/predictions.db`: Contains 6 initialized schema tables (`stocks`, `model_versions`, `predictions`, `actuals`, `model_releases`, `sqlite_sequence`) with 0 operational records. Preserved in pristine state.
+  - `data/raw/`, `data/processed/`, `data/cache/`: Directory placeholders (`.gitkeep`). No local CSV, Parquet, or SQLite caches of historical market or news data exist on disk.
+  - Dynamic Market Data: Sourced via `YFinanceProvider` (`BHARTIARTL.NS`, `TCS.NS`, `RELIANCE.NS`) and `NiftyIndicesProvider` (`NIFTY_TELECOMMUNICATIONS`).
+- **Historical News & Event Feeds Audit:**
+  - `RSSNewsProvider`: Queries live, ephemeral RSS feeds (Google News India). Returns current rolling window (typically last 7 to 14 days). Does not maintain a historical point-in-time news archive.
+  - `RBIEventProvider` & `SEBIEventProvider`: Query official regulatory RSS feeds for press releases. Only recent notifications are present in the live feed.
+  - Zero historical point-in-time news articles or regulatory events exist in the repository for the 2021–2026 backtesting period.
+  - Lookahead rule: Current provider responses cannot be backfilled onto historical prediction dates, as doing so would cause catastrophic lookahead leakage.
+- **Historical Evaluation Readiness Classification:**
+  | Strategy Component | Readiness Status | Empirical Rationale |
+  | :--- | :---: | :--- |
+  | **Numerical ML-Only** | **`READY`** | Holdout dataset ($N = 240$ sessions from `2025-10-29` to `2026-10-20`) is deterministically reproducible from market providers and committed model metadata (`models/model_metadata.json`, `xgboost_direction.json`, `lightgbm_direction.txt`). |
+  | **LLM-Only Qualitative** | **`BLOCKED`** | No point-in-time historical news/event archive exists for past evaluation dates. Live RSS feeds only provide contemporary articles. Synthesizing backtests with modern news violates point-in-time integrity. |
+  | **Blended (ML + LLM)** | **`BLOCKED`** | Blended evaluation requires matched-date, point-in-time qualitative reasoning for the exact sessions in the test set. Because the LLM input is blocked, blended historical evaluation is blocked. |
+- **Market Labels, Cutoff Semantics & Anti-Leakage:**
+  - **Target Definition:** Binary next-session direction: $y_t = 1$ if $\text{Close}_{t+1} > \text{Close}_t$ else $0$.
+  - **Temporal Cutoff:** `cutoff_date = 2025-10-27`. Training window: 958 bars up to cutoff.
+  - **Embargo Enforcement:** 1-session embargo (`embargo_sessions = 1`) accounts for label outcome observation on session $t+1$ (`2025-10-28`). Holdout evaluation begins strictly on session $t+2$ (`2025-10-29`), eliminating lookahead contamination.
+  - **Feature Warmup:** Minimum 34 sessions (`MIN_WARMUP_BARS = 34`) required for rolling indicator convergence before feature assembly.
+- **Reproducible Evaluation Protocol:**
+  When historical point-in-time news data becomes available, the evaluation must execute strictly under the following protocol:
+  1. **Candidate Strategies:**
+     - Baseline 1: Majority Class or Simple Direction.
+     - Baseline 2: Numerical ML-Only (`XGBoost` or `LightGBM`).
+     - Strategy 3: LLM-Only Qualitative Stance (converted via heuristic polarity mapping).
+     - Strategy 4: Blended Prediction (convex combination of ML probability and LLM pseudo-probability).
+  2. **Matched-Date Test Set:**
+     All strategies must be evaluated on the identical $N = 240$ chronological test sessions. No partial or mismatched subsets permitted.
+  3. **Evaluation Metrics:**
+     - Directional Accuracy, Precision, Recall, F1-Score, and Confusion Matrix.
+     - Brier Score and Reliability/Calibration Diagnostics (calculated exclusively on genuine probabilities; LLM heuristic scores are not calibrated probabilities).
+     - Confidence Intervals (e.g. Wilson score interval for accuracy).
+  4. **Strict Optimization Ban on Test Set:**
+     Ensemble weights ($w_{ml}, w_{llm}$) cannot be tuned or post-hoc fitted on the test partition.
+- **Prerequisites for Unblocking LLM/Blended Evaluation:**
+  1. Point-in-time news database storing `(symbol, published_at_utc, ingested_at_utc, title, text_snippet, source_url, source_domain)`.
+  2. Point-in-time macroeconomic/regulatory calendar with verified timestamped releases.
+  3. GPU-accelerated local inference or approved batch LLM pipeline to process $N \ge 240$ sessions without latency timeouts.

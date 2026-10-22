@@ -5416,3 +5416,95 @@ Multi-instrument validation, cross-model isolation gates, and fallback accountin
 1. Multi-instrument evaluation under concurrent simulated user load.
 2. Extended soak testing across multi-day session boundaries.
 3. Live operational monitoring, error budget alerting, and performance drift telemetry.
+---
+
+## Day 60: Historical Evaluation Data-Readiness Audit
+
+### 1. Executive Summary
+- **Baseline Commit:** `5bdebaf` (`test(prediction): validate multi-instrument compatibility`).
+- **Goal Achieved:** Conducted an exhaustive data-readiness audit across repository datasets, databases, news/event providers, model metadata, and evaluation scripts to determine whether sufficient point-in-time historical data exists to evaluate ML-only predictions against an LLM-assisted or blended approach.
+- **Readiness Classification:**
+  - **Numerical ML-Only Evaluation:** **`READY`** (Holdout dataset of $N = 240$ sessions for `BHARTIARTL` is deterministically reproducible from market providers and model metadata).
+  - **LLM-Only Qualitative Evaluation:** **`BLOCKED`** (No point-in-time historical news or regulatory event archive exists in the repository for past evaluation dates; live RSS feeds only provide rolling windows of contemporary articles).
+  - **Blended (ML + LLM) Evaluation:** **`BLOCKED`** (Valid matched-date comparison requires contemporaneous qualitative signals; evaluating with contemporary news violates temporal isolation and introduces lookahead contamination).
+- **Integrity & Quality Gates:** All **747 tests passing** (+12 new deterministic data readiness audit tests) across 50 test modules. Zero regressions. `pip check` clean. `git diff --check` clean (0 whitespace errors). Protected database and model artifact hashes verified 100% bit-identical.
+- **Roadmap Invariant:** **Phase 16 remains strictly IN PROGRESS.**
+
+### 2. Dataset & Provider Inventory
+| Dataset / Source | Storage Location | Instrument / Topic | Records | Earliest / Latest | Nulls / Dups | Pub / Ingestion Timestamps | Point-in-Time Availability |
+| :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
+| `predictions.db` | `data/predictions.db` | Predictions, Actuals, Releases | 0 rows | N/A | None / None | Yes (schema supports `created_at`) | Pristine schema initialized (0 operational rows) |
+| `data/raw/` | `data/raw/.gitkeep` | Historical CSV/Parquet raw dumps | 0 files | N/A | None / None | No | No local raw market/news archives stored |
+| `data/processed/` | `data/processed/.gitkeep` | Feature matrices / processed datasets | 0 files | N/A | None / None | No | No cached feature datasets stored |
+| `data/cache/` | `data/cache/.gitkeep` | Cache persistence | 0 files | N/A | None / None | No | Ephemeral / uncommitted cache |
+| `YFinanceProvider` | Dynamic API | `BHARTIARTL.NS`, `TCS.NS`, `RELIANCE.NS` | Dynamic | 5+ years historical OHLCV | Handled / Deduplicated | Session timestamps verified | Verified point-in-time OHLCV historical bars |
+| `NiftyIndicesProvider` | Dynamic API | `NIFTY_TELECOMMUNICATIONS` | Dynamic | Multi-year close-only index | Zero volume / Close-only | Daily session dates verified | Verified point-in-time benchmark index history |
+| `RSSNewsProvider` | Dynamic RSS Feed | Financial & corporate news (Google News) | Dynamic | Rolling 7-14 days only | RSS deduplication active | PubDate in RSS, no historical archive | **NOT AVAILABLE historically** (Live feed only) |
+| `RBIEventProvider` | Dynamic RSS Feed | RBI monetary policy & circulars | Dynamic | Rolling 30 days only | RSS deduplication active | PubDate in RSS, no historical archive | **NOT AVAILABLE historically** (Live feed only) |
+| `SEBIEventProvider` | Dynamic RSS Feed | SEBI regulatory circulars & press | Dynamic | Rolling 30 days only | RSS deduplication active | PubDate in RSS, no historical archive | **NOT AVAILABLE historically** (Live feed only) |
+| `model_metadata.json` | `models/model_metadata.json` | Model parameters, train/test cutoffs | 1 file | Cutoff: 2025-10-27 | None / None | UTC training timestamp recorded | Verified artifact defining $N=240$ holdout |
+
+### 3. Historical News & Event Audit Findings
+- **Zero Historical News Archive:** The repository contains no historical news database or point-in-time article store. Live RSS feeds (`RSSNewsProvider`, `RBIEventProvider`, `SEBIEventProvider`) only return active, recent feeds.
+- **Strict Prohibition on Backfilling:** Assigning contemporary news articles to historical prediction cutoffs (e.g. 2025–2026 test dates) violates temporal isolation and introduces lookahead bias.
+- **Readiness Classification:**
+  - `ML-Only`: **READY**
+  - `LLM-Only`: **BLOCKED**
+  - `Blended`: **BLOCKED**
+
+### 4. Market Labels, Cutoff Semantics & Anti-Leakage Audit
+- **Forecast Horizon:** Next trading session close-to-close direction.
+- **Target Label Definition:** $y_t = 1$ if $	ext{Close}_{t+1} > 	ext{Close}_t$, else $0$.
+- **Temporal Cutoff & Partitions:**
+  - Cutoff Date: `2025-10-27`.
+  - Training Set: 958 sessions up to and including cutoff.
+  - Embargo: 1 session (`2025-10-28`) strictly isolates training label resolution ($t+1$) from test feature evaluation.
+  - Test Holdout: 240 chronological sessions (`2025-10-29` to `2026-10-20`).
+  - Class Balance: 119 UP (49.58%), 121 DOWN (50.42%).
+- **Reproducibility of ML Baseline:** The 240-session holdout evaluation for `BHARTIARTL` is 100% deterministically reproducible from market data and committed model artifacts (`xgboost_direction.json` yielding 51.25% acc, `lightgbm_direction.txt` yielding 53.75% acc).
+
+### 5. Reproducible Evaluation Protocol & Prerequisites
+- **Candidate Models:**
+  1. Majority Class / Simple Direction Baseline.
+  2. Numerical ML-Only Model (`XGBoost` / `LightGBM`).
+  3. LLM-Only Qualitative Stance (converted via heuristic polarity mapping).
+  4. Blended Model (convex combination of ML probability and LLM pseudo-probability).
+- **Protocol Invariants:**
+  - Evaluated on identical matched-date test sessions ($N = 240$).
+  - Pre-defined metrics: Directional Accuracy, Precision, Recall, F1, Confusion Matrix, Brier Score (for true probabilities), and Wilson score confidence intervals.
+  - Zero post-hoc weight tuning on test set.
+- **Prerequisites to Unblock LLM/Blended Historical Evaluation:**
+  1. Historical point-in-time news store preserving publication timestamps, ingestion timestamps, source URLs, and headline/body text.
+  2. Historical macroeconomic and regulatory calendar with verified release timestamps.
+  3. Batch or GPU-accelerated local inference pipeline for the $N \ge 240$ holdout sessions.
+
+### 6. Verification & Quality Gates
+- **Programmatic Audit Tool:**
+  - Executed `scripts/audit_historical_readiness.py` producing verified inventory and readiness report.
+- **Targeted Test Execution:**
+  - `tests/test_data_readiness_audit.py`: **12 passed** in 3.08s (+12 new tests covering inventory, readiness classification, embargo semantics, and database invariants).
+- **Full Repository Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **747 passed**, 1 warning in 43.16s across all 50 test modules (0 failures, 0 regressions).
+- **Dependency Audit:**
+  ```powershell
+  .\.venv\Scripts\python -m pip check
+  ```
+  `No broken requirements found.`
+- **Git Diff Whitespace Check:**
+  ```powershell
+  git diff --check
+  ```
+  `Clean (0 whitespace errors).`
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (100% UNCHANGED).
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (100% UNCHANGED).
+
+### 7. Phase 16 Status & Next Steps
+**Phase 16 remains strictly IN PROGRESS.**
+Empirical data-readiness audit completed; historical evaluation protocol codified; ML baseline verified reproducible. Outstanding Phase 16 requirements:
+1. Multi-instrument evaluation under concurrent simulated user load.
+2. Extended soak testing across multi-day session boundaries.
+3. Live operational monitoring, error budget alerting, and performance drift telemetry.
