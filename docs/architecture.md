@@ -1468,3 +1468,36 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
 - **Reproducibility Classification:**
   - Pinned Evaluation: **`REPRODUCIBLE`** (100% matched down to 4 decimal places).
   - Live Unanchored Window: **`PARTIALLY REPRODUCIBLE`** (subject to rolling window drift unless pinned to the training cutoff).
+
+---
+
+### 4.34 Probability Calibration Baselines & Statistical Significance Audit (Day 62)
+- **Objective & Architectural Scope:**
+  Audit raw model probability forecasts against calibrated references, quantify calibration errors using reliability diagrams and Expected Calibration Error (ECE), compute Wilson score confidence intervals around directional accuracy, perform paired McNemar significance testing, and establish a leakage-safe protocol for future calibrator fitting.
+- **Probability Forecast Baselines Table ($N = 240$ Holdout):**
+  | Forecast Strategy | Type | Rule / Formulation | Directional Accuracy | Brier Score | Log Loss | Partition Origin |
+  | :--- | :---: | :--- | :---: | :---: | :---: | :---: |
+  | **Constant 0.50 Reference** | Probability | $P(\text{UP}) = 0.50$ | 49.58% (tie: UP) | **0.2500** | **0.6931** | Uninformative prior |
+  | **Training Prior Baseline** | Probability | $P(\text{UP}) = p_{train} = 502/958 \approx 0.5240$ | 49.58% (tie: UP) | **0.2508** | **0.6947** | Training partition ($N=958$) |
+  | **Majority Class Baseline** | Hard Class | $\hat{y}=1 \implies P(\text{UP}) = 1.0000$ | 49.58% | **0.5042** | $> 15.0$ (clipped) | Training partition ($N=958$) |
+  | **XGBoost Classifier** | Continuous Prob | $\hat{p} = \text{logistic}(z)$, $\hat{y}=\mathbb{I}(\hat{p}>0.5)$ | 51.25% | **0.2556** | **0.7050** | Fitted model on $N=958$ |
+  | **LightGBM Classifier** | Continuous Prob | $\hat{p} = \text{sigmoid}(z)$, $\hat{y}=\mathbb{I}(\hat{p}>0.5)$ | 53.75% | **0.2562** | **0.7064** | Fitted model on $N=958$ |
+- **Calibration & Reliability Diagnostics:**
+  - **Overconfidence in Low-SNR Regime:** Raw tree model probabilities underperform the uninformative 0.50 reference forecast on both Brier score (0.2556/0.2562 vs. 0.2500) and LogLoss (0.7050/0.7064 vs. 0.6931). Variance around 0.50 heavily penalizes probability scoring when directional accuracy is close to chance.
+  - **XGBoost Reliability:** ECE = 0.0523 (5.23%), MCE = 0.1274 (12.74%). Probabilities span $[0.3384, 0.7265]$ (mean: 0.5333).
+  - **LightGBM Reliability:** ECE = 0.0980 (9.80%), MCE = 0.3275 (32.75%). Demonstrates significant miscalibration in the $[0.2, 0.4]$ probability bin (mean conf: 0.3681, empirical accuracy: 0.6957, gap: 32.75%).
+- **Statistical Uncertainty & Paired Significance Testing:**
+  - **Wilson Score 95% Confidence Intervals:**
+    - Majority Baseline: 49.58% $[43.32\%, 55.88\%]$
+    - XGBoost: 51.25% $[44.96\%, 57.49\%]$
+    - LightGBM: 53.75% $[47.43\%, 59.94\%]$
+    - Invariant: All three 95% confidence intervals overlap substantially and cover the 50% random chance threshold.
+  - **Paired McNemar Test ($N = 240$ paired trading sessions, Edwards' continuity correction):**
+    - Majority vs. XGBoost: $b = 46, c = 42 \implies \chi^2 = 0.1023, p = 0.7491$ (Inconclusive / Not statistically significant).
+    - Majority vs. LightGBM: $b = 50, c = 40 \implies \chi^2 = 0.9000, p = 0.3428$ (Inconclusive / Not statistically significant).
+    - XGBoost vs. LightGBM: $b = 20, c = 14 \implies \chi^2 = 0.7353, p = 0.3912$ (Inconclusive / Not statistically significant).
+    - Scientific Finding: Neither model demonstrates statistically significant outperformance over the majority baseline. Model performance differences on this holdout sample are statistically inconclusive.
+- **Leakage-Safe Calibration Protocol (Design Only):**
+  - **Zero Holdout Fitting Invariant:** Fitting calibrators (Platt scaling or isotonic regression) directly on the 240 holdout sessions is strictly forbidden as post-hoc evaluation leakage.
+  - **Readiness Classification:** **`DESIGNED / UNVERIFIED`**.
+  - **Future Pre-Holdout Protocol:** In subsequent retraining phases, calibrators must be fitted exclusively on out-of-fold probability predictions generated from the 958 training sessions via chronological walk-forward cross-validation, or on an explicit pre-holdout calibration partition ($N_{cal} \approx 191$) separated from both train and holdout by 1-session embargo gaps.

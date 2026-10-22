@@ -5587,3 +5587,86 @@ Empirical data-readiness audit completed; historical evaluation protocol codifie
 ### 7. Phase 16 Status & Next Steps
 **Phase 16 remains strictly IN PROGRESS.**
 Independent reproducibility of numerical ML baselines confirmed; temporal embargo and anti-leakage invariants verified; probability calibration limitations documented.
+
+---
+
+## Day 62: Probability Calibration & Statistical Significance Audit
+
+### 1. Executive Summary
+- **Baseline Commit:** `cc3aa08` (`test(evaluation): reproduce numerical ml baseline and audit temporal leakage`).
+- **Goal Achieved:** Audited probability forecasts of BHARTIARTL XGBoost and LightGBM models against explicit probability baselines; evaluated reliability and calibration error; performed paired statistical significance tests (McNemar with Edwards' continuity correction); formulated a leakage-safe calibration protocol without touching the final holdout.
+- **Key Finding:** While XGBoost (51.25%) and LightGBM (53.75%) achieve nominal directional accuracy above 50%, their probability forecasts underperform a constant uninformative $P(\\text{UP})=0.50$ reference on both Brier score ($0.2556$ and $0.2562$ vs $0.2500$) and Log Loss ($0.7050$ and $0.7064$ vs $0.6931$) due to miscalibration in low signal-to-noise regimes.
+- **Statistical Significance Status:** **INCONCLUSIVE**. 95% Wilson score confidence intervals for all models and baselines overlap and span 50%. Paired McNemar tests show no statistically significant superiority for XGBoost ($p = 0.7491$) or LightGBM ($p = 0.3428$) over majority guessing, nor between XGBoost and LightGBM ($p = 0.3912$).
+- **Calibration Protocol Status:** **DESIGNED / UNVERIFIED**. In accordance with strict anti-leakage invariants, no calibrator was fitted on the 240-session final holdout. A 3-partition chronological protocol (Train / Calibration / Holdout) and out-of-fold walk-forward design are specified for future retraining phases.
+- **Integrity & Quality Gates:** All **766 tests passing** (+9 new deterministic tests covering Brier, Log Loss, Wilson CI, empty bin safety, ECE, and McNemar paired tests) across 52 test modules. Zero regressions. `pip check` clean. `git diff --check` clean. Protected database and model artifact hashes verified 100% bit-identical.
+- **Roadmap Invariant:** **Phase 16 remains strictly IN PROGRESS.**
+
+### 2. Probability Baselines & Evaluation Table ($N = 240$ Holdout)
+| Strategy / Model | Forecast Rule | Prob Range | Accuracy (95% CI) | Brier Score | Log Loss | ECE (MCE) | Status |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Constant Reference** | $P(\\text{UP}) = 0.5000$ | $[0.50, 0.50]$ | 49.58% $[43.32\%, 55.88\%]$ | **0.2500** | **0.6931** | 0.0042 (0.0042) | REFERENCE |
+| **Training Prior Rate** | $P(\\text{UP}) = 0.5240$ | $[0.52, 0.52]$ | 49.58% $[43.32\%, 55.88\%]$ | 0.2508 | 0.6947 | 0.0282 (0.0282) | REFERENCE |
+| **Majority Hard Class** | $P(\\text{UP}) = 1.0000$ | $[1.00, 1.00]$ | 49.58% $[43.32\%, 55.88\%]$ | 0.5042 | 15.0000+ | 0.5042 (0.5042) | BASELINE |
+| **XGBoost Classifier** | Raw Tree Sigmoid | $[0.30, 0.77]$ | 51.25% $[44.96\%, 57.49\%]$ | 0.2556 | 0.7050 | 0.0523 (0.1274) | AUDITED |
+| **LightGBM Classifier**| Raw Tree Sigmoid | $[0.32, 0.75]$ | 53.75% $[47.43\%, 59.94\%]$ | 0.2562 | 0.7064 | 0.0980 (0.3275) | AUDITED |
+
+- **Brier & Log Loss Divergence:** Tree models exhibit higher directional accuracy by making probabilistic bets ($P \\in [0.30, 0.77]$ around a mean of $\\approx 0.53$). However, in noisy financial markets, probability deviations away from 0.50 that do not correspond to reliable odds incur substantial variance penalties, degrading Brier and Log Loss below constant 0.50 guessing.
+- **Reliability Diagnostics:**
+  - XGBoost: Moderate miscalibration ($ECE = 0.0523$, max gap $MCE = 0.1274$ in $[0.7, 0.8]$ bin).
+  - LightGBM: Severe miscalibration ($ECE = 0.0980$, max gap $MCE = 0.3275$ in $[0.2, 0.4]$ bin where predicted confidence was 0.3681 but empirical accuracy was 0.6957).
+
+### 3. Statistical Significance & Paired Model Comparison
+- **Uncertainty Estimates (Wilson Score 95% CIs):**
+  - Majority / Constant: $[43.32\\%, 55.88\\%]$ (width 12.56%)
+  - XGBoost: $[44.96\\%, 57.49\\%]$ (width 12.53%)
+  - LightGBM: $[47.43\\%, 59.94\\%]$ (width 12.51%)
+  - All intervals overlap extensively and span the 50% neutral threshold.
+- **Paired Comparison (McNemar Test with Edwards' Continuity Correction):**
+  - Observations are matched session-by-session across identical dates ($N = 240$).
+  - **Majority Baseline vs XGBoost:**
+    - Contingency: $b = 46$ (Baseline wrong, XGBoost correct), $c = 42$ (Baseline correct, XGBoost wrong).
+    - $\\chi^2 = 0.1023, p = 0.7491$ (Fail to reject $H_0$; difference is random variation).
+  - **Majority Baseline vs LightGBM:**
+    - Contingency: $b = 50$ (Baseline wrong, LightGBM correct), $c = 40$ (Baseline correct, LightGBM wrong).
+    - $\\chi^2 = 0.9000, p = 0.3428$ (Fail to reject $H_0$; difference is not statistically significant).
+  - **XGBoost vs LightGBM:**
+    - Contingency: $b = 20$ (XGBoost wrong, LightGBM correct), $c = 14$ (XGBoost correct, LightGBM wrong).
+    - $\\chi^2 = 0.7353, p = 0.3912$ (Fail to reject $H_0$; neither model is statistically superior).
+
+### 4. Leakage-Safe Calibration Protocol Design
+- **Readiness Status:** **`DESIGNED / UNVERIFIED`**.
+- **Holdout Preservation Invariant:** Fitting a calibrator on the final holdout would violate strict zero-leakage constraints. No calibrator was fitted on the 240-session holdout.
+- **Three-Partition Design for Retraining Phases:**
+  1. **Training Partition:** Historical sessions $[t_0, t_{\\text{cal}}\\text{start} - 2]$ used to fit base models.
+  2. **Embargo Gap 1:** 1 session before calibration window.
+  3. **Calibration Partition:** Pre-holdout sessions $[t_{\\text{cal}}\\text{start}, t_{\\text{holdout}}\\text{start} - 2]$ used to generate out-of-sample predictions and fit Platt / Isotonic calibrators.
+  4. **Embargo Gap 2:** 1 session before holdout window.
+  5. **Final Holdout Partition:** Untouched final sessions for out-of-sample evaluation only.
+- **Out-of-Fold (OOF) Alternative:** Walk-forward expanding-window cross-validation on pre-holdout data to generate un-leaked predictions for calibration fitting.
+
+### 5. Verification & Quality Gates
+- **Targeted Test Suite:**
+  - `tests/test_calibration_and_significance.py`: **9 passed** in 2.76s.
+  - `tests/test_ml_baseline_reproducibility.py`: **10 passed** in 4.41s.
+- **Full Test Suite:**
+  ```powershell
+  .\\.venv\\Scripts\\python -m pytest -q
+  ```
+  **766 passed**, 1 warning in 48.72s across all 52 test modules (0 failures, 0 regressions).
+- **Dependency Audit:**
+  ```powershell
+  .\\.venv\\Scripts\\python -m pip check
+  ```
+  `No broken requirements found.`
+- **Git Diff Whitespace Check:**
+  ```powershell
+  git diff --check
+  ```
+  `Clean (0 whitespace errors).`
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (100% UNCHANGED).
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (100% UNCHANGED).
+
+### 6. Phase 16 Status & Next Steps
+**Phase 16 remains strictly IN PROGRESS.**
+Probability baseline hierarchy established; miscalibration and variance penalties on Brier/LogLoss documented; paired statistical significance confirmed inconclusive; calibration protocol designed.

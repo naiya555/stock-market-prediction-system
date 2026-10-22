@@ -27,6 +27,17 @@ from app.history.reproducibility import (
     audit_baseline_reproducibility,
 )
 
+from app.history.calibration import (
+    ConfidenceInterval,
+    PairedComparisonResult,
+    ReliabilityBin,
+    ReliabilityDiagramResult,
+    compute_log_loss,
+    compute_mcnemar_paired_test,
+    compute_reliability_diagram,
+    compute_wilson_score_interval,
+)
+
 __all__ = [
     "ActualOutcome",
     "EvaluationMetrics",
@@ -44,4 +55,12 @@ __all__ = [
     "ModelEvaluationRun",
     "TemporalAlignmentAudit",
     "audit_baseline_reproducibility",
+    "ReliabilityBin",
+    "ReliabilityDiagramResult",
+    "ConfidenceInterval",
+    "PairedComparisonResult",
+    "compute_log_loss",
+    "compute_reliability_diagram",
+    "compute_wilson_score_interval",
+    "compute_mcnemar_paired_test",
 ]
