@@ -55,6 +55,31 @@ class HealthResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Instrument Catalog Schemas
+# ---------------------------------------------------------------------------
+
+
+class InstrumentItemResponse(BaseModel):
+    """Canonical instrument status and model compatibility definition."""
+
+    symbol: str = Field(..., description="Canonical ticker symbol (e.g. 'BHARTIARTL')")
+    name: str = Field(..., description="Official human-readable instrument name")
+    instrument_type: str = Field(..., description="'EQUITY' or 'INDEX'")
+    exchange: str = Field(default="NSE", description="Exchange code")
+    status: str = Field(..., description="'SUPPORTED' or 'BLOCKED'")
+    compatible_models: List[str] = Field(default_factory=list, description="List of compatible model names")
+    reason: str = Field(..., description="Availability status rationale or blocking constraint")
+
+
+class InstrumentCatalogResponse(BaseModel):
+    """Collection of registered instruments and their model availability status."""
+
+    instruments: List[InstrumentItemResponse]
+    supported_count: int
+    blocked_count: int
+
+
+# ---------------------------------------------------------------------------
 # Prediction Schemas
 # ---------------------------------------------------------------------------
 
@@ -65,9 +90,9 @@ class PredictRequest(BaseModel):
     symbol: str = Field(
         ...,
         min_length=1,
-        max_length=20,
-        description="NSE/BSE stock ticker symbol (e.g. 'RELIANCE' or 'TCS.NS')",
-        examples=["RELIANCE"],
+        max_length=30,
+        description="NSE/BSE stock or index ticker symbol (e.g. 'BHARTIARTL' or 'NIFTY_TELECOMMUNICATIONS')",
+        examples=["BHARTIARTL"],
     )
     model_name: str = Field(
         default="xgboost",

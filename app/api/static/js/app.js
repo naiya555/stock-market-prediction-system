@@ -124,32 +124,55 @@
       return await res.json();
     },
 
-    async runPrediction(payload) {
-      const res = await fetch(`${API_BASE}/predict`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify(payload),
+    async fetchInstruments() {
+      const res = await fetch(`${API_BASE}/predict/instruments`, {
+        headers: { 'Accept': 'application/json' },
       });
-
-      const data = await res.json().catch(() => null);
-
       if (!res.ok) {
-        let msg = 'Failed to execute prediction.';
-        if (data && data.error && data.error.message) {
-          msg = data.error.message;
-        } else if (data && data.detail) {
-          msg = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
-        }
-        const err = new Error(msg);
-        err.status = res.status;
-        err.data = data;
-        throw err;
+        throw new Error(`Failed to fetch instrument catalog (HTTP ${res.status})`);
       }
+      return await res.json();
+    },
 
-      return data;
+    async runPrediction(payload, timeoutMs = 30000) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        const res = await fetch(`${API_BASE}/predict`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+
+        const data = await res.json().catch(() => null);
+
+        if (!res.ok) {
+          let msg = 'Failed to execute prediction.';
+          if (data && data.error && data.error.message) {
+            msg = data.error.message;
+          } else if (data && data.detail) {
+            msg = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
+          }
+          const err = new Error(msg);
+          err.status = res.status;
+          err.data = data;
+          throw err;
+        }
+
+        return data;
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          throw new Error('Prediction request timed out after 30 seconds. The server or market data provider may be busy.');
+        }
+        throw err;
+      } finally {
+        clearTimeout(timer);
+      }
     },
 
     async fetchHistory(params) {
@@ -311,6 +334,9 @@
           return;
         }
 
+        // Guard against duplicate concurrent submissions
+        if (AppState.isPredicting) return;
+
         const selectedModel = modelSelect ? modelSelect.value : 'ensemble';
         const lookbackInput = document.getElementById('lookback-days-input');
         const maxStaleInput = document.getElementById('max-stale-days-input');
@@ -352,10 +378,12 @@
   }
 
   function setPredictionLoading(isLoading) {
+    AppState.isPredicting = isLoading;
     const btn = document.getElementById('btn-run-prediction');
     const skeleton = document.getElementById('prediction-loading-skeleton');
     const resultsContainer = document.getElementById('prediction-results-container');
     const emptyState = document.getElementById('predict-empty-state');
+    const blockedCard = document.getElementById('result-blocked-card');
 
     if (btn) {
       btn.disabled = isLoading;
@@ -371,6 +399,7 @@
     if (isLoading) {
       if (emptyState) emptyState.style.display = 'none';
       if (resultsContainer) resultsContainer.style.display = 'none';
+      if (blockedCard) blockedCard.style.display = 'none';
       if (skeleton) skeleton.style.display = 'flex';
     } else {
       if (skeleton) skeleton.style.display = 'none';
@@ -394,12 +423,40 @@
   function renderPredictionResult(res) {
     const container = document.getElementById('prediction-results-container');
     const emptyState = document.getElementById('predict-empty-state');
+    const heroCard = document.getElementById('result-hero-card');
+    const blockedCard = document.getElementById('result-blocked-card');
+    const breakdownGrid = document.querySelector('.breakdown-grid');
     if (!container) return;
 
     if (emptyState) emptyState.style.display = 'none';
     container.style.display = 'block';
 
-    const heroCard = document.getElementById('result-hero-card');
+    // Handle Blocked / Unsupported Instrument or Failed Prediction state
+    if (res.status !== 'SUCCESS') {
+      if (heroCard) heroCard.style.display = 'none';
+      if (breakdownGrid) breakdownGrid.style.display = 'none';
+      if (blockedCard) {
+        blockedCard.style.display = 'block';
+        const titleEl = document.getElementById('blocked-card-title');
+        const msgEl = document.getElementById('blocked-card-message');
+        const isIndex = res.symbol && (res.symbol.includes('NIFTY') || res.symbol.includes('INDEX'));
+        if (titleEl) {
+          titleEl.textContent = isIndex
+            ? `Sectoral Index Blocked: ${res.symbol}`
+            : `Model Unavailable: ${res.symbol}`;
+        }
+        if (msgEl) {
+          msgEl.textContent = res.error_message || 'Inference could not be completed. Model is not available.';
+        }
+      }
+      return;
+    }
+
+    // Success State: show hero card and breakdown grid, hide blocked card
+    if (blockedCard) blockedCard.style.display = 'none';
+    if (heroCard) heroCard.style.display = 'block';
+    if (breakdownGrid) breakdownGrid.style.display = 'grid';
+
     const symEl = document.getElementById('res-symbol');
     const modelBadge = document.getElementById('res-model-badge');
     const tsEl = document.getElementById('res-timestamp');
@@ -415,9 +472,41 @@
     }
     if (tsEl) tsEl.textContent = formatDateTimeIST(res.prediction_timestamp);
 
+    // Uncalibrated Warning Banner
+    const uncalBanner = document.getElementById('res-uncalibrated-banner');
+    if (uncalBanner) uncalBanner.style.display = 'flex';
+
+    // Historical Fact vs Forward Forecast Distinction
+    const obsPriceEl = document.getElementById('res-observed-price');
+    const obsTimeEl = document.getElementById('res-observed-time');
+    const forecastDirEl = document.getElementById('res-forecast-direction');
+
+    if (obsPriceEl) {
+      if (res.quote_context && typeof res.quote_context.last_price === 'number') {
+        obsPriceEl.textContent = `Last Observed Price: ${formatPriceINR(res.quote_context.last_price)}`;
+      } else if (res.ensemble && res.ensemble.target_range && typeof res.ensemble.target_range.reference_price === 'number') {
+        obsPriceEl.textContent = `Last Observed Close: ${formatPriceINR(res.ensemble.target_range.reference_price)}`;
+      } else {
+        obsPriceEl.textContent = 'Last Observed Price: ₹--';
+      }
+    }
+
+    if (obsTimeEl) {
+      if (res.quote_context && res.quote_context.price_timestamp) {
+        obsTimeEl.textContent = `Observed As of: ${formatDateTimeIST(res.quote_context.price_timestamp)}`;
+      } else if (res.latest_input_timestamp) {
+        obsTimeEl.textContent = `Bar Timestamp: ${formatDateTimeIST(res.latest_input_timestamp)}`;
+      } else {
+        obsTimeEl.textContent = 'Observed As of: --';
+      }
+    }
+
+    if (forecastDirEl) {
+      forecastDirEl.textContent = `Direction: ${res.predicted_direction || '--'}`;
+    }
+
     // Direction Decision & Styling
     const dir = res.predicted_direction;
-    const isSuccess = res.status === 'SUCCESS';
 
     if (heroCard) {
       heroCard.classList.remove('direction-up', 'direction-down');
@@ -427,11 +516,7 @@
 
     if (dirBadge && dirIcon && dirText) {
       dirBadge.className = 'direction-badge';
-      if (!isSuccess) {
-        dirBadge.classList.add('neutral');
-        dirIcon.textContent = '⚠️';
-        dirText.textContent = res.status || 'FAILED';
-      } else if (dir === 'UP') {
+      if (dir === 'UP') {
         dirBadge.classList.add('up');
         dirIcon.textContent = '↗';
         dirText.textContent = 'PREDICTED UP';
@@ -457,8 +542,8 @@
       const probUp = res.probability_up;
       const probDown = hasProbDown ? res.probability_down : (1.0 - probUp);
       if (fillEl) fillEl.style.width = `${Math.max(0, Math.min(100, probUp * 100)).toFixed(1)}%`;
-      if (probUpEl) probUpEl.textContent = `P(UP): ${(probUp * 100).toFixed(1)}%`;
-      if (probDownEl) probDownEl.textContent = `P(DOWN): ${(probDown * 100).toFixed(1)}%`;
+      if (probUpEl) probUpEl.textContent = `P(UP): ${(probUp * 100).toFixed(1)}% [Uncalibrated]`;
+      if (probDownEl) probDownEl.textContent = `P(DOWN): ${(probDown * 100).toFixed(1)}% [Uncalibrated]`;
     } else {
       if (fillEl) fillEl.style.width = '0%';
       if (probUpEl) probUpEl.textContent = 'P(UP): --';
@@ -1076,6 +1161,53 @@
     }
   }
 
+  async function loadInstrumentCatalog() {
+    try {
+      const data = await ApiService.fetchInstruments();
+      if (!data || !data.instruments) return;
+      const chipsGroup = document.getElementById('quick-ticker-chips');
+      if (!chipsGroup) return;
+
+      chipsGroup.innerHTML = '';
+      data.instruments.forEach((inst) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        const isSupp = inst.status === 'SUPPORTED';
+        btn.className = `chip ${isSupp ? 'chip-supported' : 'chip-blocked'}`;
+        btn.setAttribute('data-symbol', inst.symbol);
+        btn.setAttribute('title', `${inst.name} (${inst.status}): ${inst.reason}`);
+
+        const dot = document.createElement('span');
+        dot.className = `chip-status-dot ${isSupp ? 'supported' : 'blocked'}`;
+        btn.appendChild(dot);
+
+        const symSpan = document.createElement('span');
+        symSpan.className = 'chip-symbol';
+        symSpan.textContent = inst.symbol === 'NIFTY_TELECOMMUNICATIONS' ? 'NIFTY_TELECOM' : inst.symbol;
+        btn.appendChild(symSpan);
+
+        const badge = document.createElement('span');
+        badge.className = `chip-badge ${isSupp ? 'badge-supported' : 'badge-blocked'}`;
+        badge.textContent = isSupp ? 'Supported' : (inst.instrument_type === 'INDEX' ? 'Index Blocked' : 'Blocked');
+        btn.appendChild(badge);
+
+        btn.addEventListener('click', () => {
+          const input = document.getElementById('symbol-input');
+          if (input) {
+            input.value = inst.symbol;
+            input.focus();
+            const err = document.getElementById('symbol-error');
+            if (err) err.textContent = '';
+          }
+        });
+
+        chipsGroup.appendChild(btn);
+      });
+    } catch (err) {
+      console.warn('Could not load dynamic instrument catalog from backend:', err);
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Initialization
   // -------------------------------------------------------------------------
@@ -1087,8 +1219,9 @@
     initEventsModule();
     initHealthModule();
 
-    // Initial background health check
+    // Initial background health check and instrument catalog load
     loadHealth();
+    loadInstrumentCatalog();
   });
 
 })();

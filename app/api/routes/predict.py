@@ -26,6 +26,8 @@ from app.news.providers.base import BaseNewsProvider
 from app.api.schemas import (
     DataQualityResponse,
     EnsembleDetailsResponse,
+    InstrumentCatalogResponse,
+    InstrumentItemResponse,
     LLMExplanationResponse,
     PredictionResponse,
     PredictRequest,
@@ -251,14 +253,21 @@ def _map_ensemble_details(res: EnsemblePredictionResult) -> EnsembleDetailsRespo
     )
 
 
-def _sanitize_public_error_message(msg: Optional[str], model_name: str) -> Optional[str]:
+def _sanitize_public_error_message(msg: Optional[str], model_name: str, symbol: Optional[str] = None) -> Optional[str]:
     """Sanitize internal diagnostics to prevent filesystem path and exception leakage."""
     if not msg:
         return None
-    logger.warning("Internal prediction diagnostic for '%s': %s", model_name, msg)
+    logger.warning("Internal prediction diagnostic for '%s' (model=%s): %s", symbol or "unknown", model_name, msg)
     lower = msg.lower()
     if "index-specific forecasting model" in lower or "cannot be reused for sectoral index" in lower:
-        return f"Index-specific forecasting model unavailable for '{model_name}'. Equity models cannot be reused for sectoral indices."
+        sym_part = f" for '{symbol}'" if symbol else ""
+        return f"Index-specific forecasting model unavailable{sym_part}. BHARTIARTL equity models cannot be reused for sectoral indices."
+    if "no trained model artifact found" in lower or "cannot be cross-applied to" in lower or "trained specifically for 'bhartiartl'" in lower:
+        sym_part = f" for equity instrument '{symbol}'" if symbol else ""
+        return (
+            f"No trained model artifact found{sym_part}. "
+            f"Default models are trained specifically for 'BHARTIARTL' and cannot be cross-applied to other equities."
+        )
     if "artifact not found" in lower or "not found at" in lower:
         return f"Model artifact unavailable for '{model_name}'. Model must be trained and persisted prior to inference."
     if "failed to deserialize" in lower or "failed to load" in lower:
@@ -270,6 +279,42 @@ def _sanitize_public_error_message(msg: Optional[str], model_name: str) -> Optio
     if any(sep in msg for sep in ("\\", "/", "Traceback", "line ")):
         return f"Prediction computation failed for '{model_name}'. Check server logs."
     return msg
+
+
+@router.get(
+    "/instruments",
+    response_model=InstrumentCatalogResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get Registered Instruments and Model Availability",
+    description=(
+        "Returns the canonical catalog of registered equity and index instruments, "
+        "specifying whether each instrument is supported by production models or blocked."
+    ),
+)
+def get_instruments(
+    prediction_service: PredictionService = Depends(get_prediction_service),
+) -> InstrumentCatalogResponse:
+    """Return registered instruments and their model availability status."""
+    catalog = prediction_service.get_instrument_catalog()
+    items = [
+        InstrumentItemResponse(
+            symbol=inst["symbol"],
+            name=inst["name"],
+            instrument_type=inst["instrument_type"],
+            exchange=inst.get("exchange", "NSE"),
+            status=inst["status"],
+            compatible_models=inst.get("compatible_models", []),
+            reason=inst["reason"],
+        )
+        for inst in catalog
+    ]
+    supported = sum(1 for i in items if i.status == "SUPPORTED")
+    blocked = len(items) - supported
+    return InstrumentCatalogResponse(
+        instruments=items,
+        supported_count=supported,
+        blocked_count=blocked,
+    )
 
 
 @router.post(
@@ -452,7 +497,7 @@ def predict(
             ensemble=_map_ensemble_details(ensemble_res),
             explanation=_map_llm_explanation(ensemble_res.explanation),
             quote_context=_map_quote_context(ens_quote_ctx),
-            error_message=_sanitize_public_error_message(ensemble_res.error_message, "ensemble"),
+            error_message=_sanitize_public_error_message(ensemble_res.error_message, "ensemble", clean_symbol),
             disclaimer=ensemble_res.disclaimer,
         )
 
@@ -500,6 +545,6 @@ def predict(
         data_quality=_map_data_quality(ml_res.data_quality),
         ensemble=None,
         quote_context=_map_quote_context(ml_res.quote_context),
-        error_message=_sanitize_public_error_message(ml_res.error_message, payload.model_name),
+        error_message=_sanitize_public_error_message(ml_res.error_message, payload.model_name, clean_symbol),
         disclaimer=ml_res.disclaimer,
     )

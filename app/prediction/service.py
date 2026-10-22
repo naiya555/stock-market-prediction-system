@@ -20,7 +20,7 @@ from app.market.pipeline import (
     MarketDataPipelineResult,
     run_market_data_pipeline,
 )
-from app.market.instruments import is_equity, is_index, resolve_canonical_symbol
+from app.market.instruments import INSTRUMENT_REGISTRY, is_equity, is_index, resolve_canonical_symbol
 from app.market.providers.base import BaseMarketDataProvider
 from app.market.providers.nifty_indices_provider import NiftyIndicesProvider
 from app.market.providers.yfinance_provider import YFinanceProvider
@@ -93,6 +93,58 @@ class PredictionService:
             raise ValueError(f"Cannot register unfitted model for '{model_name}'.")
         self.model_registry[model_name] = model
         logger.info("Registered in-memory model for '%s'", model_name)
+
+    def get_instrument_catalog(self) -> List[Dict[str, Any]]:
+        """Return canonical instrument catalog with authoritative model availability status.
+
+        Enforces architectural separation:
+        - BHARTIARTL has validated production models (XGBoost/LightGBM/Ensemble).
+        - Other equities (TCS, RELIANCE) are blocked due to symbol specificity.
+        - Sectoral/benchmark indices (NIFTY_TELECOMMUNICATIONS, NIFTY_50) are blocked
+          because equity models cannot be cross-applied to indices.
+        """
+        catalog = []
+        for symbol, inst in INSTRUMENT_REGISTRY.items():
+            if is_index(symbol):
+                catalog.append({
+                    "symbol": symbol,
+                    "name": inst.name,
+                    "instrument_type": inst.instrument_type.value,
+                    "exchange": inst.exchange,
+                    "status": "BLOCKED",
+                    "compatible_models": [],
+                    "reason": "Index forecasting model unavailable. Equity models are strictly prohibited from being applied to indices.",
+                })
+            elif symbol == "BHARTIARTL":
+                xgb_path = self._get_default_artifact_path("xgboost")
+                lgb_path = self._get_default_artifact_path("lightgbm")
+                compat = []
+                if xgb_path.is_file():
+                    compat.append("xgboost")
+                if lgb_path.is_file():
+                    compat.append("lightgbm")
+                if compat:
+                    compat.append("ensemble")
+                catalog.append({
+                    "symbol": symbol,
+                    "name": inst.name,
+                    "instrument_type": inst.instrument_type.value,
+                    "exchange": inst.exchange,
+                    "status": "SUPPORTED" if compat else "BLOCKED",
+                    "compatible_models": compat,
+                    "reason": "Validated production models available on disk." if compat else "Model artifacts not found.",
+                })
+            else:
+                catalog.append({
+                    "symbol": symbol,
+                    "name": inst.name,
+                    "instrument_type": inst.instrument_type.value,
+                    "exchange": inst.exchange,
+                    "status": "BLOCKED",
+                    "compatible_models": [],
+                    "reason": f"No trained model artifact found for '{symbol}'. Equity models are symbol-specific and cannot be cross-applied.",
+                })
+        return catalog
 
     def _resolve_model(
         self,

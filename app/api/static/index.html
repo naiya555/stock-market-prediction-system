@@ -132,18 +132,34 @@
               </div>
             </div>
 
-            <!-- Quick Ticker Chips -->
+            <!-- Authoritative Instrument Availability & Quick Selection -->
             <div class="quick-chips-row">
-              <span class="chips-label">Popular Equities:</span>
+              <span class="chips-label">Instruments & Compatibility:</span>
               <div class="chips-group" id="quick-ticker-chips">
-                <button type="button" class="chip" data-symbol="RELIANCE">RELIANCE</button>
-                <button type="button" class="chip" data-symbol="TCS">TCS</button>
-                <button type="button" class="chip" data-symbol="INFY">INFY</button>
-                <button type="button" class="chip" data-symbol="HDFCBANK">HDFCBANK</button>
-                <button type="button" class="chip" data-symbol="ICICIBANK">ICICIBANK</button>
-                <button type="button" class="chip" data-symbol="BHARTIARTL">BHARTIARTL</button>
-                <button type="button" class="chip" data-symbol="SBIN">SBIN</button>
+                <button type="button" class="chip chip-supported" data-symbol="BHARTIARTL" title="Supported: Trained XGBoost and LightGBM models available">
+                  <span class="chip-status-dot supported"></span>
+                  <span class="chip-symbol">BHARTIARTL</span>
+                  <span class="chip-badge badge-supported">Supported</span>
+                </button>
+                <button type="button" class="chip chip-blocked" data-symbol="TCS" title="Blocked: No trained model artifact found on disk">
+                  <span class="chip-status-dot blocked"></span>
+                  <span class="chip-symbol">TCS</span>
+                  <span class="chip-badge badge-blocked">Blocked</span>
+                </button>
+                <button type="button" class="chip chip-blocked" data-symbol="RELIANCE" title="Blocked: No trained model artifact found on disk">
+                  <span class="chip-status-dot blocked"></span>
+                  <span class="chip-symbol">RELIANCE</span>
+                  <span class="chip-badge badge-blocked">Blocked</span>
+                </button>
+                <button type="button" class="chip chip-blocked" data-symbol="NIFTY_TELECOMMUNICATIONS" title="Blocked: Sectoral index (Equity models prohibited)">
+                  <span class="chip-status-dot blocked"></span>
+                  <span class="chip-symbol">NIFTY_TELECOM</span>
+                  <span class="chip-badge badge-blocked">Index Blocked</span>
+                </button>
               </div>
+            </div>
+            <div class="instrument-disclaimer-note">
+              <span>🛡️ Backend Compatibility Gate: Only <strong>BHARTIARTL</strong> has validated production models. Cross-applying equity models to other equities or indices is strictly blocked.</span>
             </div>
 
             <!-- Advanced Configuration Accordion -->
@@ -239,6 +255,31 @@
         <!-- Prediction Results Container -->
         <div id="prediction-results-container" class="results-container" style="display: none;">
           
+          <!-- Dedicated Blocked Instrument / Model Unavailable Card -->
+          <div class="card blocked-state-card" id="result-blocked-card" style="display: none;">
+            <div class="blocked-header">
+              <div class="blocked-icon-box" aria-hidden="true">🛡️</div>
+              <div>
+                <h3 class="blocked-title" id="blocked-card-title">Instrument Blocked / Model Unavailable</h3>
+                <p class="blocked-subtitle" id="blocked-card-subtitle">Safety gates prevented inference to preserve model integrity.</p>
+              </div>
+            </div>
+            <div class="blocked-body">
+              <div class="blocked-detail-box">
+                <span class="blocked-label">Backend Diagnostic:</span>
+                <p class="blocked-message" id="blocked-card-message">--</p>
+              </div>
+              <div class="blocked-constraints">
+                <h4 class="blocked-constraints-title">Authoritative Architectural Constraints:</h4>
+                <ul class="blocked-constraints-list">
+                  <li><strong>Symbol Specificity:</strong> Trained equity models (e.g. BHARTIARTL) cannot be cross-applied to other equities (TCS, RELIANCE).</li>
+                  <li><strong>Index Separation:</strong> Equity models cannot be applied to sectoral or benchmark indices (Nifty Telecommunications).</li>
+                  <li><strong>Zero Fabrication:</strong> Predictions are never fabricated or guessed when model artifacts are unavailable.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
           <!-- Primary Overview Hero Card -->
           <div class="card result-hero-card" id="result-hero-card">
             <div class="hero-header">
@@ -252,6 +293,32 @@
                   <span class="direction-icon" id="res-direction-icon">--</span>
                   <span class="direction-text" id="res-direction-text">--</span>
                 </div>
+              </div>
+            </div>
+
+            <!-- Calibration Status & Audit Warning Banner -->
+            <div class="uncalibrated-warning-banner" id="res-uncalibrated-banner">
+              <span class="warning-icon" aria-hidden="true">⚠️</span>
+              <div class="warning-content">
+                <span class="warning-badge">UNCALIBRATED RAW MODEL SCORE</span>
+                <p class="warning-text" id="res-uncalibrated-text">
+                  Model probabilities are raw decision tree outputs and are NOT calibrated probabilities. On the 240-session holdout, models scored Brier 0.2556–0.2562 (worse than constant 0.50 reference Brier 0.2500, p > 0.34). Not investment-ready.
+                </p>
+              </div>
+            </div>
+
+            <!-- Historical Actuals vs. Forward Forecast Distinction Bar -->
+            <div class="distinction-bar" id="res-distinction-bar">
+              <div class="distinction-item observed-fact">
+                <span class="distinction-tag">HISTORICAL OBSERVED FACT</span>
+                <span class="distinction-val" id="res-observed-price">Last Observed Close: ₹--</span>
+                <span class="distinction-time" id="res-observed-time">As of: --</span>
+              </div>
+              <div class="distinction-arrow" aria-hidden="true">➔</div>
+              <div class="distinction-item model-forecast">
+                <span class="distinction-tag">FORWARD DIRECTIONAL FORECAST</span>
+                <span class="distinction-val" id="res-forecast-direction">Direction: --</span>
+                <span class="distinction-horizon">Horizon: Next Trading Session (Close-to-Close)</span>
               </div>
             </div>
 

@@ -1501,3 +1501,26 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
   - **Zero Holdout Fitting Invariant:** Fitting calibrators (Platt scaling or isotonic regression) directly on the 240 holdout sessions is strictly forbidden as post-hoc evaluation leakage.
   - **Readiness Classification:** **`DESIGNED / UNVERIFIED`**.
   - **Future Pre-Holdout Protocol:** In subsequent retraining phases, calibrators must be fitted exclusively on out-of-fold probability predictions generated from the 958 training sessions via chronological walk-forward cross-validation, or on an explicit pre-holdout calibration partition ($N_{cal} \approx 191$) separated from both train and holdout by 1-session embargo gaps.
+
+### 4.35 Web Application Foundation & Prediction API Contract Layer (Day 63)
+- **FastAPI Architecture & Route Topology:**
+  - **Application Factory:** `create_app()` (`app/api/app.py`) manages ASGI configuration, CORS middleware, static asset mounting (`/static`), security headers, telemetry middleware, and domain exception handlers.
+  - **Route Mounting:** Routes mounted under `/api` (`/health`, `/predict`, `/history`, `/feedback`, `/events`). Browser GET requests to `/` or `/ui` serve the interactive vanilla dashboard (`app/api/static/index.html`).
+- **Authoritative Instrument Catalog (`GET /api/predict/instruments`):**
+  - **Schema:** Returns `InstrumentCatalogResponse` containing typed `InstrumentItemResponse` records.
+  - **Authoritative Backend Gating:**
+    - `BHARTIARTL`: Marked `SUPPORTED` (production XGBoost, LightGBM, and Ensemble models available on disk).
+    - `TCS`: Marked `BLOCKED` (model artifact unavailable; equity models are symbol-specific and cannot be cross-applied).
+    - `RELIANCE`: Marked `BLOCKED` (model artifact unavailable; equity models are symbol-specific and cannot be cross-applied).
+    - `NIFTY_TELECOMMUNICATIONS`: Marked `BLOCKED` (sectoral index; equity models strictly prohibited from index forecasting).
+- **Prediction API Contract & Numerical Semantics:**
+  - **Input Validation:** Ticker symbol length bounded to $[1, 30]$ characters (`^[A-Z0-9_\-\.\^]{1,30}$`). Control characters, line breaks, and whitespace rejected with HTTP 422. Model names restricted to `xgboost`, `lightgbm`, or `ensemble`. Ensemble weights must be finite and non-negative.
+  - **Directional Semantics:** Explicit binary direction target ($y_t = \text{UP}$ if $\text{Close}_{t+1} > \text{Close}_t$ else $\text{DOWN}$). Zero return mapped to DOWN without sample deletion.
+  - **Uncalibrated Probability Semantics:** Model probabilities are strictly labeled uncalibrated (`is_probability_calibrated=False`, `probability_calibration="uncalibrated"`). Raw tree decision outputs underperform constant 0.50 reference Brier score ($0.2556$ vs $0.2500$); prominently signaled in API responses and frontend UI with holdout evaluation context.
+  - **Quote Context vs. Forecast Distinction:** Factual historical observation (`QuoteContextResponse.last_price`, `QuoteContextResponse.price_timestamp`) is explicitly separated from the forward directional signal (`predicted_direction`), preventing confusion between observed quotes and forecast outcomes.
+- **Frontend Reliability, Accessibility & Defensive Security:**
+  - **Network Timeout & Cancellation:** API client uses `AbortController` with a 30-second timeout guard, cleanly handling dropped connections or slow upstream providers.
+  - **Duplicate Submission Guard:** In-flight submission locking (`AppState.isPredicting = true`) disables submit controls and rejects concurrent requests until response resolution.
+  - **Dedicated Blocked State Display:** When an unsupported instrument is requested or model unavailable, the UI renders a dedicated `#result-blocked-card` detailing architectural constraints rather than an ambiguous error banner.
+  - **Defensive DOM Rendering (XSS Protection):** Dynamic content is strictly bound via `textContent` or `document.createElement`. URLs validated through `isSafeHttpUrl` ensuring only `http:` and `https:` protocols are bound to anchors.
+  - **Defensive HTTP Security Headers:** Enforced on every response via ASGI middleware (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: geolocation=(), microphone=(), camera=()`). Zero internal file paths or exception tracebacks exposed to clients.

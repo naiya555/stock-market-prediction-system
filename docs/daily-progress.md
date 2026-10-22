@@ -5670,3 +5670,68 @@ Independent reproducibility of numerical ML baselines confirmed; temporal embarg
 ### 6. Phase 16 Status & Next Steps
 **Phase 16 remains strictly IN PROGRESS.**
 Probability baseline hierarchy established; miscalibration and variance penalties on Brier/LogLoss documented; paired statistical significance confirmed inconclusive; calibration protocol designed.
+
+---
+
+## Day 63: Web Application Foundation & Prediction API Contract Audit
+
+### 1. Executive Summary
+- **Baseline Commit:** `4de808d` (`test(evaluation): audit probability calibration and statistical significance`).
+- **Goal Achieved:** Audited and implemented the web application foundation and prediction API contract layer using the existing FastAPI backend and vanilla HTML/CSS/JavaScript architecture; established authoritative instrument compatibility checks, uncalibrated score labeling, quote distinction, and client reliability guards.
+- **Instrument Compatibility Contract:** Exposed `GET /api/predict/instruments` returning typed `InstrumentCatalogResponse`. Enforced strict backend gating: `BHARTIARTL` is marked `SUPPORTED` (XGBoost/LightGBM/Ensemble available); `TCS`, `RELIANCE`, and `NIFTY_TELECOMMUNICATIONS` are marked `BLOCKED` with explicit architectural rationales (symbol specificity and index separation).
+- **Uncalibrated Model Score Labeling:** In accordance with Day 62 audit findings, raw model probabilities are explicitly labeled uncalibrated (`is_probability_calibrated=False`, `probability_calibration="uncalibrated"`). Frontend displays prominent warning banners noting that raw tree scores underperformed the constant 0.50 Brier reference on the 240-session holdout (0.2556 vs 0.2500, p > 0.34) and are not investment-ready.
+- **Historical Fact vs. Forward Prediction Distinction:** Added a dedicated visual distinction bar cleanly separating historical observed market prices (facts as of specific timestamp) from forward directional forecasts (uncertain model predictions for the next session).
+- **Frontend Reliability & Defensive Security:** Integrated `AbortController` with a 30-second timeout guard, duplicate in-flight submission locking (`AppState.isPredicting`), and a dedicated `#result-blocked-card` state for unsupported instruments. Verified zero filesystem paths or stack traces exposed to clients.
+- **Integrity & Quality Gates:** All **776 tests passing** (+10 new deterministic tests covering instrument catalog schemas, authoritative gating, blocked instrument sanitization, quote distinction, and frontend reliability) across 53 test modules. Zero regressions. `pip check` clean. `git diff --check` clean. Protected database and model artifact hashes verified 100% bit-identical.
+- **Roadmap Invariant:** **Phase 16 remains strictly IN PROGRESS.**
+
+### 2. Prediction API Contract & Instrument Catalog
+| Instrument | Type | Exchange | Status | Compatible Models | Architectural Rationale |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| **BHARTIARTL** | EQUITY | NSE | **SUPPORTED** | `xgboost`, `lightgbm`, `ensemble` | Validated production models available on disk |
+| **TCS** | EQUITY | NSE | **BLOCKED** | None | No trained model artifact found on disk; equity models are symbol-specific |
+| **RELIANCE** | EQUITY | NSE | **BLOCKED** | None | No trained model artifact found on disk; equity models are symbol-specific |
+| **NIFTY_TELECOM** | INDEX | NSE | **BLOCKED** | None | Index forecasting model unavailable; equity models prohibited on sectoral indices |
+| **NIFTY_50** | INDEX | NSE | **BLOCKED** | None | Benchmark index forecasting model unavailable; equity models prohibited on indices |
+
+- **API Endpoints Audited & Active:**
+  - `GET /api/health`: Subsystem readiness diagnostics (database, models, LLM config).
+  - `GET /api/predict/instruments`: Authoritative registered instrument catalog and model compatibility.
+  - `POST /api/predict`: Point-in-time directional inference with input validation and sanitized error responses.
+  - `GET /api/history`: Paginated immutable prediction audit history with verified actual outcomes.
+  - `GET /api/events`: Macroeconomic and regulatory event monitoring with point-in-time filtering.
+
+### 3. Frontend Architecture & Reliability Safeguards
+- **Vanilla Frontend Architecture:** Zero external UI frameworks; built with semantic HTML5, pure CSS3 design system tokens, and vanilla ES6 JavaScript (`app/api/static/`).
+- **Dynamic Catalog Loading:** Frontend queries `GET /api/predict/instruments` on load to dynamically update quick-selection chips with live status indicators (emerald dot for supported; amber dot for blocked).
+- **Dedicated Blocked Instrument State:** When an unsupported instrument is selected, the UI displays a structured diagnostic card explaining symbol specificity and index separation constraints, preventing user confusion.
+- **Timeout & Request Cancellation:** Wrapped `ApiService.runPrediction` with `AbortController` (30-second timeout), catching connection stalls or slow upstream provider responses with clean recovery.
+- **Defensive DOM Rendering:** All user and model strings are bound through `textContent` or `document.createElement`, with URLs validated via `isSafeHttpUrl` to prevent XSS injection.
+
+### 4. Verification & Quality Gates
+- **Targeted Test Execution:**
+  - `tests/test_web_foundation_audit.py`: **10 passed** in 4.95s (+10 new deterministic tests).
+  - `tests/test_frontend.py`: **11 passed** in 3.06s.
+  - `tests/test_api.py`: **33 passed** in 4.66s.
+- **Full Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **776 passed**, 1 warning across all 53 test modules (0 failures, 0 regressions).
+- **Dependency Audit:**
+  ```powershell
+  .\.venv\Scripts\python -m pip check
+  ```
+  `No broken requirements found.`
+- **Git Diff Whitespace Check:**
+  ```powershell
+  git diff --check
+  ```
+  `Clean (0 whitespace errors).`
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (100% UNCHANGED).
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (100% UNCHANGED).
+
+### 5. Phase 16 Status & Next Steps
+**Phase 16 remains strictly IN PROGRESS.**
+Web application foundation and prediction API contract audit complete; authoritative instrument catalog implemented; uncalibrated score and quote distinction active; client reliability and timeout guards verified.
