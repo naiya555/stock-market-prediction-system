@@ -1342,3 +1342,41 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
      - **XGBoost Classifier:** Accuracy 51.25%, Precision(UP) 50.66%, Recall(UP) 64.71%, F1(UP) 56.83%, Brier score 0.2556.
      - **LightGBM Classifier:** Accuracy 53.75%, Precision(UP) 52.67%, Recall(UP) 66.39%, F1(UP) 58.74%, Brier score 0.2562.
      - **LLM Evaluation Limitations:** Evaluated honestly without running multi-hour unaccelerated CPU inferences across 240 sessions. Documented missing prerequisites (historical 5-year point-in-time news archive, GPU throughput) required before claiming qualitative alpha.
+
+---
+
+### 4.31 Multi-Instrument Compatibility Matrix & Safety Gates (Day 59)
+- **Objective & Architectural Scope:**
+  Validate the prediction pipeline across multiple instruments without cross-pollinating incompatible models (e.g. equity vs sectoral index, or BHARTIARTL weights onto TCS/RELIANCE), fabricating evaluation results, or misrepresenting qualitative LLM heuristic scores as calibrated statistical probabilities.
+- **Instrument Registry & Identity Management:**
+  The canonical instrument registry (`app/market/instruments.py`) explicitly tracks instrument identities, tradability, exchanges, sectors, and benchmark mappings:
+  - `BHARTIARTL`: NSE Equity, Sector `TELECOMMUNICATIONS`, Benchmark `NIFTY_TELECOMMUNICATIONS`.
+  - `TCS`: NSE Equity, Sector `IT`, Benchmark `NIFTY_IT`.
+  - `RELIANCE`: NSE Equity, Sector `ENERGY`, Benchmark `NIFTY_ENERGY`.
+  - `NIFTY_TELECOMMUNICATIONS`: NSE Sectoral Benchmark Index, Non-Tradable, Sourced via `nifty_indices`.
+  - `NIFTY_50`: NSE Broad-Market Benchmark Index, Non-Tradable, Sourced via `nifty_indices`.
+- **Instrument Compatibility Matrix:**
+  | Instrument | Type | Historical Source | Data Completeness | Feature Schema & Warmup | Compatible Model Artifact | Inference & Evaluation Status |
+  | :--- | :---: | :--- | :--- | :--- | :--- | :--- |
+  | **BHARTIARTL** | EQUITY | `yfinance` (`BHARTIARTL.NS`) | Full OHLCV | `canonical_37_features` (34+ bars) | `xgboost`, `lightgbm` (PROMOTED) | **SUPPORTED** (53.75% Holdout Acc) |
+  | **TCS** | EQUITY | `yfinance` (`TCS.NS`) | Full OHLCV | `canonical_37_features` (34+ bars) | *None* (training required) | **BLOCKED (`MODEL_UNAVAILABLE`)** |
+  | **RELIANCE** | EQUITY | `yfinance` (`RELIANCE.NS`) | Full OHLCV | `canonical_37_features` (34+ bars) | *None* (training required) | **BLOCKED (`MODEL_UNAVAILABLE`)** |
+  | **NIFTY_TELECOM** | INDEX | `nifty_indices` (NSE archive) | Close-only / Zero volume | Close-only subset (Candle wicks NaN) | *None* (Equity models prohibited) | **BLOCKED (`MODEL_UNAVAILABLE`)** |
+- **Architectural Safety Gates & Cross-Model Isolation:**
+  1. **Equity vs. Sectoral Index Separation:**
+     - Equity models fitted on individual equities are strictly prohibited from forecasting sectoral benchmark indices. Attempting to predict `NIFTY_TELECOMMUNICATIONS` with `BHARTIARTL` models immediately halts with `MODEL_UNAVAILABLE`.
+     - Close-only index history contains `volume=0` and lacks intraday highs and lows, causing candlestick geometry features (`candle_body`, `candle_upper_wick`, `candle_lower_wick`, `atr_14`) to evaluate as `NaN`. Zero-fabrication principles prevent manufacturing fake wicks.
+  2. **Cross-Equity Model Isolation:**
+     - Equity models are symbol-specific. `PredictionService._resolve_model` inspects companion metadata and model attributes. Disk-persisted artifacts trained on `BHARTIARTL` cannot be cross-applied to `TCS` or `RELIANCE` during inference. Untrained symbols fail safely with `PredictionStatus.MODEL_UNAVAILABLE` detailing that deliberate training is required.
+     - Preloaded models and explicit artifact paths with conflicting metadata symbols are rejected with unambiguous diagnostics.
+  3. **Data Quality & Temporal Cutoff Gates:**
+     - Requires $\ge 34$ historical bars (`MIN_WARMUP_BARS`) for technical indicator convergence; fewer bars return `INSUFFICIENT_DATA`.
+     - Staleness exceeding `max_stale_days` returns `STALE_DATA` unless explicitly permitted via `allow_stale_data=True`.
+  4. **Ensemble Weight & Fallback Integrity:**
+     - Preserves `requested_weights` separately from `weights_used` on ML-only fallback when qualitative LLM reasoning is absent, unprovided, or fails.
+     - Validates finite, non-negative weights summing to $>0$, rejecting `NaN` or `Inf` at both API and domain boundaries.
+     - Never fabricates combined directional decisions or probabilities when quantitative ML status is non-successful.
+  5. **Honest Evaluation & Metric Truthfulness:**
+     - Untrained instruments (`TCS`, `RELIANCE`, `NIFTY_TELECOMMUNICATIONS`) are reported as `BLOCKED (MODEL_UNAVAILABLE)`, never as 0% accuracy or success.
+     - LLM polarity-to-probability mapping ($0.50 + 0.50 \times \text{polarity}$) is recognized as heuristic and uncalibrated.
+     - In the absence of an empirical historical point-in-time news backtesting corpus, multi-instrument blended ensemble performance is strictly labeled `NOT EVALUATED`.

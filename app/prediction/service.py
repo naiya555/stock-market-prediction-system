@@ -6,6 +6,7 @@ model inference without automatic on-the-fly retraining.
 """
 
 from datetime import datetime, timedelta, timezone
+import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -19,7 +20,7 @@ from app.market.pipeline import (
     MarketDataPipelineResult,
     run_market_data_pipeline,
 )
-from app.market.instruments import is_index
+from app.market.instruments import is_equity, is_index, resolve_canonical_symbol
 from app.market.providers.base import BaseMarketDataProvider
 from app.market.providers.nifty_indices_provider import NiftyIndicesProvider
 from app.market.providers.yfinance_provider import YFinanceProvider
@@ -102,28 +103,43 @@ class PredictionService:
     ) -> Tuple[Optional[Any], Optional[str]]:
         """Resolve a fitted model from preloaded object, in-memory registry, or disk.
 
+        Enforces strict instrument compatibility gates:
+        - Prevents equity models from predicting sectoral or benchmark indices.
+        - Prevents equity models fitted for one symbol (e.g. BHARTIARTL) from being
+          cross-applied to other symbols (e.g. TCS, RELIANCE) without dedicated training.
+        - Fails safely with clear diagnostics when models are missing or incompatible.
+
         Returns:
             Tuple of (model_instance, error_message).
         """
+        canon_sym = resolve_canonical_symbol(symbol) if symbol else None
+
         # 1. Direct preloaded model argument
         if preloaded_model is not None:
             if not getattr(preloaded_model, "is_fitted", False):
                 return None, "Supplied preloaded_model is not fitted."
-            if symbol and is_index(symbol):
+            if canon_sym:
                 model_symbol = getattr(preloaded_model, "symbol", None)
-                if model_symbol and not is_index(model_symbol):
-                    return None, (
-                        f"Model was fitted for equity '{model_symbol}' and cannot be reused "
-                        f"for sectoral index '{symbol}'."
-                    )
+                if is_index(canon_sym):
+                    if model_symbol and not is_index(model_symbol):
+                        return None, (
+                            f"Model was fitted for equity '{model_symbol}' and cannot be reused "
+                            f"for sectoral index '{symbol}'."
+                        )
+                else:
+                    if model_symbol and resolve_canonical_symbol(model_symbol) != canon_sym:
+                        return None, (
+                            f"Model was fitted for equity '{model_symbol}' and cannot be reused "
+                            f"for equity '{symbol}'. Equity models are symbol-specific."
+                        )
             return preloaded_model, None
 
         # 2. In-memory model registry
-        if symbol and is_index(symbol):
+        if canon_sym and is_index(canon_sym):
             idx_keys = [
-                f"{symbol.upper()}_{model_name}",
-                f"{symbol.lower()}_{model_name}",
-                f"{symbol.upper()}",
+                f"{canon_sym}_{model_name}",
+                f"{canon_sym.lower()}_{model_name}",
+                f"{canon_sym}",
             ]
             found_key = next((k for k in idx_keys if k in self.model_registry), None)
             if found_key:
@@ -132,15 +148,35 @@ class PredictionService:
                     return None, f"Registry model for '{found_key}' is not fitted."
                 return reg_model, None
         else:
+            if canon_sym:
+                sym_keys = [
+                    f"{canon_sym}_{model_name}",
+                    f"{canon_sym.lower()}_{model_name}",
+                    f"{canon_sym}",
+                ]
+                found_key = next((k for k in sym_keys if k in self.model_registry), None)
+                if found_key:
+                    reg_model = self.model_registry[found_key]
+                    if not getattr(reg_model, "is_fitted", False):
+                        return None, f"Registry model for '{found_key}' is not fitted."
+                    return reg_model, None
+
             if model_name in self.model_registry:
                 reg_model = self.model_registry[model_name]
                 if not getattr(reg_model, "is_fitted", False):
                     return None, f"Registry model for '{model_name}' is not fitted."
+                reg_sym = getattr(reg_model, "symbol", None)
+                if canon_sym and reg_sym:
+                    if resolve_canonical_symbol(reg_sym) != canon_sym:
+                        return None, (
+                            f"Registry model for '{model_name}' was fitted for '{reg_sym}' and "
+                            f"cannot be reused for '{symbol}'. Equity models are symbol-specific."
+                        )
                 return reg_model, None
 
         # 3. Persistent filesystem artifact
-        if symbol and is_index(symbol) and not explicit_artifact_path:
-            clean_sym = symbol.strip().lower()
+        if canon_sym and is_index(canon_sym) and not explicit_artifact_path:
+            clean_sym = canon_sym.strip().lower()
             idx_artifact = self.models_dir / f"{clean_sym}_{model_name}_direction.json"
             if not idx_artifact.is_file():
                 return None, (
@@ -149,6 +185,19 @@ class PredictionService:
                     f"Index-specific model training is documented as a planned follow-up."
                 )
             artifact_path = idx_artifact
+        elif canon_sym and not is_index(canon_sym) and not explicit_artifact_path:
+            if canon_sym == "BHARTIARTL":
+                artifact_path = self._get_default_artifact_path(model_name)
+            else:
+                ext = ".json" if model_name == "xgboost" else ".txt"
+                sym_artifact = self.models_dir / f"{canon_sym.lower()}_{model_name}_direction{ext}"
+                if not sym_artifact.is_file():
+                    return None, (
+                        f"No trained model artifact found for equity instrument '{canon_sym}'. "
+                        f"Default models are trained specifically for 'BHARTIARTL' and cannot be cross-applied to '{canon_sym}'. "
+                        f"Deliberate model training is required prior to inference."
+                    )
+                artifact_path = sym_artifact
         else:
             artifact_path = (
                 Path(explicit_artifact_path)
@@ -163,6 +212,31 @@ class PredictionService:
                 f"prior to inference. Automatic on-the-fly retraining during inference is prohibited."
             )
 
+        # Check metadata file if present to prevent cross-symbol artifact application
+        if canon_sym:
+            meta_path = artifact_path.parent / f"{model_name}_metadata.json"
+            if not meta_path.is_file():
+                meta_path = artifact_path.parent / "model_metadata.json"
+            if meta_path.is_file():
+                try:
+                    with open(meta_path, "r", encoding="utf-8") as f:
+                        meta_data = json.load(f)
+                    meta_symbol = meta_data.get("symbol")
+                    if not meta_symbol and "models" in meta_data and model_name in meta_data["models"]:
+                        meta_symbol = meta_data["models"][model_name].get("symbol")
+                    if meta_symbol and resolve_canonical_symbol(meta_symbol) != canon_sym:
+                        if is_index(canon_sym):
+                            return None, (
+                                f"Model artifact at '{artifact_path}' was trained for equity '{meta_symbol}' "
+                                f"and cannot be reused for sectoral index '{canon_sym}'."
+                            )
+                        return None, (
+                            f"Model artifact at '{artifact_path}' was trained for '{meta_symbol}' "
+                            f"and cannot be reused for '{canon_sym}'. Equity models are symbol-specific."
+                        )
+                except Exception as meta_exc:
+                    logger.debug("Could not verify metadata symbol for '%s': %s", artifact_path, meta_exc)
+
         try:
             if model_name == "xgboost":
                 loaded_model = XGBoostDirectionClassifier.load_model(artifact_path)
@@ -170,6 +244,7 @@ class PredictionService:
                 loaded_model = LightGBMDirectionClassifier().load_model(artifact_path)
             else:
                 return None, f"Unsupported model architecture '{model_name}'."
+            loaded_model.symbol = canon_sym or getattr(loaded_model, "symbol", None) or "BHARTIARTL"
             return loaded_model, None
         except Exception as exc:
             logger.error("Failed to load model artifact '%s': %s", artifact_path, exc)

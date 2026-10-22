@@ -47,6 +47,8 @@ class Instrument:
 # Official Nifty Indices names and aliases
 NIFTY_TELECOM_CANONICAL = "NIFTY_TELECOMMUNICATIONS"
 BHARTIARTL_CANONICAL = "BHARTIARTL"
+TCS_CANONICAL = "TCS"
+RELIANCE_CANONICAL = "RELIANCE"
 NIFTY_50_CANONICAL = "NIFTY_50"
 
 # Canonical Instrument Registry
@@ -62,6 +64,30 @@ INSTRUMENT_REGISTRY: Dict[str, Instrument] = {
         is_tradable=True,
         yahoo_ticker="BHARTIARTL.NS",
         lot_size=950,
+    ),
+    TCS_CANONICAL: Instrument(
+        symbol=TCS_CANONICAL,
+        name="Tata Consultancy Services Limited",
+        instrument_type=InstrumentType.EQUITY,
+        exchange="NSE",
+        sector="IT",
+        sector_benchmark="NIFTY_IT",
+        official_source="yfinance",
+        is_tradable=True,
+        yahoo_ticker="TCS.NS",
+        lot_size=175,
+    ),
+    RELIANCE_CANONICAL: Instrument(
+        symbol=RELIANCE_CANONICAL,
+        name="Reliance Industries Limited",
+        instrument_type=InstrumentType.EQUITY,
+        exchange="NSE",
+        sector="ENERGY",
+        sector_benchmark="NIFTY_ENERGY",
+        official_source="yfinance",
+        is_tradable=True,
+        yahoo_ticker="RELIANCE.NS",
+        lot_size=250,
     ),
     NIFTY_TELECOM_CANONICAL: Instrument(
         symbol=NIFTY_TELECOM_CANONICAL,
@@ -96,6 +122,14 @@ INSTRUMENT_ALIAS_MAP: Dict[str, str] = {
     "BHARTIARTL.NS": BHARTIARTL_CANONICAL,
     "BHARTIARTL.BO": BHARTIARTL_CANONICAL,
     "AIRTEL": BHARTIARTL_CANONICAL,
+    # TCS aliases
+    "TCS": TCS_CANONICAL,
+    "TCS.NS": TCS_CANONICAL,
+    "TCS.BO": TCS_CANONICAL,
+    # RELIANCE aliases
+    "RELIANCE": RELIANCE_CANONICAL,
+    "RELIANCE.NS": RELIANCE_CANONICAL,
+    "RELIANCE.BO": RELIANCE_CANONICAL,
     # Nifty Telecommunications aliases
     "NIFTY_TELECOMMUNICATIONS": NIFTY_TELECOM_CANONICAL,
     "NIFTY TELECOMMUNICATIONS": NIFTY_TELECOM_CANONICAL,

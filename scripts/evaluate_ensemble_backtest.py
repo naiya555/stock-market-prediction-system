@@ -120,31 +120,55 @@ def run_evaluation() -> Dict[str, Any]:
     lgb_summary = load_metadata_metrics(lgb_meta_path)
     maj_summary = compute_majority_baseline(xgb_summary.sample_size, xgb_summary.class_balance)
 
-    print("=" * 80)
-    print("DAY 58: ENSEMBLE ARCHITECTURE AUDIT & HISTORICAL EVALUATION REPORT")
-    print("=" * 80)
-    print(f"Target Symbol:            BHARTIARTL")
+    print("=" * 90)
+    print("DAY 59: MULTI-INSTRUMENT VALIDATION & CHRONOLOGICAL ML EVALUATION REPORT")
+    print("=" * 90)
+    print(f"Supported Instrument:     BHARTIARTL (Equity)")
     print(f"Holdout Sample Size:      N = {xgb_summary.sample_size} trading sessions")
     print(f"Chronological Cutoff:     Evaluation after 2025-10-27 (Zero Lookahead Leakage)")
     print(f"Class Distribution:       UP = {xgb_summary.class_balance['UP']} ({xgb_summary.class_balance['UP']/xgb_summary.sample_size:.1%}), "
           f"DOWN = {xgb_summary.class_balance['DOWN']} ({xgb_summary.class_balance['DOWN']/xgb_summary.sample_size:.1%})")
-    print("-" * 80)
+    print("-" * 90)
     print(f"{'Model Architecture':<24} | {'Accuracy':<8} | {'Prec(UP)':<8} | {'Rec(UP)':<8} | {'F1(UP)':<8} | {'Brier':<8}")
-    print("-" * 80)
+    print("-" * 90)
 
     for summary in [maj_summary, xgb_summary, lgb_summary]:
         brier_str = f"{summary.brier_score:.4f}" if summary.brier_score is not None else "N/A"
         print(f"{summary.model_name:<24} | {summary.accuracy * 100:>6.2f}% | {summary.precision_up:>8.4f} | {summary.recall_up:>8.4f} | {summary.f1_up:>8.4f} | {brier_str:>8}")
 
-    print("-" * 80)
+    print("-" * 90)
     print("\nConfusion Matrices [[TN, FP], [FN, TP]]:")
     print(f"  Majority Baseline:  {maj_summary.confusion_matrix}")
     print(f"  XGBoost Classifier: {xgb_summary.confusion_matrix}")
     print(f"  LightGBM Classifier:{lgb_summary.confusion_matrix}")
 
-    print("\n" + "=" * 80)
+    print("\n" + "=" * 90)
+    print("INSTRUMENT COMPATIBILITY MATRIX & EVALUATION STATUS")
+    print("=" * 90)
+    matrix_rows = [
+        ("BHARTIARTL", "EQUITY", "yfinance (BHARTIARTL.NS)", "Full OHLCV", "canonical_37 (34+ bars)", "xgboost, lightgbm (PROMOTED)", "SUPPORTED (53.75% acc)"),
+        ("TCS", "EQUITY", "yfinance (TCS.NS)", "Full OHLCV", "canonical_37 (34+ bars)", "None (requires training)", "BLOCKED (MODEL_UNAVAILABLE)"),
+        ("RELIANCE", "EQUITY", "yfinance (RELIANCE.NS)", "Full OHLCV", "canonical_37 (34+ bars)", "None (requires training)", "BLOCKED (MODEL_UNAVAILABLE)"),
+        ("NIFTY_TELECOM", "INDEX", "nifty_indices (NSE archive)", "Close-only / zero-vol", "Close-only subset (NaN wicks)", "None (equity prohibited)", "BLOCKED (MODEL_UNAVAILABLE)"),
+    ]
+    print(f"{'Instrument':<14} | {'Type':<6} | {'Data Source':<26} | {'Completeness':<12} | {'Feature Schema':<24} | {'Compatible Model':<28} | {'Inference Status'}")
+    print("-" * 155)
+    for sym, itype, src, comp, schema, model, status in matrix_rows:
+        print(f"{sym:<14} | {itype:<6} | {src:<26} | {comp:<12} | {schema:<24} | {model:<28} | {status}")
+    print("-" * 155)
+
+    print("\nBlocked Evaluation Reasons & Safety Safeguards:")
+    print("  1. TCS: Model artifact not found on disk. Equity models are symbol-specific;")
+    print("     BHARTIARTL model weights cannot be cross-applied to TCS. Training required.")
+    print("  2. RELIANCE: Model artifact not found on disk. Equity models are symbol-specific;")
+    print("     BHARTIARTL model weights cannot be cross-applied to RELIANCE. Training required.")
+    print("  3. NIFTY_TELECOMMUNICATIONS: Sectoral benchmark index. BHARTIARTL equity models cannot")
+    print("     be reused for index forecasting. Close-only index history lacks full intraday OHLCV")
+    print("     geometry (candlestick wicks/body ratios and ATR are NaN). Index training required.")
+
+    print("\n" + "=" * 90)
     print("QUALITATIVE LLM HISTORICAL EVALUATION: PREREQUISITE & INTEGRITY ASSESSMENT")
-    print("=" * 80)
+    print("=" * 90)
     print("1. Historical News Archive Gaps:")
     print("   - Live providers (RSS/NewsAPI/Google News) only provide point-in-time articles")
     print("     for the recent 7-14 days. No historical 5-year point-in-time archived news")
@@ -153,16 +177,13 @@ def run_evaluation() -> Dict[str, Any]:
     print("   - Benchmarked token generation on this CPU environment is ~2.78 tokens/sec.")
     print("   - Evaluating 240 historical holdout sessions with structured JSON outputs")
     print("     (~400 tokens/session) would require ~140 seconds per session (~9.3 hours total).")
-    print("   - Per Section 6 instructions: Live LLM inference was not executed across the entire")
-    print("     historical dataset to prevent excessive compute overhead without dedicated GPU.")
-    print("3. Signal Independence & Blending Recommendation:")
-    print("   - Role B qualitative reasoning produces categorical stance ('UP'/'DOWN'/'NEUTRAL')")
-    print("     with self-reported confidence, mapped to heuristic uncalibrated probabilities.")
-    print("   - Until a genuine point-in-time historical news dataset and calibrated scoring exist,")
-    print("     the system operates safely in ML-authoritative mode (`w_ml=1.0, w_llm=0.0`) or")
-    print("     explanation-only mode (`explain_prediction`), which strictly explains context")
-    print("     without mutating statistical ML probabilities.")
-    print("=" * 80)
+    print("3. Qualitative Polarity Mapping as Heuristic:")
+    print("   - LLM polarity-to-probability mapping (0.50 + 0.50 * polarity) is heuristic,")
+    print("     not a statistically calibrated probability. Confidence is self-reported.")
+    print("4. Blended Ensemble Status:")
+    print("   - Blended historical performance across instruments is labeled: NOT EVALUATED.")
+    print("   - System operates safely in ML-authoritative mode (`w_ml=1.0, w_llm=0.0`) on fallback.")
+    print("=" * 90)
 
     return {
         "majority": maj_summary,

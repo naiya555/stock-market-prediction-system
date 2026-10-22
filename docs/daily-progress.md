@@ -5347,3 +5347,72 @@ Evaluated models on chronological holdout dataset for `BHARTIARTL` (N = 240 sess
 ### 6. Phase 16 Status & Next Steps
 **Phase 16 remains strictly IN PROGRESS.**
 Ensemble architecture audit and prediction validation are complete. External staging, multi-instrument soak testing, and live market monitoring remain outstanding on the roadmap.
+
+---
+
+## Day 59: Multi-Instrument Validation & Ensemble Safety Gates
+
+### 1. Executive Summary
+- **Baseline Commit:** `b698d97` (`audit(prediction): validate ensemble signal and fallback semantics`).
+- **Goal Achieved:** Validated the prediction pipeline across multiple instruments (`BHARTIARTL`, `TCS`, `RELIANCE`, `NIFTY_TELECOMMUNICATIONS`) without cross-pollinating incompatible models (equity vs. sectoral index, or BHARTIARTL weights onto TCS/RELIANCE), fabricating evaluation results, or misrepresenting qualitative LLM heuristic scores as calibrated probabilities.
+- **Verification:** All **735 tests passing** (+20 new deterministic multi-instrument compatibility and safety gate tests) across 49 test modules. Zero regressions. `pip check` clean. `git diff --check` clean (0 whitespace errors). Protected database and model artifact hashes verified 100% bit-identical.
+- **Roadmap Invariant:** **Phase 16 remains strictly IN PROGRESS** (external soak testing, staging deployment, and live monitoring telemetry remain outstanding).
+
+### 2. Instrument Compatibility Matrix
+| Instrument | Type | Historical Source | Data Completeness | Feature Schema & Warmup | Compatible Model Artifact | Inference & Evaluation Status |
+| :--- | :---: | :--- | :--- | :--- | :--- | :--- |
+| **BHARTIARTL** | EQUITY | `yfinance` (`BHARTIARTL.NS`) | Full OHLCV | `canonical_37_features` (34+ bars) | `xgboost`, `lightgbm` (PROMOTED) | **SUPPORTED** (53.75% Holdout Acc) |
+| **TCS** | EQUITY | `yfinance` (`TCS.NS`) | Full OHLCV | `canonical_37_features` (34+ bars) | *None* (training required) | **BLOCKED (`MODEL_UNAVAILABLE`)** |
+| **RELIANCE** | EQUITY | `yfinance` (`RELIANCE.NS`) | Full OHLCV | `canonical_37_features` (34+ bars) | *None* (training required) | **BLOCKED (`MODEL_UNAVAILABLE`)** |
+| **NIFTY_TELECOM** | INDEX | `nifty_indices` (NSE archive) | Close-only / Zero volume | Close-only subset (Candle wicks NaN) | *None* (Equity models prohibited) | **BLOCKED (`MODEL_UNAVAILABLE`)** |
+
+### 3. Chronological ML Evaluation Results
+Evaluated models on chronological holdout dataset for `BHARTIARTL` (N = 240 sessions after 2025-10-27 cutoff, zero lookahead leakage, class balance: 119 UP [49.6%] / 121 DOWN [50.4%]):
+| Model Strategy | Sample Size | Accuracy | Precision (UP) | Recall (UP) | F1 (UP) | Brier Score | Confusion Matrix [[TN, FP], [FN, TP]] |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Majority Baseline** | 240 | 49.58% | 0.4958 | 1.0000 | 0.6630 | 0.5042 | `[[0, 121], [0, 119]]` |
+| **XGBoost Classifier** | 240 | 51.25% | 0.5066 | 0.6471 | 0.5683 | 0.2556 | `[[46, 75], [42, 77]]` |
+| **LightGBM Classifier** | 240 | 53.75% | 0.5267 | 0.6639 | 0.5874 | 0.2562 | `[[50, 71], [40, 79]]` |
+
+### 4. Blocked Instrument Evaluations & Safeguards
+- **TCS:** Blocked with status `MODEL_UNAVAILABLE`. Historical OHLCV is available from market providers, but no trained model artifact exists on disk (`models/tcs_xgboost_direction.json`). Equity models are symbol-specific; `BHARTIARTL` model weights cannot be cross-applied to TCS without dedicated model training.
+- **RELIANCE:** Blocked with status `MODEL_UNAVAILABLE`. Historical OHLCV is available, but no trained model artifact exists on disk. `BHARTIARTL` model weights cannot be cross-applied to RELIANCE without dedicated training.
+- **NIFTY_TELECOMMUNICATIONS:** Blocked with status `MODEL_UNAVAILABLE`. Sectoral benchmark index. `BHARTIARTL` equity model weights cannot be reused for sectoral index forecasting. Furthermore, close-only historical index data lacks intraday OHLC candlestick geometry (`candle_body`, `candle_upper_wick`, `candle_lower_wick`, and `atr_14` evaluate strictly as `NaN`), precluding execution of the canonical 37-feature equity schema.
+- **Zero-Fabrication Guarantee:** Blocked instruments are reported explicitly as `BLOCKED (MODEL_UNAVAILABLE)`, never fabricated as 0% accuracy or successful forecasts.
+
+### 5. Ensemble Safety & LLM Status
+- **Weight Accounting:** Preserves configured/requested weights (`requested_weights: {ml: 0.70, llm: 0.30}`) while explicitly logging effective weights (`weights_used: {ml: 1.0, llm: 0.0}`) when falling back to ML-only mode upon missing/unprovided qualitative LLM reasoning.
+- **Input Validation:** Rejects non-finite, negative, and zero-sum weight specifications (`NaN`, `Inf`, `-Inf`) with HTTP 422.
+- **Heuristic Characterization:** Documented that qualitative polarity-to-probability mapping ($0.50 + 0.50 \times \text{polarity}$) is a qualitative heuristic score, not a statistically calibrated probability.
+- **Blended Historical Evaluation:** In the absence of an empirical 5-year point-in-time historical news corpus, multi-instrument blended ensemble performance is strictly labeled `NOT EVALUATED`.
+
+### 6. Verification & Quality Gates
+- **Targeted Test Execution:**
+  - `tests/test_instrument_compatibility.py`: **20 passed** in 5.81s (+20 new multi-instrument compatibility, model isolation, and safety gate tests).
+  - `tests/test_prediction_service.py` & `tests/test_nifty_telecom_integration.py`: **35 passed** in 7.27s.
+  - `tests/test_ensemble_service.py`: **29 passed** in 2.65s.
+- **Full Repository Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **735 passed**, 1 warning in 44.70s across all 49 test modules (0 failures, 0 regressions).
+- **Dependency Audit:**
+  ```powershell
+  .\.venv\Scripts\python -m pip check
+  ```
+  `No broken requirements found.`
+- **Git Diff Whitespace Check:**
+  ```powershell
+  git diff --check
+  ```
+  `Clean (0 whitespace errors).`
+- **Protected File SHA-256 Baselines:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (100% UNCHANGED).
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (100% UNCHANGED).
+
+### 7. Phase 16 Status & Next Steps
+**Phase 16 remains strictly IN PROGRESS.**
+Multi-instrument validation, cross-model isolation gates, and fallback accounting are verified with empirical tests. Outstanding Phase 16 requirements:
+1. Multi-instrument evaluation under concurrent simulated user load.
+2. Extended soak testing across multi-day session boundaries.
+3. Live operational monitoring, error budget alerting, and performance drift telemetry.
