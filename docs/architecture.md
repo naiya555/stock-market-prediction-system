@@ -1556,3 +1556,30 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
   - `TCS`: Returns 200 MODEL_UNAVAILABLE with sanitized message `"No trained model artifact found for equity instrument 'TCS'"` and zero path leakage.
   - `NIFTY_TELECOMMUNICATIONS`: Returns 200 MODEL_UNAVAILABLE rejecting cross-asset model reuse (`"BHARTIARTL equity models cannot be reused for sectoral index forecasting"`).
 - **Roadmap Status:** Phase 16 remains strictly **IN PROGRESS**.
+
+---
+
+### 4.37 Prediction Dashboard UI Completion & Data Presentation Audit (Day 65)
+- **Objective & Architectural Scope:**
+  Complete the user presentation layer of the prediction dashboard: ensure transparent communication of model outputs, strictly separate observed exchange market quotes from forward directional forecasts, prevent false confidence by labeling raw probabilities as uncalibrated, enforce non-color-dependent directional indicators, and provide explicit next-step actions for both success and blocked/failure states.
+- **Data Presentation Architecture & Semantic Separation:**
+  1. **Instrument & Instrument Type Taxonomy:**
+     - Explicitly classifies selected instruments as `EQUITY (NSE)` or `INDEX (NSE)` based on registered metadata and symbol taxonomy.
+     - Displays Model Identity (`XGBOOST`, `LIGHTGBM`, or `ENSEMBLE`), version string (`xgboost-direction-v1`), and generation timestamp.
+  2. **Historical Factual Quote vs. Forward Model Forecast Distinction:**
+     - *Historical Observed Price:* Labeled `LAST_TRADED_PRICE` with verified quote timestamp, session state (`CLOSED`/`OPEN`), freshness (`FRESH`), and delayed feed notice (`Yahoo Finance ~15m delay`). Labeled explicitly: *"Observed exchange price • Not a predicted opening or closing price"*.
+     - *Forward Directional Forecast:* Explicit binary return direction (`UP (Bullish Return)` / `DOWN (Bearish Return)` / `NEUTRAL (Flat Return)`), with horizon defined as next trading session (close-to-close).
+     - *Unmodeled Fields:* Price targets, opening prices, and trade durations are explicitly marked as unsupported and not predicted by quantitative models. Volatility bands (ATR-14) are rendered only when explicitly supplied by ensemble synthesis.
+  3. **Uncalibrated Model Probability Guard:**
+     - Warning banner prominent on all predictions referencing Day 62 holdout audit results ($N=240$, Brier score $0.2556$–$0.2562$ vs. constant 0.50 reference $0.2500$, $p > 0.34$, no statistically significant outperformance).
+     - Probability bar explicitly displays `[Uncalibrated]` labels on both $P(\text{UP})$ and $P(\text{DOWN})$.
+  4. **Model Scope, Limitations & Next Actions Box:**
+     - Integrated card detailing binary directional constraint, lack of calibration, and symbol specificity (BHARTIARTL only).
+     - Recommends actionable user follow-up: reviewing verified actuals in the History tab once the next trading session concludes (15:30 IST).
+  5. **Accessible Non-Color-Dependent Signaling:**
+     - Direction communicated simultaneously via directional glyphs (`↗`, `↘`, `⏸`), descriptive text (`UP (Bullish Return)`), and ARIA attributes (`aria-label="Predicted Direction: UP (Bullish Return)"`).
+     - Blocked state communicated through shield alert iconography, textual badges (`BLOCKED - MODEL UNAVAILABLE`), and backend diagnostic messages.
+  6. **Recovery & Action Controls:**
+     - Blocked instrument card includes a direct recovery button: `Select Supported Instrument (BHARTIARTL)`.
+     - Error banner includes an interactive retry action: `↻ Retry Prediction` triggering clean form resubmission.
+- **Roadmap Invariant:** Phase 16 remains strictly **IN PROGRESS**.

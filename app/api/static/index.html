@@ -238,6 +238,9 @@
           <div class="alert-content">
             <h4 class="alert-title" id="alert-title">Prediction Error</h4>
             <p class="alert-message" id="alert-message"></p>
+            <div class="alert-actions">
+              <button type="button" class="btn-retry-alert" id="alert-retry-btn">↻ Retry Prediction</button>
+            </div>
           </div>
           <button type="button" class="alert-close" id="alert-close-btn" aria-label="Dismiss alert">✕</button>
         </div>
@@ -260,7 +263,10 @@
             <div class="blocked-header">
               <div class="blocked-icon-box" aria-hidden="true">🛡️</div>
               <div>
-                <h3 class="blocked-title" id="blocked-card-title">Instrument Blocked / Model Unavailable</h3>
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                  <h3 class="blocked-title" id="blocked-card-title">Instrument Blocked / Model Unavailable</h3>
+                  <span class="badge badge-warning" id="blocked-card-badge">BLOCKED</span>
+                </div>
                 <p class="blocked-subtitle" id="blocked-card-subtitle">Safety gates prevented inference to preserve model integrity.</p>
               </div>
             </div>
@@ -277,6 +283,11 @@
                   <li><strong>Zero Fabrication:</strong> Predictions are never fabricated or guessed when model artifacts are unavailable.</li>
                 </ul>
               </div>
+              <div class="blocked-recovery-row" style="margin-top: 6px;">
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-switch-to-supported">
+                  Select Supported Instrument (BHARTIARTL)
+                </button>
+              </div>
             </div>
           </div>
 
@@ -285,11 +296,13 @@
             <div class="hero-header">
               <div class="hero-symbol-group">
                 <span class="hero-ticker" id="res-symbol">--</span>
+                <span class="badge badge-instrument-type" id="res-instrument-type-badge">EQUITY</span>
+                <span class="badge badge-status-success" id="res-status-badge">SUCCESS</span>
                 <span class="badge" id="res-model-badge">--</span>
                 <span class="badge badge-timestamp" id="res-timestamp">--</span>
               </div>
               <div class="hero-direction-wrapper">
-                <div class="direction-badge" id="res-direction-badge">
+                <div class="direction-badge" id="res-direction-badge" aria-label="Predicted Direction">
                   <span class="direction-icon" id="res-direction-icon">--</span>
                   <span class="direction-text" id="res-direction-text">--</span>
                 </div>
@@ -311,14 +324,16 @@
             <div class="distinction-bar" id="res-distinction-bar">
               <div class="distinction-item observed-fact">
                 <span class="distinction-tag">HISTORICAL OBSERVED FACT</span>
-                <span class="distinction-val" id="res-observed-price">Last Observed Close: ₹--</span>
+                <span class="distinction-val" id="res-observed-price">Last Observed Price: ₹--</span>
                 <span class="distinction-time" id="res-observed-time">As of: --</span>
+                <span class="distinction-meta" id="res-observed-meta">Price Type: LAST_TRADED_PRICE • Not a forecast</span>
               </div>
               <div class="distinction-arrow" aria-hidden="true">➔</div>
               <div class="distinction-item model-forecast">
                 <span class="distinction-tag">FORWARD DIRECTIONAL FORECAST</span>
                 <span class="distinction-val" id="res-forecast-direction">Direction: --</span>
                 <span class="distinction-horizon">Horizon: Next Trading Session (Close-to-Close)</span>
+                <span class="distinction-meta" id="res-forecast-meta">Target Price: Unsupported / Not Modeled</span>
               </div>
             </div>
 
@@ -359,6 +374,32 @@
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <!-- Model Scope, Limitations & Next Actions Box -->
+            <div class="limitations-action-card" id="res-limitations-action-card">
+              <div class="limitations-header">
+                <span class="limitations-icon" aria-hidden="true">ℹ️</span>
+                <h4 class="limitations-title">Model Scope, Limitations & Next Actions</h4>
+              </div>
+              <div class="limitations-grid">
+                <div class="limitation-item">
+                  <span class="limitation-label">Direction Only:</span>
+                  <span class="limitation-desc">Forecasts binary return sign only. Opening/closing prices, target prices, and trade durations are unsupported.</span>
+                </div>
+                <div class="limitation-item">
+                  <span class="limitation-label">Uncalibrated:</span>
+                  <span class="limitation-desc">Probabilities reflect raw tree leaf splits; holdout Brier score (0.2556) is worse than 0.50 reference.</span>
+                </div>
+                <div class="limitation-item">
+                  <span class="limitation-label">Symbol Specific:</span>
+                  <span class="limitation-desc">Trained on BHARTIARTL. Cannot be transferred to other equities or sectoral indices.</span>
+                </div>
+              </div>
+              <div class="next-action-bar">
+                <span class="next-action-tag">Recommended Next Action:</span>
+                <span class="next-action-text" id="res-next-action-text">Review historical prediction performance and verified outcomes in the History tab.</span>
               </div>
             </div>
 

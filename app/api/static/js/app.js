@@ -342,6 +342,31 @@
       });
     }
 
+    // Retry prediction action in alert banner
+    const alertRetryBtn = document.getElementById('alert-retry-btn');
+    if (alertRetryBtn && form) {
+      alertRetryBtn.addEventListener('click', () => {
+        if (alertBanner) alertBanner.style.display = 'none';
+        form.requestSubmit();
+      });
+    }
+
+    // Switch to supported instrument in blocked card
+    const btnSwitchSupported = document.getElementById('btn-switch-to-supported');
+    if (btnSwitchSupported) {
+      btnSwitchSupported.addEventListener('click', () => {
+        if (symbolInput) {
+          symbolInput.value = 'BHARTIARTL';
+          symbolInput.focus();
+          if (symbolError) symbolError.textContent = '';
+        }
+        const blockedCard = document.getElementById('result-blocked-card');
+        const emptyState = document.getElementById('predict-empty-state');
+        if (blockedCard) blockedCard.style.display = 'none';
+        if (emptyState) emptyState.style.display = 'block';
+      });
+    }
+
     // Form submission
     if (form) {
       form.addEventListener('submit', async (e) => {
@@ -446,9 +471,10 @@
     }
   }
 
-  function showPredictionError(msg) {
+  function showPredictionError(msg, isRetryable = true) {
     const alertBanner = document.getElementById('prediction-alert');
     const alertMsg = document.getElementById('alert-message');
+    const alertRetryBtn = document.getElementById('alert-retry-btn');
     const resultsContainer = document.getElementById('prediction-results-container');
     const emptyState = document.getElementById('predict-empty-state');
     const heroCard = document.getElementById('result-hero-card');
@@ -458,6 +484,7 @@
     AppState.prediction = null;
     if (alertBanner && alertMsg) {
       alertMsg.textContent = msg;
+      if (alertRetryBtn) alertRetryBtn.style.display = isRetryable ? 'inline-block' : 'none';
       alertBanner.style.display = 'flex';
     }
     if (resultsContainer) resultsContainer.style.display = 'none';
@@ -489,12 +516,16 @@
       if (blockedCard) {
         blockedCard.style.display = 'block';
         const titleEl = document.getElementById('blocked-card-title');
+        const badgeEl = document.getElementById('blocked-card-badge');
         const msgEl = document.getElementById('blocked-card-message');
         const isIndex = res.symbol && (res.symbol.includes('NIFTY') || res.symbol.includes('INDEX'));
         if (titleEl) {
           titleEl.textContent = isIndex
             ? `Sectoral Index Blocked: ${res.symbol}`
             : `Model Unavailable: ${res.symbol}`;
+        }
+        if (badgeEl) {
+          badgeEl.textContent = isIndex ? 'BLOCKED - SECTORAL INDEX' : 'BLOCKED - MODEL UNAVAILABLE';
         }
         if (msgEl) {
           msgEl.textContent = res.error_message || 'Inference could not be completed. Model is not available.';
@@ -509,14 +540,26 @@
     if (breakdownGrid) breakdownGrid.style.display = 'grid';
 
     const symEl = document.getElementById('res-symbol');
+    const instTypeBadge = document.getElementById('res-instrument-type-badge');
+    const statusBadge = document.getElementById('res-status-badge');
     const modelBadge = document.getElementById('res-model-badge');
     const tsEl = document.getElementById('res-timestamp');
     const dirBadge = document.getElementById('res-direction-badge');
     const dirIcon = document.getElementById('res-direction-icon');
     const dirText = document.getElementById('res-direction-text');
 
-    // Basic identifiers
+    // Instrument metadata
+    const isIndex = res.symbol && (res.symbol.includes('NIFTY') || res.symbol.includes('INDEX'));
+    const instType = isIndex ? 'INDEX' : 'EQUITY';
     if (symEl) symEl.textContent = res.symbol;
+    if (instTypeBadge) {
+      instTypeBadge.textContent = `${instType} (NSE)`;
+      instTypeBadge.className = 'badge ' + (isIndex ? 'badge-purple' : 'badge-instrument-type');
+    }
+    if (statusBadge) {
+      statusBadge.textContent = res.status || 'SUCCESS';
+      statusBadge.className = 'badge badge-status-success';
+    }
     if (modelBadge) {
       modelBadge.textContent = `${res.model_name.toUpperCase()} (${res.model_version})`;
       modelBadge.className = 'badge ' + (res.model_name === 'ensemble' ? 'badge-purple' : 'badge-info');
@@ -530,7 +573,9 @@
     // Historical Fact vs Forward Forecast Distinction
     const obsPriceEl = document.getElementById('res-observed-price');
     const obsTimeEl = document.getElementById('res-observed-time');
+    const obsMetaEl = document.getElementById('res-observed-meta');
     const forecastDirEl = document.getElementById('res-forecast-direction');
+    const forecastMetaEl = document.getElementById('res-forecast-meta');
 
     if (obsPriceEl) {
       if (res.quote_context && typeof res.quote_context.last_price === 'number') {
@@ -552,11 +597,25 @@
       }
     }
 
+    if (obsMetaEl) {
+      if (res.quote_context && res.quote_context.source && res.quote_context.source !== 'none') {
+        const delayStr = res.quote_context.is_delayed ? ` • Delayed ~${res.quote_context.delay_minutes}m` : '';
+        const sessionStr = res.quote_context.session_state ? ` • Session: ${res.quote_context.session_state}` : '';
+        obsMetaEl.textContent = `Type: ${res.quote_context.price_type || 'LAST_TRADED_PRICE'} • Feed: ${res.quote_context.source}${delayStr}${sessionStr} • Not a predicted price`;
+      } else {
+        obsMetaEl.textContent = 'Price Type: LAST_TRADED_PRICE • Not a predicted opening or closing price';
+      }
+    }
+
     if (forecastDirEl) {
       forecastDirEl.textContent = `Direction: ${res.predicted_direction || '--'}`;
     }
 
-    // Direction Decision & Styling
+    if (forecastMetaEl) {
+      forecastMetaEl.textContent = 'Price Target: Unsupported / Not Modeled (Direction Only)';
+    }
+
+    // Direction Decision & Accessibility (never color alone)
     const dir = res.predicted_direction;
 
     if (heroCard) {
@@ -570,15 +629,18 @@
       if (dir === 'UP') {
         dirBadge.classList.add('up');
         dirIcon.textContent = '↗';
-        dirText.textContent = 'PREDICTED UP';
+        dirText.textContent = 'PREDICTED UP (Bullish Return)';
+        dirBadge.setAttribute('aria-label', 'Predicted Direction: UP (Bullish Return)');
       } else if (dir === 'DOWN') {
         dirBadge.classList.add('down');
         dirIcon.textContent = '↘';
-        dirText.textContent = 'PREDICTED DOWN';
+        dirText.textContent = 'PREDICTED DOWN (Bearish Return)';
+        dirBadge.setAttribute('aria-label', 'Predicted Direction: DOWN (Bearish Return)');
       } else {
         dirBadge.classList.add('neutral');
         dirIcon.textContent = '⏸';
-        dirText.textContent = dir || 'NEUTRAL';
+        dirText.textContent = dir ? `PREDICTED ${dir} (Flat Return)` : 'NEUTRAL (Flat Return)';
+        dirBadge.setAttribute('aria-label', `Predicted Direction: ${dir || 'NEUTRAL'}`);
       }
     }
 
@@ -621,6 +683,12 @@
       if (targetRangeItem) targetRangeItem.style.display = 'flex';
     } else {
       if (targetRangeItem) targetRangeItem.style.display = 'none';
+    }
+
+    // Model Limitations & Recommended Next Action Box
+    const nextActionEl = document.getElementById('res-next-action-text');
+    if (nextActionEl) {
+      nextActionEl.textContent = 'Review verified actuals in the History tab once next market session closes (15:30 IST).';
     }
 
     // Agreement Banner (Ensemble only)

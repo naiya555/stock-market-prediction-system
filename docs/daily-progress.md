@@ -5825,3 +5825,111 @@ Executed real HTTP requests against live Uvicorn ASGI server (`python -m uvicorn
 ### 5. Phase 16 Status & Next Steps
 **Phase 16 remains strictly IN PROGRESS.**
 End-to-end browser and web application functionality audit complete; race conditions and stale response dropping resolved; symbol input bounds expanded; live HTTP socket verification against Uvicorn complete; 789 regression tests passing.
+---
+
+## Day 65 - Prediction Dashboard UI Completion & Data Presentation Audit
+
+### Goal
+Audit and complete the prediction dashboard user interface and data presentation layer using the existing vanilla HTML/CSS/JavaScript architecture (zero React/Vue, zero duplicate backends). Ensure the UI communicates existing prediction output truthfully and defensively:
+1. Clearly distinguish selected instrument and instrument type (`EQUITY (NSE)` vs `INDEX (NSE)`).
+2. Distinguish prediction status states: successful, blocked, unavailable, or failed.
+3. Present predicted direction from actual API output (`UP`, `DOWN`, `NEUTRAL`) using non-color-alone signaling (symbols, directional badges, aria labels).
+4. Accurately identify model provenance (`model_name`, `model_version`).
+5. Prominently display historical/last-traded market price, strictly labeled as observed market data (`LAST_TRADED_PRICE`), disclaiming that it is NOT a predicted opening or closing price.
+6. Forward prediction fields: opening/closing targets disclaimed as unsupported and not modeled.
+7. Disclose raw probabilities with an explicit uncalibrated-probability warning referencing Day 62 holdout audit results ($N=240$, Brier $0.2556$–$0.2562$ vs constant 0.50 reference $0.2500$, $p > 0.34$).
+8. Present data freshness and quote timestamp only when present in the response.
+9. Provide a concise explanation of limitations and the next action the user can take (directing to verified outcomes in History tab).
+10. Add fast recovery buttons: `↻ Retry Prediction` on alert banner and `Select Supported Instrument (BHARTIARTL)` on blocked diagnostic card.
+
+---
+
+### 1. Git Baseline & Initial Integrity Check
+- **Baseline Commit:** `21ceb31` (`feat(web): harden end-to-end browser workflow and frontend reliability`)
+- **Remote Synchronization:** Working tree clean; local `main` synchronized with `origin/main` at `21ceb31`.
+- **Pre-Test Data Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e`
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
+
+---
+
+### 2. UI Enhancements & Presentation Architecture
+1. **Instrument & Instrument Type Distinction:**
+   - Added `#res-instrument-type-badge` rendering `EQUITY (NSE)` or `INDEX (NSE)` based on catalog classification or symbol heuristics.
+   - Added `#res-status-badge` (`PREDICTION_READY`, `BLOCKED`, `FAILED`) providing visible status semantics.
+2. **Observed Market Quote vs. Target Forecast Distinction:**
+   - Strengthened distinction banner with explicit meta tags:
+     - `#res-observed-meta`: *"Price Type: LAST_TRADED_PRICE • Not a predicted price"*
+     - `#res-forecast-meta`: *"Price Target: Unsupported / Not Modeled (Direction Only)"*
+   - Volatility-anchored expected bands (`target_range`) are only displayed if returned by ensemble models; for single models (XGBoost/LightGBM) where price targets do not exist, the target metric item is cleanly hidden.
+3. **Probability & Calibration Honesty:**
+   - Raw model scores are explicitly presented with an `[Uncalibrated]` pill.
+   - Disclaimer banner explicitly notes that raw probabilities scored worse than a constant 0.50 coin-flip reference on the 240-session holdout test and must not be interpreted as empirical odds.
+4. **Scope, Limitations & Next Action Card:**
+   - Added dedicated `#res-limitations-action-card` in `app/api/static/index.html` detailing:
+     - Directional Return Sign Only (price targets unsupported).
+     - Symbol-Specific Model (BHARTIARTL only; equity models cannot be reused across symbols or indices).
+     - Uncalibrated Confidence (raw sigmoid scores, not empirical event probabilities).
+     - Recommended Next Action directing users to the History tab to audit realized actual outcomes before taking action.
+5. **Fast Recovery Actions:**
+   - Added `#alert-retry-btn` (`↻ Retry Prediction`) in error banner to resubmit the last query without losing input.
+   - Added `#btn-switch-to-supported` (`Select Supported Instrument (BHARTIARTL)`) in `#result-blocked-card` allowing immediate recovery to the active model.
+6. **Accessibility & Safe Rendering:**
+   - Direction signaled with Unicode directional arrows (`↗`, `↘`), textual return labels (`(Bullish Return)` / `(Bearish Return)`), and explicit ARIA labels.
+   - Untrusted API text safely bound via `textContent` or `document.createElement`.
+   - Real-browser and screen-reader visual inspection documented statically, with automated browser subagent installation pending remote CDN availability.
+
+---
+
+### 3. API Fields Used and Sources
+- `res.symbol`: Input instrument symbol (`BHARTIARTL`, `TCS`, `RELIANCE`, `NIFTY_TELECOMMUNICATIONS`, `NIFTY_50`).
+- `res.prediction_id`: Unique prediction UUID for provenance tracking.
+- `res.prediction_timestamp`: Generation timestamp (ISO-8601).
+- `res.model_name`, `res.model_version`: Active model architecture identity.
+- `res.prediction`: Integer direction class (`1` for UP, `0` for DOWN, `2` for NEUTRAL).
+- `res.direction`: Canonical direction string (`UP`, `DOWN`, `NEUTRAL`).
+- `res.probabilities`: Dictionary of raw model output probabilities (`{"UP": float, "DOWN": float}`).
+- `res.is_probability_calibrated`: Boolean indicating calibration status (always `false` for raw ML models).
+- `res.market_quote.last_traded_price`: Observed historical market price.
+- `res.market_quote.price_type`: Explicit quote classification (`LAST_TRADED_PRICE`).
+- `res.market_quote.session_state`: NSE market trading state (`CLOSED` or `OPEN`).
+- `res.market_quote.freshness`: Data provider status (`FRESH` or `STALE`).
+- `res.market_quote.quote_timestamp`: Timestamp of the underlying Yahoo Finance market quote.
+- `res.ensemble.target_range`: Optional volatility-anchored bounds (ATR-14), displayed only when supplied by ensemble.
+
+---
+
+### 4. Verification & Quality Gates
+- **JavaScript Syntax Check:**
+  ```powershell
+  node -c app/api/static/js/app.js
+  ```
+  `Clean (0 syntax errors).`
+- **Targeted Test Execution:**
+  - `tests/test_prediction_dashboard_completion.py`: **11 passed** in 3.69s (+11 new deterministic tests).
+  - `tests/test_end_to_end_web_audit.py`: **13 passed** in 6.94s.
+  - `tests/test_web_foundation_audit.py`: **10 passed** in 5.12s.
+- **Full Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **800 passed**, 1 warning across all 55 test modules in 40.85s (0 failures, 0 regressions).
+- **Dependency Audit:**
+  ```powershell
+  .\.venv\Scripts\python -m pip check
+  ```
+  `No broken requirements found.`
+- **Git Diff Whitespace Check:**
+  ```powershell
+  git diff --check
+  ```
+  `Clean (0 whitespace errors).`
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**).
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**).
+
+---
+
+### 5. Phase 16 Status & Next Steps
+**Phase 16 remains strictly IN PROGRESS.**
+Prediction dashboard UI completed and verified; data presentation audited to eliminate fabricated price forecasts; explicit quote vs prediction distinction active; uncalibrated score disclaimers prominent; blocked diagnostic cards and fast recovery paths fully functional; 800 regression tests passing.
