@@ -18,9 +18,11 @@
   const AppState = {
     activeTab: 'predict',
     prediction: null,
+    lastPredictionPayload: null,
     isPredicting: false,
     predictionRequestId: 0,
     activePredictionAbortController: null,
+    catalog: [],
     history: {
       items: [],
       total: 0,
@@ -290,6 +292,25 @@
   }
 
   // -------------------------------------------------------------------------
+  // Stale State Cleanup Helper
+  // -------------------------------------------------------------------------
+  function clearStalePredictionIfSymbolChanged(newSymbol) {
+    if (AppState.prediction && AppState.prediction.symbol !== newSymbol) {
+      AppState.prediction = null;
+      const heroCard = document.getElementById('result-hero-card');
+      const blockedCard = document.getElementById('result-blocked-card');
+      const breakdownGrid = document.querySelector('.breakdown-grid');
+      const resultsContainer = document.getElementById('prediction-results-container');
+      const emptyState = document.getElementById('predict-empty-state');
+      if (heroCard) heroCard.style.display = 'none';
+      if (blockedCard) blockedCard.style.display = 'none';
+      if (breakdownGrid) breakdownGrid.style.display = 'none';
+      if (resultsContainer) resultsContainer.style.display = 'none';
+      if (emptyState) emptyState.style.display = 'block';
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Prediction Engine Controller
   // -------------------------------------------------------------------------
   function initPredictionEngine() {
@@ -311,12 +332,20 @@
       chip.addEventListener('click', () => {
         const sym = chip.getAttribute('data-symbol');
         if (sym && symbolInput) {
+          clearStalePredictionIfSymbolChanged(sym);
           symbolInput.value = sym;
           symbolInput.focus();
           if (symbolError) symbolError.textContent = '';
         }
       });
     });
+
+    // Clear stale prediction on symbol input change
+    if (symbolInput) {
+      symbolInput.addEventListener('input', () => {
+        clearStalePredictionIfSymbolChanged(symbolInput.value.trim().toUpperCase());
+      });
+    }
 
     // Toggle custom weights visibility depending on model
     if (modelSelect && ensembleWeightsGroup) {
@@ -347,6 +376,17 @@
     if (alertRetryBtn && form) {
       alertRetryBtn.addEventListener('click', () => {
         if (alertBanner) alertBanner.style.display = 'none';
+        if (AppState.lastPredictionPayload) {
+          if (symbolInput && AppState.lastPredictionPayload.symbol) {
+            symbolInput.value = AppState.lastPredictionPayload.symbol;
+          }
+          if (modelSelect && AppState.lastPredictionPayload.model_name) {
+            modelSelect.value = AppState.lastPredictionPayload.model_name;
+            if (ensembleWeightsGroup) {
+              ensembleWeightsGroup.style.display = modelSelect.value === 'ensemble' ? 'flex' : 'none';
+            }
+          }
+        }
         form.requestSubmit();
       });
     }
@@ -355,6 +395,7 @@
     const btnSwitchSupported = document.getElementById('btn-switch-to-supported');
     if (btnSwitchSupported) {
       btnSwitchSupported.addEventListener('click', () => {
+        clearStalePredictionIfSymbolChanged('BHARTIARTL');
         if (symbolInput) {
           symbolInput.value = 'BHARTIARTL';
           symbolInput.focus();
@@ -411,6 +452,9 @@
           payload.ml_weight = mlWeight;
           payload.llm_weight = Math.round((1.0 - mlWeight) * 100) / 100.0;
         }
+
+        // Cache last submitted payload for exact retry reuse
+        AppState.lastPredictionPayload = payload;
 
         // Set Loading State
         setPredictionLoading(true);
@@ -510,7 +554,8 @@
     container.style.display = 'block';
 
     // Handle Blocked / Unsupported Instrument or Failed Prediction state
-    if (res.status !== 'SUCCESS') {
+    const isSuccess = res.status === 'SUCCESS' && !!(res.predicted_direction || res.direction);
+    if (!isSuccess) {
       if (heroCard) heroCard.style.display = 'none';
       if (breakdownGrid) breakdownGrid.style.display = 'none';
       if (blockedCard) {
@@ -518,17 +563,28 @@
         const titleEl = document.getElementById('blocked-card-title');
         const badgeEl = document.getElementById('blocked-card-badge');
         const msgEl = document.getElementById('blocked-card-message');
-        const isIndex = res.symbol && (res.symbol.includes('NIFTY') || res.symbol.includes('INDEX'));
+        const inst = AppState.catalog ? AppState.catalog.find((i) => i.symbol === res.symbol) : null;
+        const isIndex = (inst && inst.instrument_type === 'INDEX') || (res.symbol && (res.symbol.includes('NIFTY') || res.symbol.includes('INDEX')));
         if (titleEl) {
-          titleEl.textContent = isIndex
-            ? `Sectoral Index Blocked: ${res.symbol}`
-            : `Model Unavailable: ${res.symbol}`;
+          if (isIndex) {
+            titleEl.textContent = `Sectoral Index Blocked: ${res.symbol || 'INDEX'}`;
+          } else if (res.status === 'MODEL_UNAVAILABLE') {
+            titleEl.textContent = `Model Unavailable: ${res.symbol || 'Instrument'}`;
+          } else {
+            titleEl.textContent = `Prediction Blocked / Unavailable: ${res.symbol || 'Instrument'}`;
+          }
         }
         if (badgeEl) {
-          badgeEl.textContent = isIndex ? 'BLOCKED - SECTORAL INDEX' : 'BLOCKED - MODEL UNAVAILABLE';
+          if (isIndex) {
+            badgeEl.textContent = 'BLOCKED - SECTORAL INDEX';
+          } else if (res.status === 'MODEL_UNAVAILABLE') {
+            badgeEl.textContent = 'BLOCKED - MODEL UNAVAILABLE';
+          } else {
+            badgeEl.textContent = `STATUS - ${res.status || 'UNAVAILABLE'}`;
+          }
         }
         if (msgEl) {
-          msgEl.textContent = res.error_message || 'Inference could not be completed. Model is not available.';
+          msgEl.textContent = res.error_message || (res.status === 'SUCCESS' && !res.predicted_direction ? 'Inference completed without predicted direction. Check server logs.' : `Inference could not be completed. Status: ${res.status || 'UNKNOWN'}`);
         }
       }
       return;
@@ -549,8 +605,9 @@
     const dirText = document.getElementById('res-direction-text');
 
     // Instrument metadata
-    const isIndex = res.symbol && (res.symbol.includes('NIFTY') || res.symbol.includes('INDEX'));
-    const instType = isIndex ? 'INDEX' : 'EQUITY';
+    const inst = AppState.catalog ? AppState.catalog.find((i) => i.symbol === res.symbol) : null;
+    const isIndex = (inst && inst.instrument_type === 'INDEX') || (res.symbol && (res.symbol.includes('NIFTY') || res.symbol.includes('INDEX')));
+    const instType = inst ? inst.instrument_type : (isIndex ? 'INDEX' : 'EQUITY');
     if (symEl) symEl.textContent = res.symbol;
     if (instTypeBadge) {
       instTypeBadge.textContent = `${instType} (NSE)`;
@@ -561,7 +618,9 @@
       statusBadge.className = 'badge badge-status-success';
     }
     if (modelBadge) {
-      modelBadge.textContent = `${res.model_name.toUpperCase()} (${res.model_version})`;
+      const modelName = (res.model_name || 'quantitative').toUpperCase();
+      const modelVer = res.model_version ? ` (${res.model_version})` : '';
+      modelBadge.textContent = `${modelName}${modelVer}`;
       modelBadge.className = 'badge ' + (res.model_name === 'ensemble' ? 'badge-purple' : 'badge-info');
     }
     if (tsEl) tsEl.textContent = formatDateTimeIST(res.prediction_timestamp);
@@ -577,9 +636,18 @@
     const forecastDirEl = document.getElementById('res-forecast-direction');
     const forecastMetaEl = document.getElementById('res-forecast-meta');
 
+    const qc = res.quote_context || res.market_quote;
+    const lastPrice = qc ? (typeof qc.last_price === 'number' ? qc.last_price : (typeof qc.last_traded_price === 'number' ? qc.last_traded_price : null)) : null;
+    const priceTime = qc ? (qc.price_timestamp || qc.quote_timestamp) : null;
+    const priceType = (res.quote_context && (res.quote_context.price_type || 'LAST_TRADED_PRICE')) || (qc && qc.price_type) || 'LAST_TRADED_PRICE';
+    const source = qc ? qc.source : null;
+    const sessionState = qc ? qc.session_state : null;
+    const isDelayed = qc ? (typeof qc.is_delayed === 'boolean' ? qc.is_delayed : true) : true;
+    const delayMins = qc ? (qc.delay_minutes || 15) : 15;
+
     if (obsPriceEl) {
-      if (res.quote_context && typeof res.quote_context.last_price === 'number') {
-        obsPriceEl.textContent = `Last Observed Price: ${formatPriceINR(res.quote_context.last_price)}`;
+      if (typeof lastPrice === 'number') {
+        obsPriceEl.textContent = `Last Observed Price: ${formatPriceINR(lastPrice)}`;
       } else if (res.ensemble && res.ensemble.target_range && typeof res.ensemble.target_range.reference_price === 'number') {
         obsPriceEl.textContent = `Last Observed Close: ${formatPriceINR(res.ensemble.target_range.reference_price)}`;
       } else {
@@ -588,8 +656,8 @@
     }
 
     if (obsTimeEl) {
-      if (res.quote_context && res.quote_context.price_timestamp) {
-        obsTimeEl.textContent = `Observed As of: ${formatDateTimeIST(res.quote_context.price_timestamp)}`;
+      if (priceTime) {
+        obsTimeEl.textContent = `Observed As of: ${formatDateTimeIST(priceTime)}`;
       } else if (res.latest_input_timestamp) {
         obsTimeEl.textContent = `Bar Timestamp: ${formatDateTimeIST(res.latest_input_timestamp)}`;
       } else {
@@ -598,17 +666,19 @@
     }
 
     if (obsMetaEl) {
-      if (res.quote_context && res.quote_context.source && res.quote_context.source !== 'none') {
-        const delayStr = res.quote_context.is_delayed ? ` • Delayed ~${res.quote_context.delay_minutes}m` : '';
-        const sessionStr = res.quote_context.session_state ? ` • Session: ${res.quote_context.session_state}` : '';
-        obsMetaEl.textContent = `Type: ${res.quote_context.price_type || 'LAST_TRADED_PRICE'} • Feed: ${res.quote_context.source}${delayStr}${sessionStr} • Not a predicted price`;
+      if (source && source !== 'none') {
+        const delayStr = isDelayed ? ` • Delayed ~${delayMins}m` : '';
+        const sessionStr = sessionState ? ` • Session: ${sessionState}` : '';
+        obsMetaEl.textContent = `Type: ${res.quote_context && res.quote_context.price_type ? res.quote_context.price_type : priceType} • Feed: ${source}${delayStr}${sessionStr} • Not a predicted price`;
       } else {
         obsMetaEl.textContent = 'Price Type: LAST_TRADED_PRICE • Not a predicted opening or closing price';
       }
     }
 
+    const dir = res.predicted_direction || res.direction;
+
     if (forecastDirEl) {
-      forecastDirEl.textContent = `Direction: ${res.predicted_direction || '--'}`;
+      forecastDirEl.textContent = `Direction: ${dir || '--'}`;
     }
 
     if (forecastMetaEl) {
@@ -616,8 +686,6 @@
     }
 
     // Direction Decision & Accessibility (never color alone)
-    const dir = res.predicted_direction;
-
     if (heroCard) {
       heroCard.classList.remove('direction-up', 'direction-down');
       if (dir === 'UP') heroCard.classList.add('direction-up');
@@ -645,15 +713,26 @@
     }
 
     // Probabilities Bar - Never substitute 50% for missing probability
-    const hasProbUp = typeof res.probability_up === 'number' && res.probability_up !== null && !isNaN(res.probability_up);
-    const hasProbDown = typeof res.probability_down === 'number' && res.probability_down !== null && !isNaN(res.probability_down);
-    const fillEl = document.getElementById('res-probability-fill');
-    const probUpEl = document.getElementById('res-prob-up');
-    const probDownEl = document.getElementById('res-prob-down');
+    let probUp = null;
+    let probDown = null;
+    if (typeof res.probability_up === 'number' && !isNaN(res.probability_up)) {
+      probUp = res.probability_up;
+    } else if (res.probabilities && typeof res.probabilities.UP === 'number' && !isNaN(res.probabilities.UP)) {
+      probUp = res.probabilities.UP;
+    }
+
+    if (typeof res.probability_down === 'number' && !isNaN(res.probability_down)) {
+      probDown = res.probability_down;
+    } else if (res.probabilities && typeof res.probabilities.DOWN === 'number' && !isNaN(res.probabilities.DOWN)) {
+      probDown = res.probabilities.DOWN;
+    } else if (probUp !== null) {
+      probDown = 1.0 - probUp;
+    }
+
+    const hasProbUp = probUp !== null;
+    const hasProbDown = probDown !== null;
 
     if (hasProbUp) {
-      const probUp = res.probability_up;
-      const probDown = hasProbDown ? res.probability_down : (1.0 - probUp);
       if (fillEl) fillEl.style.width = `${Math.max(0, Math.min(100, probUp * 100)).toFixed(1)}%`;
       if (probUpEl) probUpEl.textContent = `P(UP): ${(probUp * 100).toFixed(1)}% [Uncalibrated]`;
       if (probDownEl) probDownEl.textContent = `P(DOWN): ${(probDown * 100).toFixed(1)}% [Uncalibrated]`;
@@ -1284,6 +1363,7 @@
     try {
       const data = await ApiService.fetchInstruments();
       if (!data || !data.instruments) return;
+      AppState.catalog = data.instruments;
       const chipsGroup = document.getElementById('quick-ticker-chips');
       if (!chipsGroup) return;
 
@@ -1312,6 +1392,7 @@
 
         btn.addEventListener('click', () => {
           if (AppState.isPredicting) return;
+          clearStalePredictionIfSymbolChanged(inst.symbol);
           const input = document.getElementById('symbol-input');
           if (input) {
             input.value = inst.symbol;

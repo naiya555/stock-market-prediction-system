@@ -5933,3 +5933,108 @@ Audit and complete the prediction dashboard user interface and data presentation
 ### 5. Phase 16 Status & Next Steps
 **Phase 16 remains strictly IN PROGRESS.**
 Prediction dashboard UI completed and verified; data presentation audited to eliminate fabricated price forecasts; explicit quote vs prediction distinction active; uncalibrated score disclaimers prominent; blocked diagnostic cards and fast recovery paths fully functional; 800 regression tests passing.
+---
+
+## Day 66 - API Contract Consistency & Prediction Result Integrity Audit
+
+### 1. Goal & Context
+- **Phase:** Phase 16 — Web Application (Days 63–68) — **IN PROGRESS**.
+- **Objective:** Audit and enforce end-to-end API contract consistency between backend Pydantic schemas, wire JSON serialization, and frontend JavaScript rendering. Eliminate discrepancies between backend fields (`predicted_direction`, `probability_up`/`down`, `quote_context`) and frontend assumptions. Ensure non-success and blocked responses never render success badges. Correct misleading statistical claims in disclaimers. Prevent stale-result leaks and ensure parameter-preserving retry logic.
+- **Starting Baseline Commit:** `8c01c0b` (`feat(web): complete prediction dashboard presentation and data presentation audit`).
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e`
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
+
+---
+
+### 2. API Contract & Schema Resolution
+1. **Discrepancy Investigation:**
+   - Evaluated `PredictionResponse` in `app/api/schemas.py` vs frontend assumptions in `app/api/static/js/app.js`.
+   - **Wire Fields:**
+     - Direction: `predicted_direction` (`"UP" | "DOWN" | "NEUTRAL"`).
+     - Probabilities: `probability_up` (`float`), `probability_down` (`float`), and `is_probability_calibrated` (`bool`, always `False`).
+     - Quote Context: `quote_context` (`QuoteContext` schema) containing `last_price` (`float`), `price_timestamp` (`datetime`), and `price_type` (`"LAST_TRADED_PRICE"`).
+     - Status: `status` (`"SUCCESS" | "MODEL_UNAVAILABLE" | "DATA_QUALITY_ISSUE" | "FAILED"`).
+     - Diagnostics: `status_message` (`str | None`), `error_message` (`str | None`), `trace_id` (`str | None`).
+   - **Frontend Resolution:**
+     - `app.js` now natively binds canonical backend fields (`predicted_direction`, `probability_up`, `probability_down`, `quote_context.last_price`, `quote_context.price_timestamp`) while preserving defensive fallbacks (`res.direction`, `res.probabilities`, `res.market_quote`) without polluting API endpoints with duplicate aliases.
+     - Instrument type (`EQUITY (NSE)` vs `INDEX (NSE)`) is retrieved authoritatively from `AppState.catalog` when available, falling back to strict symbol pattern heuristics.
+
+2. **Prediction Status Gating & Fail-Safe Handling:**
+   - Enforced strict gate in `renderPredictionResult(res)`:
+     ```javascript
+     const isSuccess = res.status === 'SUCCESS' && !!(res.predicted_direction || res.direction);
+     ```
+   - If `isSuccess` is false (e.g. `MODEL_UNAVAILABLE`, `DATA_QUALITY_ISSUE`, `FAILED`, or unexpected status), the hero forecast card and prediction breakdown grid are strictly hidden (`d-none`).
+   - The diagnostic blocked card (`#result-blocked-card`) is displayed with safe error status, status message, and resolution recommendations.
+   - Unknown status values fail safely without rendering a success badge or crashing the UI.
+
+3. **Statistical Disclaimer Correction:**
+   - Removed misleading universal `p > 0.34` claim. The previous text conflated the McNemar binary classification test p-value ($p = 0.3428$ between LightGBM and Majority classifier) with probability calibration and Brier score evaluation. McNemar tests binary 0/1 contingency, not probability calibration.
+   - Replaced with evidence-aligned text in `index.html` and `docs/architecture.md`:
+     > "Reported holdout comparisons did not establish a statistically significant improvement. Raw model probabilities are uncalibrated and performed worse than the constant 0.50 probability baseline on the reported holdout Brier-score comparison (models scored Brier 0.2556–0.2562 vs. reference Brier 0.2500)."
+
+4. **Stale Prediction Cleanup & Parameter-Preserving Retry:**
+   - Implemented `clearStalePredictionIfSymbolChanged(newSymbol)` in `app.js`. Changing the symbol input or clicking an instrument chip immediately resets previous forecast results, hiding stale hero cards.
+   - Added `AppState.lastPredictionPayload` caching the exact submitted request parameters (`symbol`, `model_type`, `explain`).
+   - Retry button (`#alert-retry-btn`) restores input fields from `lastPredictionPayload` and resubmits safely under the concurrency lock.
+
+5. **Instrument Compatibility Integrity:**
+   - Authoritative catalog status verified:
+     - `BHARTIARTL`: `EQUITY (NSE)` — Model available (XGBoost / LightGBM).
+     - `TCS`, `RELIANCE`: `EQUITY (NSE)` — Unsupported / Model unavailable.
+     - `NIFTY_TELECOMMUNICATIONS`, `NIFTY_50`: `INDEX (NSE)` — Unsupported / Model unavailable.
+   - Verified that equity models are never applied to sectoral or broad indices. All non-supported symbols receive HTTP 200 with `status: "MODEL_UNAVAILABLE"` and `predicted_direction: null`.
+
+---
+
+### 3. Verification & Quality Gates
+- **JavaScript Syntax Check:**
+  ```powershell
+  node -c app/api/static/js/app.js
+  ```
+  `Clean (0 syntax errors).`
+- **Targeted Test Execution (`tests/test_api_contract_consistency.py`):**
+  - **12 passed** in 9.05s covering:
+    1. `test_authoritative_catalog_contract`: Confirms catalog schema, instruments, and status (`BHARTIARTL` supported; others unsupported).
+    2. `test_successful_prediction_wire_schema_contract`: Confirms exact wire fields (`predicted_direction`, `probability_up`/`down`, `quote_context.last_price`, etc.).
+    3. `test_blocked_equity_response_contract`: Confirms `TCS` returns `MODEL_UNAVAILABLE` with null forecast.
+    4. `test_blocked_index_response_contract`: Confirms `NIFTY_50` and `NIFTY_TELECOMMUNICATIONS` return `MODEL_UNAVAILABLE` with null forecast.
+    5. `test_frontend_status_gating_logic`: Verifies hero card suppressed for non-SUCCESS statuses in `app.js`.
+    6. `test_frontend_contract_field_resolution`: Verifies resolution of `predicted_direction`, `probability_up`/`down`, `quote_context`.
+    7. `test_frontend_stale_result_clearing_contract`: Verifies stale prediction cleanup on symbol change.
+    8. `test_frontend_retry_parameter_preservation`: Verifies retry restores cached payload.
+    9. `test_disclaimer_evidence_aligned_text`: Verifies removal of misleading `p > 0.34` claim.
+    10. `test_observed_quote_distinction_maintained`: Verifies distinction between observed quote and forecast.
+    11. `test_all_known_unsupported_instruments_remain_blocked`: Verifies all catalog unsupported instruments return `MODEL_UNAVAILABLE`.
+    12. `test_unknown_status_fails_safely`: Verifies unhandled status falls back to blocked state.
+- **Web App Test Suite:**
+  - `tests/test_api_contract_consistency.py`: **12 passed**
+  - `tests/test_prediction_dashboard_completion.py`: **11 passed**
+  - `tests/test_end_to_end_web_audit.py`: **13 passed**
+  - `tests/test_web_foundation_audit.py`: **10 passed**
+  - Total: **46 passed** in 13.16s.
+- **Full Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **812 passed**, 1 warning across all 56 test modules in 44.57s (0 failures, 0 regressions).
+- **Dependency Audit:**
+  ```powershell
+  .\.venv\Scripts\python -m pip check
+  ```
+  `No broken requirements found.`
+- **Git Diff Whitespace Check:**
+  ```powershell
+  git diff --check
+  ```
+  `Clean (0 whitespace errors).`
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**).
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**).
+
+---
+
+### 4. Phase 16 Status & Next Steps
+**Phase 16 remains strictly IN PROGRESS.**
+API contract consistency and prediction result integrity established; backend wire fields aligned with frontend rendering; non-success and blocked responses safely gated; statistical disclaimers corrected to reflect holdout Brier-score comparisons; stale results purged on symbol change; retry parameters preserved; 812 regression tests passing.

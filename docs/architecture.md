@@ -1571,7 +1571,7 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
      - *Forward Directional Forecast:* Explicit binary return direction (`UP (Bullish Return)` / `DOWN (Bearish Return)` / `NEUTRAL (Flat Return)`), with horizon defined as next trading session (close-to-close).
      - *Unmodeled Fields:* Price targets, opening prices, and trade durations are explicitly marked as unsupported and not predicted by quantitative models. Volatility bands (ATR-14) are rendered only when explicitly supplied by ensemble synthesis.
   3. **Uncalibrated Model Probability Guard:**
-     - Warning banner prominent on all predictions referencing Day 62 holdout audit results ($N=240$, Brier score $0.2556$–$0.2562$ vs. constant 0.50 reference $0.2500$, $p > 0.34$, no statistically significant outperformance).
+     - Warning banner prominent on all predictions referencing Day 62 holdout audit results ($N=240$, Brier score $0.2556$–$0.2562$ vs. constant 0.50 reference $0.2500$, no statistically significant outperformance).
      - Probability bar explicitly displays `[Uncalibrated]` labels on both $P(\text{UP})$ and $P(\text{DOWN})$.
   4. **Model Scope, Limitations & Next Actions Box:**
      - Integrated card detailing binary directional constraint, lack of calibration, and symbol specificity (BHARTIARTL only).
@@ -1582,4 +1582,29 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
   6. **Recovery & Action Controls:**
      - Blocked instrument card includes a direct recovery button: `Select Supported Instrument (BHARTIARTL)`.
      - Error banner includes an interactive retry action: `↻ Retry Prediction` triggering clean form resubmission.
+- **Roadmap Invariant:** Phase 16 remains strictly **IN PROGRESS**.
+---
+
+### 4.38 API Contract Consistency & Prediction Result Integrity Audit (Day 66)
+- **Objective & Architectural Scope:**
+  Audit and enforce strict data contract consistency between FastAPI backend schemas, REST endpoint serialization, and vanilla JavaScript frontend rendering. Eliminate naming discrepancies, ensure truthful and robust status interpretation, correct misleading statistical claims, guarantee stale-state cleanup across instrument selections, and verify retry parameter preservation without concurrent duplicate submissions.
+- **Contract Mappings & Wire Serialization:**
+  1. **Canonical Schema Contract (`PredictionResponse`):**
+     - `predicted_direction`: Authoritative directional string (`"UP"`, `"DOWN"`, `"NEUTRAL"`), replacing any ambiguous `direction` alias.
+     - `probability_up` & `probability_down`: Explicit individual floating-point probabilities, replacing nested `probabilities` dictionaries.
+     - `quote_context`: Typed `QuoteContextResponse` containing `last_price` (`LAST_TRADED_PRICE`), `price_timestamp`, `price_type`, `session_state`, and `freshness_status` (replacing `market_quote` aliases).
+     - `status`: Machine-readable execution status (`"SUCCESS"`, `"MODEL_UNAVAILABLE"`, `"DATA_QUALITY_ISSUE"`, `"SERVICE_ERROR"`, `"INTERNAL_ERROR"`).
+     - `error_message`: Sanitized error narrative with absolute filesystem paths and internal exception tracebacks scrubbed.
+  2. **Defensive Status Interpretation & Stale State Elimination:**
+     - Non-Success Gating: `renderPredictionResult` evaluates `const isSuccess = res.status === 'SUCCESS' && !!(res.predicted_direction || res.direction)`. A non-success response (or missing forecast) unconditionally hides the hero forecast card and breakdown grid and routes to the blocked diagnostic card. A success badge is never rendered for blocked instruments.
+     - Safe Unknown Status Fallback: Unexpected or non-standard status values fail safely without runtime exceptions, displaying `STATUS - ${status}` and a clean diagnostic message.
+     - Stale Result Prevention on Instrument Change: When a user clicks any instrument chip or edits `#symbol-input`, `clearStalePredictionIfSymbolChanged` immediately clears previous predictions and resets the UI to empty state if the input symbol diverges from `AppState.prediction.symbol`.
+     - Exact Parameter Retry: `AppState.lastPredictionPayload` caches the exact submitted parameters. When `↻ Retry Prediction` is clicked, the original symbol and model parameters are restored and resubmitted while maintaining the `isPredicting` concurrency lock.
+  3. **Statistical Disclaimer Correction:**
+     - Replaced misleading universal `p > 0.34` claim with evidence-aligned holdout comparison wording:
+       *"Reported holdout comparisons did not establish a statistically significant improvement. Raw model probabilities are uncalibrated and performed worse than the constant 0.50 probability baseline on the reported holdout Brier-score comparison (models scored Brier 0.2556–0.2562 vs. reference Brier 0.2500)."*
+     - Clarified that classification hypothesis tests (e.g., McNemar tests) do not validate Brier score performance or establish probability calibration.
+  4. **Instrument Compatibility & Index Separation:**
+     - Verified authoritative status from `/api/predict/instruments`: `BHARTIARTL` (SUPPORTED EQUITY), `TCS` & `RELIANCE` (BLOCKED EQUITIES), `NIFTY_TELECOMMUNICATIONS` & `NIFTY_50` (BLOCKED INDICES).
+     - Confirmed that equity time-series models are strictly isolated from sectoral and broad market indices.
 - **Roadmap Invariant:** Phase 16 remains strictly **IN PROGRESS**.
