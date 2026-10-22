@@ -194,6 +194,8 @@ class EnsembleDetailsResponse(BaseModel):
     combined_probability_up: Optional[float] = None
     combined_probability_down: Optional[float] = None
     weights_used: Dict[str, float]
+    requested_weights: Optional[Dict[str, float]] = None
+    fallback_reason: Optional[str] = None
     integrated_positive_factors: List[str]
     integrated_negative_factors: List[str]
     downside_risks: List[str]

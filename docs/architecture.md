@@ -1317,3 +1317,28 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
      - Custom weights are explicitly validated (`ml_weight >= 0.0`, `llm_weight >= 0.0`, `sum > 0.0`), rejecting invalid configurations with HTTP 422 errors instead of silently discarding parameters.
   5. **Constructor Contract Resilience:**
      - Dataclass `EnsemblePredictionResult` defines `latest_input_timestamp: Optional[str] = None` and `llm_reasoning: Optional[LLMReasoningResult] = None` with canonical defaults following required positional parameters, eliminating constructor `TypeError` regressions while maintaining full backward compatibility.
+
+---
+
+### 4.30 Ensemble Architecture Audit & Prediction Validation (Day 58)
+- **Objective & Architectural Scope:**
+  Audit the entire multi-agent prediction pipeline, validate mathematical blending contracts, verify separate representation of requested versus effective weights, examine signal independence, and conduct leakage-safe chronological evaluation of baseline and blended models without premature feature expansion.
+- **Architectural Rules & Verified Invariants:**
+  1. **End-to-End Prediction Flow:**
+     - **Input:** Request validated via `PredictRequest` (validates ticker grammar, bounds lookback/staleness, rejects non-finite/negative weights).
+     - **Market Data & Features:** Ingestion through `run_market_data_pipeline`, minimum 34 warmup bars check, chronological staleness filter, 37-feature assembly with strict zero-leakage target isolation (`validate_feature_matrix_isolation`).
+     - **Quantitative ML Inference:** Standalone inference via `PredictionService.predict` yielding empirical probabilities $P(UP|X)$ and direction from fitted tree models (XGBoost/LightGBM).
+     - **Qualitative LLM Reasoning (Role B):** Evaluated strictly against point-in-time news and events *without* quantitative ML context, producing independent directional stance and qualitative confidence.
+     - **Mathematical Blending Contract:** Converts qualitative polarity $\in [-1.0, 1.0]$ to pseudo-probability $P(UP|LLM) = 0.50 + 0.50 \times (\text{direction\_sign} \times \text{confidence\_multiplier})$. Convex combination $P_{comb}(UP) = w_{ml} P_{ml}(UP) + w_{llm} P_{llm}(UP)$ clamped to $[0.0001, 0.9999]$.
+     - **Evidence-Grounded Explanation (Role C):** Synthesizes grounded market narrative *downstream* with cross-validated citations (`_validate_supporting_evidence`). Strictly explanatory; cannot mutate probabilities or direction.
+     - **Persistence:** Converted via `.to_prediction_result()` for immutable SQLite storage under `model_name='ensemble'`.
+  2. **Ensemble Weight Contract & Fallback Transparency:**
+     - **Requested vs. Effective Weights:** `EnsemblePredictionResult` and API `EnsembleDetailsResponse` explicitly separate `requested_weights` (what the caller configured) from `weights_used` (effective weights used in numerical computation).
+     - **Fallback Reason Transparency:** When qualitative reasoning is unavailable, timed out, or unprovided, `weights_used` falls back to `{"ml": 1.0, "llm": 0.0}`, preserving the requested weights in `requested_weights` and detailing the transition in `fallback_reason`.
+     - **Non-Finite Weight Rejection:** Enforces `math.isfinite()` across both API and domain `EnsembleWeights` contracts, rejecting `NaN`, `Inf`, `-Inf`, negative, and zero-sum configurations with HTTP 422.
+  3. **Empirical Chronological Evaluation (BHARTIARTL Holdout N=240):**
+     - **Chronological Split:** Zero lookahead leakage; training on 958 bars (prior to 2025-10-27), holdout evaluation on 240 bars (after 2025-10-29). Class balance: 119 UP (49.6%), 121 DOWN (50.4%).
+     - **Majority Baseline:** Accuracy 49.58%, Brier score 0.5042.
+     - **XGBoost Classifier:** Accuracy 51.25%, Precision(UP) 50.66%, Recall(UP) 64.71%, F1(UP) 56.83%, Brier score 0.2556.
+     - **LightGBM Classifier:** Accuracy 53.75%, Precision(UP) 52.67%, Recall(UP) 66.39%, F1(UP) 58.74%, Brier score 0.2562.
+     - **LLM Evaluation Limitations:** Evaluated honestly without running multi-hour unaccelerated CPU inferences across 240 sessions. Documented missing prerequisites (historical 5-year point-in-time news archive, GPU throughput) required before claiming qualitative alpha.

@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from enum import Enum
 import json
 import logging
+import math
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple, Union
 
 from app.core.logging_config import sanitize_log_field
@@ -80,6 +81,8 @@ class EnsembleWeights:
     llm_weight: float = 0.30
 
     def __post_init__(self) -> None:
+        if not math.isfinite(self.ml_weight) or not math.isfinite(self.llm_weight):
+            raise ValidationError("Weights must be finite numbers.")
         if self.ml_weight < 0.0 or self.llm_weight < 0.0:
             raise ValidationError("Weights must be non-negative.")
         total = self.ml_weight + self.llm_weight
@@ -142,6 +145,8 @@ class EnsemblePredictionResult:
     error_message: Optional[str] = None
     quote_context: Optional[QuoteContext] = None
     explanation: Optional[LLMExplanationResult] = None
+    requested_weights: Optional[Dict[str, float]] = None
+    fallback_reason: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert ensemble result to serializable dictionary."""
@@ -156,6 +161,8 @@ class EnsemblePredictionResult:
             "combined_probability_down": self.combined_probability_down,
             "agreement_status": self.agreement_status.value,
             "weights_used": dict(self.weights_used),
+            "requested_weights": dict(self.requested_weights) if self.requested_weights else None,
+            "fallback_reason": self.fallback_reason,
             "ml_prediction": self.ml_prediction.to_dict() if self.ml_prediction else None,
             "llm_reasoning": self.llm_reasoning.to_dict() if self.llm_reasoning else None,
             "sentiment_summary": self.sentiment_summary,
@@ -192,6 +199,8 @@ class EnsemblePredictionResult:
 
         metadata = {
             "weights_used": self.weights_used,
+            "requested_weights": self.requested_weights,
+            "fallback_reason": self.fallback_reason,
             "agreement_status": self.agreement_status.value,
             "ml_model_name": self.ml_prediction.model_name if self.ml_prediction else None,
             "ml_model_version": self.ml_prediction.model_version if self.ml_prediction else None,
@@ -410,6 +419,8 @@ class EnsembleService:
             Validated EnsemblePredictionResult.
         """
         active_weights = weights or self.weights
+        requested_w = {"ml": active_weights.ml_weight, "llm": active_weights.llm_weight}
+        fallback_reason: Optional[str] = None
         now_iso = datetime.now(timezone.utc).isoformat()
         symbol = ml_result.symbol
         resolved_quote = quote_context or getattr(ml_result, "quote_context", None)
@@ -436,6 +447,8 @@ class EnsembleService:
                 sentiment_summary=sentiment_summary,
                 quote_context=resolved_quote,
                 explanation=explanation,
+                requested_weights=requested_w,
+                fallback_reason="Quantitative ML prediction failed; unable to synthesize ensemble.",
                 error_message=f"ML prediction failed: {ml_result.error_message}",
             )
 
@@ -458,6 +471,11 @@ class EnsembleService:
             p_llm_up = 0.50
             w_ml = 1.0
             w_llm = 0.0
+            if active_weights.llm_weight > 0.0:
+                if explanation and explanation.status != LLMExplanationStatus.SUCCESS:
+                    fallback_reason = f"Qualitative LLM reasoning unavailable ({explanation.status.value}); fell back to 100% quantitative ML."
+                else:
+                    fallback_reason = "Qualitative LLM reasoning was unavailable or unprovided; fell back to 100% quantitative ML."
 
         # Weighted combination
         p_comb_up = (w_ml * p_ml_up) + (w_llm * p_llm_up)
@@ -538,6 +556,8 @@ class EnsembleService:
             target_range=target_range,
             quote_context=resolved_quote,
             explanation=explanation,
+            requested_weights=requested_w,
+            fallback_reason=fallback_reason,
             model_name="ensemble",
             model_version="ensemble_v1",
         )

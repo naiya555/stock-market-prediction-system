@@ -7,6 +7,7 @@ and multi-agent ensemble synthesis (ML + Gemma 3 12B LLM) through canonical serv
 from datetime import datetime, timedelta, timezone
 import html
 import logging
+import math
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -236,6 +237,8 @@ def _map_ensemble_details(res: EnsemblePredictionResult) -> EnsembleDetailsRespo
         combined_probability_up=res.combined_probability_up,
         combined_probability_down=res.combined_probability_down,
         weights_used=res.weights_used,
+        requested_weights=res.requested_weights,
+        fallback_reason=_sanitize_and_bound_text(res.fallback_reason, max_length=500) if res.fallback_reason else None,
         integrated_positive_factors=pos_factors,
         integrated_negative_factors=neg_factors,
         downside_risks=downside,
@@ -302,10 +305,10 @@ def predict(
         if payload.ml_weight is not None or payload.llm_weight is not None:
             w_ml = payload.ml_weight if payload.ml_weight is not None else round(1.0 - (payload.llm_weight or 0.0), 6)
             w_llm = payload.llm_weight if payload.llm_weight is not None else round(1.0 - (payload.ml_weight or 0.0), 6)
-            if w_ml < 0.0 or w_llm < 0.0 or (w_ml + w_llm) <= 0.0:
+            if not math.isfinite(w_ml) or not math.isfinite(w_llm) or w_ml < 0.0 or w_llm < 0.0 or (w_ml + w_llm) <= 0.0:
                 raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail="Ensemble weights must be non-negative and sum to greater than zero.",
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="Ensemble weights must be non-negative finite numbers and sum to greater than zero.",
                 )
             try:
                 custom_weights = EnsembleWeights(
@@ -314,7 +317,7 @@ def predict(
                 )
             except Exception as exc:
                 raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail=f"Invalid ensemble weights: {exc}",
                 )
 

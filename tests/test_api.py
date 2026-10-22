@@ -1253,3 +1253,82 @@ def test_ensemble_history_persistence_single_entry(
         assert len(history) == 1
         assert history[0]["model_name"] == "ensemble"
         assert history[0]["predicted_direction"] == "UP"
+
+
+def test_ensemble_weights_requested_and_fallback_reason_in_api_response(
+    in_memory_db: sqlite3.Connection,
+    test_repo: PredictionRepository,
+    mock_prediction_service: MagicMock,
+    dummy_prediction_result: PredictionResult,
+):
+    """Verify that ensemble API response reports both effective and requested weights, plus fallback reason."""
+    fallback_ensemble = EnsemblePredictionResult(
+        symbol="BHARTIARTL",
+        prediction_timestamp="2026-10-22T08:00:00Z",
+        latest_input_timestamp="2026-10-21",
+        status=PredictionStatus.SUCCESS,
+        combined_direction="UP",
+        combined_label=1,
+        combined_probability_up=0.65,
+        combined_probability_down=0.35,
+        agreement_status=EnsembleAgreement.ML_ONLY,
+        weights_used={"ml": 1.0, "llm": 0.0},
+        requested_weights={"ml": 0.8, "llm": 0.2},
+        fallback_reason="Qualitative LLM reasoning was unavailable or unprovided; fell back to 100% quantitative ML.",
+        ml_prediction=dummy_prediction_result,
+    )
+
+    mock_ensemble = MagicMock(spec=EnsembleService)
+    mock_ensemble.predict_ensemble.return_value = fallback_ensemble
+
+    app = create_app()
+    app.dependency_overrides[get_db_connection] = lambda: in_memory_db
+    app.dependency_overrides[get_prediction_repository] = lambda: test_repo
+    app.dependency_overrides[get_prediction_service] = lambda: mock_prediction_service
+    app.dependency_overrides[get_ensemble_service] = lambda: mock_ensemble
+    app.dependency_overrides[get_news_provider] = lambda: StubNewsProvider("news", [])
+    app.dependency_overrides[get_event_providers] = lambda: []
+
+    with TestClient(app) as test_client:
+        res = test_client.post("/api/predict", json={
+            "symbol": "BHARTIARTL",
+            "model_name": "ensemble",
+            "ml_weight": 0.8,
+            "llm_weight": 0.2,
+            "persist": False,
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["ensemble"]["weights_used"] == {"ml": 1.0, "llm": 0.0}
+        assert data["ensemble"]["requested_weights"] == {"ml": 0.8, "llm": 0.2}
+        assert "fell back to 100% quantitative ML" in data["ensemble"]["fallback_reason"]
+
+
+def test_ensemble_weights_nan_or_inf_rejected_with_422():
+    """Verify that sending non-finite weights (e.g. NaN, null, or out of range) returns HTTP 422."""
+    app = create_app()
+    with TestClient(app) as test_client:
+        # Negative weight
+        res_neg = test_client.post("/api/predict", json={
+            "symbol": "BHARTIARTL",
+            "model_name": "ensemble",
+            "ml_weight": -0.5,
+        })
+        assert res_neg.status_code == 422
+
+        # Out of range (> 1.0)
+        res_out = test_client.post("/api/predict", json={
+            "symbol": "BHARTIARTL",
+            "model_name": "ensemble",
+            "ml_weight": 1.5,
+        })
+        assert res_out.status_code == 422
+
+        # Zero sum weights
+        res_zero = test_client.post("/api/predict", json={
+            "symbol": "BHARTIARTL",
+            "model_name": "ensemble",
+            "ml_weight": 0.0,
+            "llm_weight": 0.0,
+        })
+        assert res_zero.status_code == 422
