@@ -5735,3 +5735,93 @@ Probability baseline hierarchy established; miscalibration and variance penaltie
 ### 5. Phase 16 Status & Next Steps
 **Phase 16 remains strictly IN PROGRESS.**
 Web application foundation and prediction API contract audit complete; authoritative instrument catalog implemented; uncalibrated score and quote distinction active; client reliability and timeout guards verified.
+
+---
+
+## Day 64 - End-to-End Browser Workflow & Frontend Functionality Audit
+
+### Goal
+Audit and harden the running browser-to-backend integration over real HTTP sockets on the local Uvicorn instance (`127.0.0.1:8000`). Identify and resolve concrete functional, rendering, accessibility, and state-management defects: expand symbol input bounds to prevent index truncation, eliminate race conditions and out-of-order response overwrites, implement fast double-submission locking and chip disabling during active inference, clean up stale DOM elements on prediction errors, handle malformed payloads gracefully, and provide accessible fallback notices for catalog loading.
+
+### 1. Git Baseline & Initial Integrity Check
+- **Baseline Commit:** `3937139` (`feat(web): audit prediction api contracts and establish web application foundation`)
+- **Remote Synchronization:** Working tree clean; local `main` synchronized with `origin/main` at `3937139e82f6904c7827366328471c60cd5baeb7`.
+- **Pre-Test Data Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e`
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
+
+---
+
+### 2. Live HTTP Socket Testing & Actual Backend Responses
+Executed real HTTP requests against live Uvicorn ASGI server (`python -m uvicorn app.api.app:app --host 127.0.0.1 --port 8000`):
+- **Root and UI Access:** `GET /ui` and `GET /` successfully returned HTTP 200 with defensive security headers (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`).
+- **Dynamic Catalog Verification:** `GET /api/predict/instruments` returned all 5 registered instruments: `BHARTIARTL` (SUPPORTED) and `TCS`, `RELIANCE`, `NIFTY_TELECOMMUNICATIONS`, `NIFTY_50` (BLOCKED) with truthful reasons.
+- **Supported Prediction Flow (`BHARTIARTL`):**
+  - Status: `SUCCESS`
+  - Predicted Direction: `DOWN` (Label 0)
+  - Probability: `0.4979` UP / `0.5021` DOWN
+  - Probability Calibration: `uncalibrated` (`is_probability_calibrated: false`)
+  - Historical Observed Quote: `1895.00 INR` (`LAST_TRADED_PRICE`, Session state: `CLOSED`, Freshness: `FRESH`)
+  - Quote vs Prediction Note: Explicitly clarifies that last traded price is an observed market datum and NOT a predicted opening or closing price.
+- **Blocked Equity Flow (`TCS`):**
+  - Status: `MODEL_UNAVAILABLE`
+  - Sanitized Message: `"No trained model artifact found for equity instrument 'TCS'. Default models are trained specifically for 'BHARTIARTL' and cannot be cross-applied to other equities."`
+  - Zero filesystem path or traceback leakage in client payload.
+- **Blocked Sectoral Index Flow (`NIFTY_TELECOMMUNICATIONS`):**
+  - Status: `MODEL_UNAVAILABLE`
+  - Sanitized Message: `"Index-specific forecasting model unavailable for 'NIFTY_TELECOMMUNICATIONS'. BHARTIARTL equity models cannot be reused for sectoral indices."`
+
+---
+
+### 3. Discovered Defects & Applied Remediations
+1. **Symbol Input Length Truncation:**
+   - *Defect:* HTML `<input id="symbol-input">` had `maxlength="20"`, which truncated `NIFTY_TELECOMMUNICATIONS` (22 characters) to `NIFTY_TELECOMMUNICAT`, failing regex schema validation.
+   - *Fix:* Expanded `maxlength="30"` in `app/api/static/index.html` and updated placeholder.
+2. **Out-of-Order Stale Response Race Condition:**
+   - *Defect:* If an earlier request took longer than a subsequent request, the earlier response would overwrite the active prediction result with stale data.
+   - *Fix:* Added `AppState.predictionRequestId` sequence counter. Inbound responses verify `currentReqId === AppState.predictionRequestId` before updating state or DOM. Added `AppState.activePredictionAbortController` to abort previous in-flight requests.
+3. **Double-Submission & In-Flight Instrument Switching:**
+   - *Defect:* `AppState.isPredicting` was set only after asynchronous preparation, leaving a window for double clicks. Instrument chips could also be clicked while an inference was in-flight.
+   - *Fix:* Set `AppState.isPredicting = true` immediately upon submit event, and disabled all `.chip` buttons (`chip.disabled = isLoading`) during active inference.
+4. **Stale DOM Card Flashing on Error:**
+   - *Defect:* `showPredictionError` hid the container, but left `#result-hero-card` and `#result-blocked-card` styled visible, risking flashing stale cards on subsequent state changes.
+   - *Fix:* Explicitly hid `heroCard`, `blockedCard`, `breakdownGrid`, and reset `AppState.prediction = null` on error.
+5. **Malformed Payload Handling in API Client:**
+   - *Defect:* Non-object or empty server responses resulted in `TypeError: Cannot read properties of null (reading 'status')` in `renderPredictionResult`.
+   - *Fix:* Validated response object in `ApiService.runPrediction` and added defensive guard in `renderPredictionResult`.
+6. **Dynamic Instrument Catalog Fallback Notice:**
+   - *Defect:* If `fetchInstruments()` failed on load, the error was only logged to console without visual feedback to the user.
+   - *Fix:* Added accessible `.catalog-error-notice` styled in `styles.css` rendered into the chip container upon catalog fetch failure.
+
+---
+
+### 4. Verification & Quality Gates
+- **Browser Automation Runtime Observation:**
+  - Automated Playwright driver installation within the subagent sandbox failed due to remote upstream CDN 404 (`https://playwright.azureedge.net/.../playwright-1.57.0-win32_x64.zip`). In accordance with Task 1 & Task 6 audit rules and user guidance, verified live workflow via local Uvicorn HTTP socket execution (`127.0.0.1:8000`), real REST invocations, and 13 deterministic automated regression tests covering all browser interaction and state invariants.
+- **Targeted Test Execution:**
+  - `tests/test_end_to_end_web_audit.py`: **13 passed** in 7.00s (+13 new deterministic tests).
+  - `tests/test_web_foundation_audit.py`: **10 passed** in 5.17s.
+- **Full Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **789 passed**, 1 warning across all 54 test modules (0 failures, 0 regressions).
+- **Dependency Audit:**
+  ```powershell
+  .\.venv\Scripts\python -m pip check
+  ```
+  `No broken requirements found.`
+- **Git Diff Whitespace Check:**
+  ```powershell
+  git diff --check
+  ```
+  `Clean (0 whitespace errors).`
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**).
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**).
+
+---
+
+### 5. Phase 16 Status & Next Steps
+**Phase 16 remains strictly IN PROGRESS.**
+End-to-end browser and web application functionality audit complete; race conditions and stale response dropping resolved; symbol input bounds expanded; live HTTP socket verification against Uvicorn complete; 789 regression tests passing.

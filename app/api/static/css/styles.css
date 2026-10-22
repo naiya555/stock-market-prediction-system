@@ -1503,6 +1503,21 @@ code, .font-mono {
   border-color: var(--color-warning);
 }
 
+.chip:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.catalog-error-notice {
+  font-size: 0.8rem;
+  color: var(--color-warning);
+  padding: 4px 8px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px dashed rgba(245, 158, 11, 0.4);
+  border-radius: 4px;
+}
+
 .instrument-disclaimer-note {
   font-size: 0.775rem;
   color: var(--text-dim);

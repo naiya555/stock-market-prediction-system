@@ -18,6 +18,9 @@
   const AppState = {
     activeTab: 'predict',
     prediction: null,
+    isPredicting: false,
+    predictionRequestId: 0,
+    activePredictionAbortController: null,
     history: {
       items: [],
       total: 0,
@@ -135,7 +138,11 @@
     },
 
     async runPrediction(payload, timeoutMs = 30000) {
+      if (AppState.activePredictionAbortController) {
+        AppState.activePredictionAbortController.abort();
+      }
       const controller = new AbortController();
+      AppState.activePredictionAbortController = controller;
       const timer = setTimeout(() => controller.abort(), timeoutMs);
 
       try {
@@ -151,12 +158,24 @@
 
         const data = await res.json().catch(() => null);
 
+        if (!data || typeof data !== 'object') {
+          throw new Error('Received empty or malformed payload from prediction server.');
+        }
+
         if (!res.ok) {
           let msg = 'Failed to execute prediction.';
           if (data && data.error && data.error.message) {
             msg = data.error.message;
           } else if (data && data.detail) {
-            msg = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
+            if (Array.isArray(data.detail)) {
+              msg = data.detail
+                .map((d) => (d.loc ? d.loc.slice(-1)[0] + ': ' : '') + (d.msg || JSON.stringify(d)))
+                .join('; ');
+            } else if (typeof data.detail === 'string') {
+              msg = data.detail;
+            } else {
+              msg = JSON.stringify(data.detail);
+            }
           }
           const err = new Error(msg);
           err.status = res.status;
@@ -172,6 +191,9 @@
         throw err;
       } finally {
         clearTimeout(timer);
+        if (AppState.activePredictionAbortController === controller) {
+          AppState.activePredictionAbortController = null;
+        }
       }
     },
 
@@ -336,6 +358,10 @@
 
         // Guard against duplicate concurrent submissions
         if (AppState.isPredicting) return;
+        AppState.isPredicting = true;
+
+        AppState.predictionRequestId = (AppState.predictionRequestId || 0) + 1;
+        const currentReqId = AppState.predictionRequestId;
 
         const selectedModel = modelSelect ? modelSelect.value : 'ensemble';
         const lookbackInput = document.getElementById('lookback-days-input');
@@ -366,12 +392,17 @@
 
         try {
           const result = await ApiService.runPrediction(payload);
+          // Drop stale out-of-order response
+          if (currentReqId !== AppState.predictionRequestId) return;
           AppState.prediction = result;
           renderPredictionResult(result);
         } catch (err) {
+          if (currentReqId !== AppState.predictionRequestId) return;
           showPredictionError(err.message || 'An unexpected error occurred during prediction inference.');
         } finally {
-          setPredictionLoading(false);
+          if (currentReqId === AppState.predictionRequestId) {
+            setPredictionLoading(false);
+          }
         }
       });
     }
@@ -384,21 +415,30 @@
     const resultsContainer = document.getElementById('prediction-results-container');
     const emptyState = document.getElementById('predict-empty-state');
     const blockedCard = document.getElementById('result-blocked-card');
+    const heroCard = document.getElementById('result-hero-card');
 
     if (btn) {
       btn.disabled = isLoading;
       if (isLoading) {
         btn.classList.add('loading');
-        document.getElementById('btn-predict-text').textContent = 'Analyzing Market Data...';
+        const btnText = document.getElementById('btn-predict-text');
+        if (btnText) btnText.textContent = 'Analyzing Market Data...';
       } else {
         btn.classList.remove('loading');
-        document.getElementById('btn-predict-text').textContent = 'Generate Prediction';
+        const btnText = document.getElementById('btn-predict-text');
+        if (btnText) btnText.textContent = 'Generate Prediction';
       }
     }
+
+    // Disable / enable quick instrument selection chips during request
+    document.querySelectorAll('.chip').forEach((chip) => {
+      chip.disabled = isLoading;
+    });
 
     if (isLoading) {
       if (emptyState) emptyState.style.display = 'none';
       if (resultsContainer) resultsContainer.style.display = 'none';
+      if (heroCard) heroCard.style.display = 'none';
       if (blockedCard) blockedCard.style.display = 'none';
       if (skeleton) skeleton.style.display = 'flex';
     } else {
@@ -411,16 +451,27 @@
     const alertMsg = document.getElementById('alert-message');
     const resultsContainer = document.getElementById('prediction-results-container');
     const emptyState = document.getElementById('predict-empty-state');
+    const heroCard = document.getElementById('result-hero-card');
+    const blockedCard = document.getElementById('result-blocked-card');
+    const breakdownGrid = document.querySelector('.breakdown-grid');
 
+    AppState.prediction = null;
     if (alertBanner && alertMsg) {
       alertMsg.textContent = msg;
       alertBanner.style.display = 'flex';
     }
     if (resultsContainer) resultsContainer.style.display = 'none';
+    if (heroCard) heroCard.style.display = 'none';
+    if (blockedCard) blockedCard.style.display = 'none';
+    if (breakdownGrid) breakdownGrid.style.display = 'none';
     if (emptyState) emptyState.style.display = 'block';
   }
 
   function renderPredictionResult(res) {
+    if (!res || typeof res !== 'object') {
+      showPredictionError('Received invalid or empty prediction response from server.');
+      return;
+    }
     const container = document.getElementById('prediction-results-container');
     const emptyState = document.getElementById('predict-empty-state');
     const heroCard = document.getElementById('result-hero-card');
@@ -1192,6 +1243,7 @@
         btn.appendChild(badge);
 
         btn.addEventListener('click', () => {
+          if (AppState.isPredicting) return;
           const input = document.getElementById('symbol-input');
           if (input) {
             input.value = inst.symbol;
@@ -1205,6 +1257,10 @@
       });
     } catch (err) {
       console.warn('Could not load dynamic instrument catalog from backend:', err);
+      const chipsGroup = document.getElementById('quick-ticker-chips');
+      if (chipsGroup) {
+        chipsGroup.innerHTML = '<span class="catalog-error-notice" role="status">Dynamic instrument catalog currently unavailable. Please verify backend connection.</span>';
+      }
     }
   }
 

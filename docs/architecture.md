@@ -1524,3 +1524,35 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
   - **Dedicated Blocked State Display:** When an unsupported instrument is requested or model unavailable, the UI renders a dedicated `#result-blocked-card` detailing architectural constraints rather than an ambiguous error banner.
   - **Defensive DOM Rendering (XSS Protection):** Dynamic content is strictly bound via `textContent` or `document.createElement`. URLs validated through `isSafeHttpUrl` ensuring only `http:` and `https:` protocols are bound to anchors.
   - **Defensive HTTP Security Headers:** Enforced on every response via ASGI middleware (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: geolocation=(), microphone=(), camera=()`). Zero internal file paths or exception tracebacks exposed to clients.
+
+---
+
+### 4.36 End-to-End Browser Workflow & Frontend Functionality Audit (Day 64)
+- **Objective & Architectural Scope:**
+  Audit and harden the running browser-to-backend integration over real HTTP sockets: verify instrument catalog rendering, prediction request/response lifecycle, race-condition defenses, stale-response dropping, input bounds, accessibility attributes, and error-state DOM cleanup without redesigning the application.
+- **Identified Frontend/Integration Defects & Applied Remediations:**
+  1. **Symbol Input Length Truncation:**
+     - *Defect:* HTML `<input id="symbol-input">` had `maxlength="20"`, which prematurely truncated `NIFTY_TELECOMMUNICATIONS` (22 chars) to `NIFTY_TELECOMMUNICAT`, failing backend regex pattern validation.
+     - *Fix:* Expanded `maxlength="30"` in `index.html` to align with the Pydantic schema and support canonical sectoral indices.
+  2. **Out-of-Order Stale Response Race Condition:**
+     - *Defect:* Rapid instrument changes or repeated requests could allow an earlier, slower network response to resolve after a subsequent request, overwriting the newer state with stale data.
+     - *Fix:* Added `AppState.predictionRequestId` sequence counter. Each submission increments the counter, and incoming responses verify `currentReqId === AppState.predictionRequestId` before mutating DOM or state. In-flight requests are actively cancelled via `AppState.activePredictionAbortController.abort()`.
+  3. **Fast Double-Submission & In-Flight Chip Switching:**
+     - *Defect:* `AppState.isPredicting` was previously toggled inside `setPredictionLoading`, allowing a small synchronous window for rapid double-submits. Furthermore, quick-selection chips remained clickable during inference.
+     - *Fix:* Toggled `AppState.isPredicting = true` immediately at form submit onset, and disabled all `.chip` buttons (`chip.disabled = isLoading`) during active inference.
+  4. **Stale DOM Card Flashing on Prediction Failure:**
+     - *Defect:* `showPredictionError` hid the container, but left `#result-hero-card` and `#result-blocked-card` styled as visible, risking flashing stale data upon subsequent display toggling.
+     - *Fix:* Explicitly set `heroCard.style.display = 'none'`, `blockedCard.style.display = 'none'`, `breakdownGrid.style.display = 'none'`, and reset `AppState.prediction = null` on error.
+  5. **Malformed Payload Handling in API Client:**
+     - *Defect:* If the server returned an empty body or non-JSON payload, `res.json().catch(() => null)` resulted in `null`, which crashed `renderPredictionResult` with an unhandled `TypeError: Cannot read properties of null (reading 'status')`.
+     - *Fix:* Added explicit type and object validation in `ApiService.runPrediction`, throwing `Received empty or malformed payload from prediction server.` if payload is non-object. Added defensive guard in `renderPredictionResult`.
+  6. **Dynamic Instrument Catalog Fallback Notice:**
+     - *Defect:* If `fetchInstruments()` failed on load, the error was only logged to console without visual feedback to the user.
+     - *Fix:* Renders accessible notice (`.catalog-error-notice`) inside the chips group informing the user that dynamic catalog loading is temporarily unavailable.
+- **Browser Automation Runtime Observation & Limitation:**
+  - Automated Playwright driver installation within the subagent sandbox failed due to remote upstream CDN 404 (`https://playwright.azureedge.net/.../playwright-1.57.0-win32_x64.zip`). In accordance with Task 1 & Task 6 audit rules and user guidance, verified live workflow via local Uvicorn HTTP socket execution (`127.0.0.1:8000`), real REST invocations, and 13 deterministic automated regression tests covering all browser interaction and state invariants.
+- **Empirical Execution & Contract Invariants:**
+  - `BHARTIARTL`: Returns 200 SUCCESS, directional output, uncalibrated probability label, and historical `LAST_TRADED_PRICE` quote context.
+  - `TCS`: Returns 200 MODEL_UNAVAILABLE with sanitized message `"No trained model artifact found for equity instrument 'TCS'"` and zero path leakage.
+  - `NIFTY_TELECOMMUNICATIONS`: Returns 200 MODEL_UNAVAILABLE rejecting cross-asset model reuse (`"BHARTIARTL equity models cannot be reused for sectoral index forecasting"`).
+- **Roadmap Status:** Phase 16 remains strictly **IN PROGRESS**.
