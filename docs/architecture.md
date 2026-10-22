@@ -1608,3 +1608,38 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
      - Verified authoritative status from `/api/predict/instruments`: `BHARTIARTL` (SUPPORTED EQUITY), `TCS` & `RELIANCE` (BLOCKED EQUITIES), `NIFTY_TELECOMMUNICATIONS` & `NIFTY_50` (BLOCKED INDICES).
      - Confirmed that equity time-series models are strictly isolated from sectoral and broad market indices.
 - **Roadmap Invariant:** Phase 16 remains strictly **IN PROGRESS**.
+---
+
+### 4.39 Real Browser Interaction, DevTools Protocol Automation & Accessibility Layer (Day 67)
+- **Objective & Architectural Scope:**
+  Execute real browser interaction testing, browser runtime discovery, automated Chrome DevTools Protocol (CDP) verification, and comprehensive accessibility auditing on the running FastAPI + vanilla JavaScript dashboard without third-party browser installation dependencies or model artifact modifications.
+- **Browser Runtime Discovery & Native CDP Automation:**
+  1. **Runtime Discovery Protocol:** Detected installed Google Chrome (`C:\Program Files\Google\Chrome\Application\chrome.exe`) and Microsoft Edge. Bypassed external driver download blockers by implementing direct native Chrome DevTools Protocol automation over WebSocket (`ws://127.0.0.1:9222/devtools/page/{target_id}`) using pre-installed Python standard libraries and `websockets`.
+  2. **Automated Verification Harness (`scripts/verify_real_browser.py`):**
+     - Headless Chrome lifecycle management with dedicated isolated ephemeral user profiles.
+     - Runtime page navigation, DOM inspection, asynchronous user interaction dispatching, form submissions, and console exception interception.
+- **Workflow Verification in Headless Chrome:**
+  1. **Workflow A (Supported Instrument):**
+     - Navigated to `http://127.0.0.1:8000/ui`, selected `BHARTIARTL`, submitted prediction.
+     - Verified button spinner transition and input disabling during network inflight.
+     - Confirmed hero card rendering: Status `SUCCESS`, directional forecast `↘ PREDICTED DOWN (Bearish Return)`, model identity `XGBOOST (xgboost-direction-v1)`.
+     - Validated uncalibrated probability bar and evidence-aligned statistical comparison text.
+     - Verified quote context separation: Observed quote labeled `LAST_TRADED_PRICE • Feed: yfinance • Delayed ~15m • Session: CLOSED • Not a predicted price`.
+  2. **Workflow B (Unsupported Instruments):**
+     - Submitted predictions for blocked equities (`TCS`, `RELIANCE`) and blocked indices (`NIFTY_TELECOMMUNICATIONS`, `NIFTY_50`).
+     - Verified that hero prediction card was hidden (`display: none`), blocked diagnostic card was presented with clear model unavailability explanation, and no fabricated directions or price targets were rendered.
+  3. **Workflow C (Error Recovery & Stale State Reset):**
+     - From blocked state, triggered `#btn-switch-to-supported` to cleanly reset selection to `BHARTIARTL`.
+     - Tested typing in `#symbol-input` after a previous prediction; verified immediate purging of old hero cards.
+  4. **Workflow D (Concurrency & Double-Submission Guard):**
+     - Validated rapid duplicate submissions; confirmed `AppState.isPredicting` concurrency lock immediately disabled `#btn-predict` and showed spinner.
+- **Defects Fixed:**
+  - **JavaScript Scope Bug in `app/api/static/js/app.js`:** Fixed `ReferenceError: fillEl is not defined` inside `renderPredictionResult()` by explicitly declaring `fillEl`, `probUpEl`, and `probDownEl` DOM references before probability bar rendering.
+- **Accessibility & Responsive Audits:**
+  - **Form Labels:** Explicit `<label for="...">` associations for `#symbol-input` and `#model-select`.
+  - **ARIA Support:** Live regions (`aria-live="polite"`, `role="status"`) for async alerts and predictions.
+  - **Non-Color Visual Cues:** Prediction directions communicate state via Unicode glyphs (`↗`, `↘`, `⏸`) and textual labels, not color alone.
+  - **Responsive Layout:** Zero horizontal overflow verified across standard Desktop (1280x800) and Mobile (375x667) viewports.
+- **Protected Files & Roadmaps:**
+  - `data/predictions.db` (`d0cce57f...`) and `models/.gitkeep` (`e3b0c442...`) verified 100% pristine.
+  - Roadmap invariant: Phase 16 remains strictly **IN PROGRESS**.

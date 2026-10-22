@@ -49,3 +49,6 @@ models/*
 Thumbs.db
 [Dd]esktop.ini
 .DS_Store
+
+# Temporary scratch and browser profile directories
+scratch/

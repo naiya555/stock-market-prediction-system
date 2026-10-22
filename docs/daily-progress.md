@@ -6038,3 +6038,68 @@ Prediction dashboard UI completed and verified; data presentation audited to eli
 ### 4. Phase 16 Status & Next Steps
 **Phase 16 remains strictly IN PROGRESS.**
 API contract consistency and prediction result integrity established; backend wire fields aligned with frontend rendering; non-success and blocked responses safely gated; statistical disclaimers corrected to reflect holdout Brier-score comparisons; stale results purged on symbol change; retry parameters preserved; 812 regression tests passing.
+
+---
+
+## Day 67 - Real Browser Interaction & Accessibility Audit
+
+### Goal
+Execute real browser interaction testing, runtime discovery, automated Chrome DevTools Protocol (CDP) verification, and accessibility auditing for the running FastAPI + vanilla JavaScript dashboard without third-party browser installation dependencies or model artifact modifications.
+
+### 1. Pre-flight Checks
+- Repository: `https://github.com/naiya555/stock-market-prediction-system.git`
+- Starting baseline: `7fdaa65` (`feat(web): audit api contract consistency and prediction result integrity`)
+- Branch: `main`
+- Protected file baselines:
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e`
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
+
+### 2. Work Completed
+1. **Browser Runtime Discovery & CDP Integration:**
+   - Discovered local Google Chrome installation at `C:\Program Files\Google\Chrome\Application\chrome.exe` (and Microsoft Edge at `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`).
+   - Rather than relying on external drivers or downloading Playwright/Selenium packages, implemented a zero-dependency Chrome DevTools Protocol (CDP) WebSocket automation harness in `scripts/verify_real_browser.py` using Python's pre-installed `websockets 17.2`.
+2. **Defect Discovered & Fixed in `app/api/static/js/app.js`:**
+   - During headless browser execution of Workflow A form submission, identified an uncaught JavaScript runtime exception: `ReferenceError: fillEl is not defined` in `renderPredictionResult()`.
+   - Added missing explicit DOM reference declarations for `fillEl`, `probUpEl`, and `probDownEl` to resolve the probability bar rendering.
+   - Validated syntax with `node -c app/api/static/js/app.js` (clean, 0 syntax errors).
+3. **Execution of Real Browser User Workflows:**
+   - **Workflow A (Supported Instrument - `BHARTIARTL`):**
+     - Navigated to `http://127.0.0.1:8000/ui`, selected `BHARTIARTL`, submitted prediction.
+     - Verified loading state: button spinner visible, button and symbol input disabled during request.
+     - Verified result status: `SUCCESS`, Direction: `↘ PREDICTED DOWN (Bearish Return)`, Model: `XGBOOST (xgboost-direction-v1)`.
+     - Verified probabilities: `P(UP): 46.9% [Uncalibrated] | P(DOWN): 53.1% [Uncalibrated]`.
+     - Verified uncalibrated warning banner and evidence-aligned statistical disclaimer.
+     - Confirmed observed last-traded price (1895.0) is clearly labeled: `LAST_TRADED_PRICE • Feed: yfinance • Delayed ~15m • Session: CLOSED • Not a predicted price`.
+   - **Workflow B (Unsupported Instruments):**
+     - Tested `TCS`, `RELIANCE`, `NIFTY_TELECOMMUNICATIONS`, and `NIFTY_50`.
+     - In all cases, hero prediction card was hidden (`display: none`), blocked diagnostic card was displayed with model unavailability explanation, and zero fabricated directions or target prices were displayed.
+   - **Workflow C (Error Recovery & Stale State Reset):**
+     - From blocked state, clicked `#btn-switch-to-supported` (`Select Supported Instrument (BHARTIARTL)`); verified input was restored to `BHARTIARTL`.
+     - Tested typing in `#symbol-input` after a previous prediction; verified immediate clearing of old hero prediction card.
+   - **Workflow D (Concurrency & Double Submission Guard):**
+     - Submitted rapidly; confirmed concurrency lock (`AppState.isPredicting`) immediately disabled submission button and showed spinner, re-enabling on completion.
+4. **Accessibility & Responsive Audits:**
+   - **Form Labels:** Explicit `<label for="...">` associations verified for `#symbol-input` and `#model-select`.
+   - **ARIA Roles & Live Regions:** Verified `role="status"` and `aria-live="polite"` on `#predict-alert` and prediction container for screen readers.
+   - **Non-Color Visual Cues:** Prediction directions communicate state via Unicode glyphs (`↗`, `↘`, `⏸`) and textual return labels, not color alone.
+   - **Responsive Viewports:** Tested Desktop (1280x800) and Mobile (375x667); verified zero unintended horizontal overflow (`document.documentElement.scrollWidth <= window.innerWidth`).
+   - Screen-reader verification: Documented as pending dedicated screen-reader hardware/software testing session.
+5. **Quality Gates & Automated Regression:**
+   - Created `tests/test_real_browser_and_accessibility.py` with 10 deterministic regression tests covering runtime discovery, JS defect prevention, form labels, ARIA landmarks, non-color cues, media queries, recovery actions, concurrency guards, and catalog integrity.
+
+### 3. Verification & Results
+- **Regression Suite:**
+  - `tests/test_real_browser_and_accessibility.py`: **10 passed**, 1 warning in 4.48s.
+  - Full automated suite (`pytest -q`): **822 passed**, 1 warning in 46.12s across 57 test modules (+10 new tests, 0 failures, 0 regressions).
+- **JavaScript Syntax Check:**
+  - `node -c app/api/static/js/app.js`: Clean (0 errors).
+- **Dependency Audit:**
+  - `pip check`: Clean (`No broken requirements found.`).
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**).
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**).
+
+### 4. Phase 16 Status & Next Steps
+**Phase 16 remains strictly IN PROGRESS.**
+Real browser interactions and workflows verified via headless Chrome DevTools Protocol; runtime JavaScript exception fixed; accessibility form associations, ARIA regions, and non-color indicators confirmed; responsive layouts validated; protected database restored to pristine 0-record state; 822 regression tests passing.
+
