@@ -1870,3 +1870,48 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
   - CLI usage: `python scripts/record_intraday_session.py --symbol BHARTIARTL --interval 5m --provider yfinance --once`.
   - Zero background daemon execution; bounded retries and clean exit.
   - Phase 16 operational status remains strictly **IN PROGRESS**.
+
+---
+
+### 4.47 Controlled Intraday Capture & Multi-Cycle Data Quality Verification (Day 75)
+- **Objective & Architectural Scope:**
+  Implement a bounded manual multi-cycle session capture workflow (`run_bounded_session` on `IntradaySessionRecorder` and `--session` CLI runner), audit the end-to-end data pipeline from provider observation to persisted archive, verify recovery and idempotency across successive polling cycles, execute real-market capture verification, and maintain strict data integrity without fabricating synthetic substitutes.
+- **Provider & Recorder End-to-End Data Path Audit:**
+  - **Source Fetching (`YFinanceIntradayProvider`):** Fetches bars for `BHARTIARTL`, normalizes index to `Asia/Kolkata` (`IST`), validates schema columns, and preserves unavailable volume as `None` without numeric coercion. Explicitly discloses 15-minute exchange delay and rejects index tickers.
+  - **Data Cleaning & Filtering (`clean_intraday_candles`):** Enforces high-low-open-close inequalities, checks interval duration consistency, and drops invalid or corrupt rows with detailed audit logging.
+  - **Completion Boundary Verification (`is_candle_completed`):** A candle starting at $T_{\text{bar}}$ with duration $D$ is incomplete/forming if observation time $T_{\text{obs}} < T_{\text{bar}} + D$. Forming bars are deferred from persistence and re-polled in subsequent cycles.
+  - **Deduplication & Quarantine (`IntradayArchiveStore`):** Memory-indexed by `(symbol, interval, timestamp_iso)`. Identical duplicate observations are handled idempotently with zero write operations (`idempotent_duplicate`). Conflicting duplicates (different OHLCV for same bar) are quarantined into `quarantined_candles.jsonl`.
+  - **Isolated Storage:** Data strictly isolated to `data/intraday/intraday_archive.jsonl`. Zero access or modification to `data/predictions.db`.
+- **Bounded Multi-Cycle Capture Workflow (`run_bounded_session`):**
+  - **Safety Boundaries:**
+    - Explicit authorized symbol (`BHARTIARTL`) and interval (`5m`).
+    - Configurable maximum cycles (`max_cycles`, default: 12) and maximum runtime (`max_runtime_seconds`, default: 3600.0s).
+    - Configurable inter-cycle sleep interval (`poll_interval_seconds`).
+    - Injection-friendly design supporting custom `clock_fn` and `sleep_fn` for deterministic simulation and automated testing.
+    - Zero background daemons, cron jobs, or unmanaged infinite loops.
+  - **Graceful Termination Conditions:**
+    - `market_closed`: Market is closed or regular trading hours have ended.
+    - `cycle_limit_reached`: Maximum cycle count reached.
+    - `runtime_limit_reached`: Elapsed execution time exceeds configured runtime limit.
+    - `provider_degraded`: Upstream provider failures exhaust retries.
+    - `manual_stop`: Recorder is explicitly stopped via `recorder.stop()`.
+  - **Summary Contract (`SessionCaptureSummary`):**
+    Returns aggregated metrics: `cycles_completed`, `total_runtime_seconds`, `total_fetched`, `total_persisted`, `total_idempotent`, `total_deferred`, `total_quarantined`, and `cycle_history`.
+- **Real-Market Execution & Audit Results:**
+  - Execution Timestamp: Friday night, 2026-10-23 22:51:53 IST.
+  - NSE Session Status: `MarketSessionState.CLOSED` (Regular hours: 09:15:00 to 15:30:00 IST).
+  - Next Regular Session: Monday, 2026-10-26 at 09:15:00 IST.
+  - Capture Execution: `python scripts/record_intraday_session.py --symbol BHARTIARTL --interval 5m --provider yfinance --session --max-cycles 2 --poll-interval 1`.
+  - Capture Outcome:
+    - Status: `MARKET_CLOSED`.
+    - Termination Reason: `market_closed`.
+    - Cycles Completed: `0`.
+    - Fetched: `0`, Persisted: `0`, Quarantined: `0`, Idempotent: `0`, Deferred: `0`.
+  - Readiness Audit Status: `BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER` (0 genuine provider observations captured; synthetic fixtures strictly barred from satisfying empirical readiness).
+- **Test Evidence & Protected Hashes:**
+  - Focused Suite: 33 passed in `tests/test_intraday_recorder.py`.
+  - Full Pytest Suite: 912 passed, 1 warning in 40.36s.
+  - Pip Check: No broken requirements.
+  - SHA-256 `data/predictions.db`: `D0CCE57F5CA61F2732E233E89667A29DC4FA0DA4BFFDA29438E3FFD7EABD473E` (Pristine).
+  - SHA-256 `models/.gitkeep`: `E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855` (Pristine).
+  - Phase 16 operational status remains strictly **IN PROGRESS**.

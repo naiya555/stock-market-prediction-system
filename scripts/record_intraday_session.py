@@ -77,6 +77,29 @@ def parse_args() -> argparse.Namespace:
         help="Execute a single polling cycle and exit cleanly.",
     )
     parser.add_argument(
+        "--session",
+        action="store_true",
+        help="Execute a bounded manual multi-cycle recording session.",
+    )
+    parser.add_argument(
+        "--max-cycles",
+        type=int,
+        default=12,
+        help="Maximum polling cycles for bounded session (default: 12).",
+    )
+    parser.add_argument(
+        "--poll-interval",
+        type=float,
+        default=60.0,
+        help="Seconds between polling cycles in session mode (default: 60.0).",
+    )
+    parser.add_argument(
+        "--max-runtime",
+        type=float,
+        default=3600.0,
+        help="Maximum total runtime in seconds for bounded session (default: 3600.0).",
+    )
+    parser.add_argument(
         "--status",
         action="store_true",
         help="Display current archive statistics and market session status.",
@@ -198,9 +221,38 @@ def main() -> int:
         provenance=CandleProvenance.PROVIDER_OBSERVATION,
     )
 
-    print(f"Initiating single polling cycle for {args.symbol} [{parsed_interval.value}]...")
-    result = recorder.record_cycle(as_of=now_ist)
-    print(f"Cycle completed with result: {json.dumps(result, indent=2)}")
+    if args.once:
+        print(f"Initiating single polling cycle for {args.symbol} [{parsed_interval.value}]...")
+        result = recorder.record_cycle(as_of=now_ist)
+        print(f"Cycle completed with result: {json.dumps(result, indent=2)}")
+        return 0
+
+    # Execute bounded manual recording session
+    print(
+        f"Initiating bounded session capture for {args.symbol} [{parsed_interval.value}] "
+        f"(max_cycles={args.max_cycles}, max_runtime={args.max_runtime}s, poll_interval={args.poll_interval}s)..."
+    )
+    summary = recorder.run_bounded_session(
+        max_cycles=args.max_cycles,
+        max_runtime_seconds=args.max_runtime,
+        poll_interval_seconds=args.poll_interval,
+    )
+
+    print("\n" + "=" * 65)
+    print("SESSION CAPTURE SUMMARY")
+    print("=" * 65)
+    print(f"Symbol:                  {summary.symbol}")
+    print(f"Interval:                {summary.interval}")
+    print(f"Operational Status:      {summary.status}")
+    print(f"Termination Reason:      {summary.termination_reason}")
+    print(f"Cycles Completed:        {summary.cycles_completed}")
+    print(f"Total Runtime:           {summary.total_runtime_seconds}s")
+    print(f"Total Fetched:           {summary.total_fetched}")
+    print(f"Total Persisted:         {summary.total_persisted}")
+    print(f"Total Idempotent Dupes:  {summary.total_idempotent}")
+    print(f"Total Forming Deferred:  {summary.total_deferred}")
+    print(f"Total Quarantined:       {summary.total_quarantined}")
+    print("=" * 65)
 
     return 0
 

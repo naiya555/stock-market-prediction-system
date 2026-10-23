@@ -23,7 +23,7 @@ import os
 from pathlib import Path
 import threading
 import time
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Union
 from zoneinfo import ZoneInfo
 
 from app.core.logging_config import get_logger, sanitize_log_field
@@ -201,6 +201,28 @@ class EvaluationReadinessReport:
     interval: str
     gaps_count: int
     issues: List[str]
+
+
+@dataclass(frozen=True)
+class SessionCaptureSummary:
+    """Consolidated summary of a bounded manual session recording run."""
+
+    symbol: str
+    interval: str
+    status: str
+    termination_reason: str
+    cycles_completed: int
+    total_runtime_seconds: float
+    total_fetched: int
+    total_persisted: int
+    total_idempotent: int
+    total_deferred: int
+    total_quarantined: int
+    cycle_history: List[Dict[str, Any]] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize summary to dictionary."""
+        return asdict(self)
 
 
 def _field_isclose(a: Optional[float], b: Optional[float], abs_tol: float = 1e-5) -> bool:
@@ -667,6 +689,137 @@ class IntradaySessionRecorder:
         """Stop recorder and mark status STOPPED."""
         self._status = RecorderStatus.STOPPED
         logger.info("Recorder stopped cleanly.")
+
+    def run_bounded_session(
+        self,
+        max_cycles: Optional[int] = 12,
+        max_runtime_seconds: Optional[float] = 3600.0,
+        poll_interval_seconds: float = 60.0,
+        stop_on_market_close: bool = True,
+        stop_on_degraded: bool = True,
+        clock_fn: Optional[Callable[[], datetime]] = None,
+        sleep_fn: Optional[Callable[[float], None]] = None,
+    ) -> SessionCaptureSummary:
+        """Execute a controlled, bounded manual recording session across multiple polling cycles.
+
+        Guarantees:
+        - Never runs as an unattended infinite loop or background daemon.
+        - Stops cleanly when market is closed, runtime limit reached, cycle limit reached,
+          fatal provider degradation occurs, or stop() is invoked.
+        - Supports injected clock_fn and sleep_fn for deterministic simulation.
+
+        Returns:
+            SessionCaptureSummary containing aggregated metrics across all cycles.
+        """
+        get_now = clock_fn if clock_fn is not None else (lambda: datetime.now(IST))
+        do_sleep = sleep_fn if sleep_fn is not None else time.sleep
+
+        start_time = get_now()
+        cycles_completed = 0
+        total_fetched = 0
+        total_persisted = 0
+        total_idempotent = 0
+        total_deferred = 0
+        total_quarantined = 0
+        cycle_history: List[Dict[str, Any]] = []
+        termination_reason = "completed"
+
+        logger.info(
+            "Starting bounded manual recording session for %s [%s] (max_cycles=%s, max_runtime=%ss)",
+            self.symbol,
+            self.interval.value,
+            max_cycles,
+            max_runtime_seconds,
+        )
+
+        while True:
+            # Check manual stop signal
+            if self._status == RecorderStatus.STOPPED:
+                termination_reason = "manual_stop"
+                break
+
+            current_time = get_now()
+            elapsed_seconds = (current_time - start_time).total_seconds()
+
+            # Check runtime limit
+            if max_runtime_seconds is not None and elapsed_seconds >= max_runtime_seconds:
+                termination_reason = "runtime_limit_reached"
+                logger.info("Session reached maximum runtime limit (%.1fs)", max_runtime_seconds)
+                break
+
+            # Check cycle limit
+            if max_cycles is not None and cycles_completed >= max_cycles:
+                termination_reason = "cycle_limit_reached"
+                logger.info("Session reached maximum cycle limit (%d)", max_cycles)
+                break
+
+            # Check market session state
+            session_info = get_market_session(current_time)
+            if stop_on_market_close and session_info.state == MarketSessionState.CLOSED:
+                cycle_result = self.record_cycle(as_of=current_time)
+                cycle_history.append(cycle_result)
+                termination_reason = "market_closed"
+                logger.info("Market session is CLOSED. Terminating bounded capture session.")
+                break
+
+            # Execute poll cycle
+            cycle_result = self.record_cycle(as_of=current_time)
+            cycles_completed += 1
+            cycle_history.append(cycle_result)
+
+            total_fetched += cycle_result.get("fetched_count", 0)
+            total_persisted += cycle_result.get("persisted_count", 0)
+            total_idempotent += cycle_result.get("idempotent_count", 0)
+            total_deferred += cycle_result.get("forming_deferred_count", 0)
+            total_quarantined += cycle_result.get("quarantined_count", 0)
+
+            # Check provider degraded state
+            if stop_on_degraded and self._status == RecorderStatus.DEGRADED:
+                termination_reason = "provider_degraded"
+                logger.warning("Provider entered DEGRADED status. Halting bounded session.")
+                break
+
+            # Check if session transitioned past regular hours
+            if session_info.state in (MarketSessionState.POST_CLOSE, MarketSessionState.CLOSED):
+                termination_reason = "session_ended"
+                logger.info("Trading session ended (%s). Halting bounded session.", session_info.state.value)
+                break
+
+            # Check if another cycle is allowed before sleeping
+            if max_cycles is not None and cycles_completed >= max_cycles:
+                termination_reason = "cycle_limit_reached"
+                break
+
+            # Sleep bounded interval
+            if poll_interval_seconds > 0:
+                do_sleep(poll_interval_seconds)
+
+        final_time = get_now()
+        total_duration = max(0.0, (final_time - start_time).total_seconds())
+
+        summary = SessionCaptureSummary(
+            symbol=self.symbol,
+            interval=self.interval.value,
+            status=self._status.value,
+            termination_reason=termination_reason,
+            cycles_completed=cycles_completed,
+            total_runtime_seconds=round(total_duration, 2),
+            total_fetched=total_fetched,
+            total_persisted=total_persisted,
+            total_idempotent=total_idempotent,
+            total_deferred=total_deferred,
+            total_quarantined=total_quarantined,
+            cycle_history=cycle_history,
+        )
+
+        logger.info(
+            "Bounded session finished: %s (%d cycles, %d persisted, reason=%s)",
+            self.symbol,
+            cycles_completed,
+            total_persisted,
+            termination_reason,
+        )
+        return summary
 
 
 def check_evaluation_readiness(

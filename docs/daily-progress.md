@@ -6784,3 +6784,103 @@ Audit existing market data provider interfaces, implement a verified intraday pr
   - Scheduled Trading Session: Monday, 2026-10-26 (09:15:00 to 15:30:00 IST).
   - Command: `python scripts/record_intraday_session.py --symbol BHARTIARTL --interval 5m --provider yfinance --once`.
 - **Phase 16 Status:** **Strictly IN PROGRESS.** Phase 16 operational release criteria require live staging soak testing and operational deployment sign-off.
+
+---
+
+## Day 75 - Controlled Intraday Capture & Multi-Cycle Data Quality Verification
+
+### Goal
+Implement a bounded manual multi-cycle session capture workflow (`run_bounded_session` on `IntradaySessionRecorder` and `--session` CLI runner), audit the end-to-end data pipeline from provider observation to persisted archive, verify recovery and idempotency across successive polling cycles, execute real-market capture verification, and maintain strict data integrity without fabricating synthetic substitutes.
+
+---
+
+### 1. Preflight Repository & Environment Integrity
+- **Repository:** `https://github.com/naiya555/stock-market-prediction-system.git`
+- **Branch:** `main`
+- **Starting Commit:** `03d3a6e` (`feat(market): audit intraday provider integration and harden evaluation readiness gate`)
+- **Remote Synchronization:** Local `main` is ahead of `origin/main` by 2 commits (`6640c07`, `03d3a6e`). Remote push attempt verified authentication requirement (Windows Credential Manager / interactive credential prompt in background environment); local commits preserved intact without rewriting history.
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**)
+
+---
+
+### 2. Provider and Recorder End-to-End Data Path Audit Findings
+- **Data Source & Normalization:** `YFinanceIntradayProvider` normalizes timestamps to `Asia/Kolkata` (`IST`), enforces authorized ticker restriction (`BHARTIARTL`), rejects indices, and preserves missing volume as `None`.
+- **Candle Completion Boundary:** A 5-minute candle $[T_{\text{bar}}, T_{\text{bar}} + 300\text{s})$ is forming and deferred from persistence until $T_{\text{obs}} \ge T_{\text{bar}} + 300\text{s}$.
+- **Multi-Cycle Recovery:** Incomplete bars deferred in Cycle $N$ are cleanly evaluated and persisted upon completion in Cycle $N+1$.
+- **Idempotency & Quarantine:** Already-persisted completed bars polled on subsequent cycles are recognized as identical duplicates and handled idempotently with zero redundant disk writes. Any conflicting record (different OHLCV for existing timestamp) is isolated to `quarantined_candles.jsonl`.
+- **Database Safety:** Isolated append-only JSONL storage (`data/intraday/intraday_archive.jsonl`); zero access to `data/predictions.db`.
+
+---
+
+### 3. Work Completed & Implementation Details
+
+1. **Multi-Cycle Bounded Session Orchestration (`app/market/recorder.py`):**
+   - Implemented `SessionCaptureSummary` dataclass encapsulating aggregated session metrics: `cycles_completed`, `total_runtime_seconds`, `total_fetched`, `total_persisted`, `total_idempotent`, `total_deferred`, `total_quarantined`, and `cycle_history`.
+   - Implemented `IntradaySessionRecorder.run_bounded_session(...)` supporting configurable `max_cycles`, `max_runtime_seconds`, `poll_interval_seconds`, `stop_on_market_close`, `stop_on_degraded`, and injectable `clock_fn`/`sleep_fn`.
+   - Guarantees bounded execution: terminates cleanly upon reaching cycle limit, runtime limit, market close, fatal degradation, or manual stop signal. Zero unattended background daemons or infinite loops.
+2. **Package Exports (`app/market/__init__.py`):**
+   - Exported `SessionCaptureSummary`.
+3. **Operational CLI Session Mode (`scripts/record_intraday_session.py`):**
+   - Added `--session` flag, `--max-cycles` (default: 12), `--poll-interval` (default: 60.0s), and `--max-runtime` (default: 3600.0s).
+   - Formats a comprehensive capture summary report upon termination.
+4. **Deterministic Unit Tests (`tests/test_intraday_recorder.py`):**
+   - Added `TestBoundedSessionCapture` suite with 6 deterministic tests:
+     - `test_bounded_session_stops_when_market_closed`
+     - `test_bounded_session_stops_on_cycle_limit`
+     - `test_bounded_session_stops_on_runtime_limit`
+     - `test_bounded_session_multi_cycle_deferral_persistence_and_idempotency`
+     - `test_bounded_session_stops_on_provider_degraded`
+     - `test_bounded_session_manual_stop`
+
+---
+
+### 4. Real-Market Capture Execution & Readiness Audit
+
+- **Execution Timestamp:** Friday night, 2026-10-23 22:51:53 IST.
+- **NSE Trading Calendar Status:**
+  - Market State: `MarketSessionState.CLOSED` (Regular trading hours: 09:15:00 to 15:30:00 IST).
+  - Next Session Open: Monday, 2026-10-26 at 09:15:00 IST.
+- **Provider Status Disclosure:** `yfinance (15m delayed exchange data disclosed; no real-time stream)`.
+- **Bounded Session Command:**
+  ```powershell
+  python scripts/record_intraday_session.py --symbol BHARTIARTL --interval 5m --provider yfinance --session --max-cycles 2 --poll-interval 1
+  ```
+- **Real Execution Output:**
+  - Operational Status: `MARKET_CLOSED`.
+  - Termination Reason: `market_closed`.
+  - Cycles Completed: `0`.
+  - Total Fetched: `0`, Total Persisted: `0`, Quarantined: `0`, Idempotent: `0`, Forming Deferred: `0`.
+- **Readiness Gate Audit (`--readiness-check`):**
+  - Status: `BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER`.
+  - Ready For Evaluation: `False`.
+  - Summary: Blocked: No verified intraday market data provider observations captured.
+  - Zero synthetic fixtures were used as substitutes for real market data.
+
+---
+
+### 5. Verification & Quality Gates
+
+- **Focused Recorder Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest tests/test_intraday_recorder.py -v
+  ```
+  **33 passed** in 1.54s (0 failures, 0 warnings).
+- **Full Repository Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **912 passed**, 1 warning across all 62 test modules in 40.36s (0 failures, 0 regressions).
+- **Quality Checks:**
+  - `.\.venv\Scripts\python -m pip check`: No broken requirements found.
+  - `git diff --check`: Clean (0 whitespace errors).
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**)
+
+---
+
+### 6. Operational Status & Phase Tracking
+- **Phase 16 Status:** **Strictly IN PROGRESS.**
+  Phase 16 operational sign-off criteria require live market session staging, soak-testing across consecutive regular trading sessions, and operational monitoring sign-off before production readiness can be claimed.

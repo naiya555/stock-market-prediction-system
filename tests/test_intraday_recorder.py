@@ -40,6 +40,7 @@ from app.market.recorder import (
     IntradaySessionRecorder,
     RecordedCandleRecord,
     RecorderStatus,
+    SessionCaptureSummary,
     TestIntradayRecorderAdapter,
     check_evaluation_readiness,
 )
@@ -799,3 +800,192 @@ class TestYFinanceIntradayProvider:
 
             with pytest.raises(RuntimeError, match="yfinance intraday fetch failed"):
                 provider.fetch_intraday_candles("BHARTIARTL", test_date)
+
+
+class TestBoundedSessionCapture:
+    """Tests for multi-cycle bounded manual capture workflow."""
+
+    def test_bounded_session_stops_when_market_closed(self, temp_archive_paths):
+        archive_path, quarantine_path = temp_archive_paths
+        store = IntradayArchiveStore(archive_path=archive_path, quarantine_path=quarantine_path)
+        adapter = TestIntradayRecorderAdapter([])
+        recorder = IntradaySessionRecorder(
+            symbol="BHARTIARTL",
+            interval=IntradayInterval.M5,
+            provider=adapter,
+            store=store,
+        )
+
+        closed_time = datetime(2026, 6, 1, 20, 0, 0, tzinfo=IST)
+        summary = recorder.run_bounded_session(
+            max_cycles=5,
+            max_runtime_seconds=300.0,
+            poll_interval_seconds=0.0,
+            clock_fn=lambda: closed_time,
+            sleep_fn=lambda _: None,
+        )
+
+        assert summary.termination_reason == "market_closed"
+        assert summary.total_persisted == 0
+        assert summary.total_fetched == 0
+        assert summary.symbol == "BHARTIARTL"
+
+    def test_bounded_session_stops_on_cycle_limit(self, temp_archive_paths):
+        archive_path, quarantine_path = temp_archive_paths
+        store = IntradayArchiveStore(archive_path=archive_path, quarantine_path=quarantine_path)
+
+        completed_candle = _create_sample_candle(
+            session_date=date(2026, 6, 1),
+            bar_time=time(9, 15),
+        )
+        adapter = TestIntradayRecorderAdapter(candle_queue=[completed_candle])
+        recorder = IntradaySessionRecorder(
+            symbol="BHARTIARTL",
+            interval=IntradayInterval.M5,
+            provider=adapter,
+            store=store,
+        )
+
+        open_time = datetime(2026, 6, 1, 10, 0, 0, tzinfo=IST)
+        summary = recorder.run_bounded_session(
+            max_cycles=3,
+            max_runtime_seconds=3600.0,
+            poll_interval_seconds=0.0,
+            clock_fn=lambda: open_time,
+            sleep_fn=lambda _: None,
+        )
+
+        assert summary.cycles_completed == 3
+        assert summary.termination_reason == "cycle_limit_reached"
+        assert summary.total_persisted == 1  # Persisted on cycle 1, duplicate on cycle 2 & 3
+        assert summary.total_idempotent == 2
+
+    def test_bounded_session_stops_on_runtime_limit(self, temp_archive_paths):
+        archive_path, quarantine_path = temp_archive_paths
+        store = IntradayArchiveStore(archive_path=archive_path, quarantine_path=quarantine_path)
+        adapter = TestIntradayRecorderAdapter()
+        recorder = IntradaySessionRecorder(
+            symbol="BHARTIARTL",
+            interval=IntradayInterval.M5,
+            provider=adapter,
+            store=store,
+        )
+
+        times = [
+            datetime(2026, 6, 1, 10, 0, 0, tzinfo=IST),
+            datetime(2026, 6, 1, 10, 0, 10, tzinfo=IST),
+            datetime(2026, 6, 1, 10, 0, 35, tzinfo=IST),  # Past 30s limit
+            datetime(2026, 6, 1, 10, 0, 40, tzinfo=IST),
+        ]
+        time_iter = iter(times)
+
+        def mock_clock():
+            return next(time_iter, times[-1])
+
+        summary = recorder.run_bounded_session(
+            max_cycles=10,
+            max_runtime_seconds=30.0,
+            poll_interval_seconds=0.0,
+            clock_fn=mock_clock,
+            sleep_fn=lambda _: None,
+        )
+
+        assert summary.termination_reason == "runtime_limit_reached"
+
+    def test_bounded_session_multi_cycle_deferral_persistence_and_idempotency(self, temp_archive_paths):
+        archive_path, quarantine_path = temp_archive_paths
+        store = IntradayArchiveStore(archive_path=archive_path, quarantine_path=quarantine_path)
+
+        candle = _create_sample_candle(
+            session_date=date(2026, 6, 1),
+            bar_time=time(9, 15),
+        )
+        adapter = TestIntradayRecorderAdapter(candle_queue=[candle])
+        recorder = IntradaySessionRecorder(
+            symbol="BHARTIARTL",
+            interval=IntradayInterval.M5,
+            provider=adapter,
+            store=store,
+        )
+
+        # 1. start_time: 09:18 IST
+        # 2. Cycle 1: 09:18 IST -> bar 09:15-09:20 is forming -> deferred
+        # 3. Cycle 2: 09:21 IST -> bar 09:15-09:20 is completed -> persisted
+        # 4. Cycle 3: 09:22 IST -> bar 09:15-09:20 is duplicate -> idempotent
+        # 5. final_time: 09:25 IST
+        clock_ticks = [
+            datetime(2026, 6, 1, 9, 18, 0, tzinfo=IST),
+            datetime(2026, 6, 1, 9, 18, 0, tzinfo=IST),
+            datetime(2026, 6, 1, 9, 21, 0, tzinfo=IST),
+            datetime(2026, 6, 1, 9, 22, 0, tzinfo=IST),
+            datetime(2026, 6, 1, 9, 25, 0, tzinfo=IST),
+        ]
+        clock_iter = iter(clock_ticks)
+
+        summary = recorder.run_bounded_session(
+            max_cycles=3,
+            max_runtime_seconds=600.0,
+            poll_interval_seconds=0.0,
+            clock_fn=lambda: next(clock_iter, clock_ticks[-1]),
+            sleep_fn=lambda _: None,
+        )
+
+        assert summary.cycles_completed == 3
+        assert summary.total_deferred == 1
+        assert summary.total_persisted == 1
+        assert summary.total_idempotent == 1
+        assert summary.total_quarantined == 0
+        assert summary.termination_reason == "cycle_limit_reached"
+
+    def test_bounded_session_stops_on_provider_degraded(self, temp_archive_paths):
+        archive_path, quarantine_path = temp_archive_paths
+        store = IntradayArchiveStore(archive_path=archive_path, quarantine_path=quarantine_path)
+
+        adapter = MagicMock()
+        adapter.fetch_intraday_candles.side_effect = RuntimeError("Persistent upstream connection failure")
+
+        recorder = IntradaySessionRecorder(
+            symbol="BHARTIARTL",
+            interval=IntradayInterval.M5,
+            provider=adapter,
+            store=store,
+            max_retries=1,
+            retry_backoff_seconds=0.01,
+        )
+
+        open_time = datetime(2026, 6, 1, 10, 0, 0, tzinfo=IST)
+        summary = recorder.run_bounded_session(
+            max_cycles=5,
+            max_runtime_seconds=60.0,
+            poll_interval_seconds=0.0,
+            clock_fn=lambda: open_time,
+            sleep_fn=lambda _: None,
+            stop_on_degraded=True,
+        )
+
+        assert summary.termination_reason == "provider_degraded"
+        assert summary.status == RecorderStatus.DEGRADED.value
+
+    def test_bounded_session_manual_stop(self, temp_archive_paths):
+        archive_path, quarantine_path = temp_archive_paths
+        store = IntradayArchiveStore(archive_path=archive_path, quarantine_path=quarantine_path)
+        adapter = TestIntradayRecorderAdapter([])
+        recorder = IntradaySessionRecorder(
+            symbol="BHARTIARTL",
+            interval=IntradayInterval.M5,
+            provider=adapter,
+            store=store,
+        )
+        recorder.stop()
+
+        open_time = datetime(2026, 6, 1, 10, 0, 0, tzinfo=IST)
+        summary = recorder.run_bounded_session(
+            max_cycles=5,
+            max_runtime_seconds=60.0,
+            poll_interval_seconds=0.0,
+            clock_fn=lambda: open_time,
+            sleep_fn=lambda _: None,
+        )
+
+        assert summary.termination_reason == "manual_stop"
+        assert summary.cycles_completed == 0
