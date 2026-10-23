@@ -123,6 +123,19 @@ from app.market.intraday import (
     evaluate_intraday_baseline_walk_forward,
     generate_intraday_chronological_splits,
 )
+from app.market.recorder import (
+    ArchiveStats,
+    CandleProvenance,
+    DeterministicTestIntradayAdapter,
+    EvaluationReadinessReport,
+    EvaluationReadinessStatus,
+    IntradayArchiveStore,
+    IntradaySessionRecorder,
+    RecordedCandleRecord,
+    RecorderStatus,
+    TestIntradayRecorderAdapter,
+    check_evaluation_readiness,
+)
 
 __all__ = [
     "BaseMarketDataProvider",
@@ -227,6 +240,17 @@ __all__ = [
     "IntradayFoldResult",
     "IntradayBaselineAudit",
     "evaluate_intraday_baseline_walk_forward",
+    "CandleProvenance",
+    "DeterministicTestIntradayAdapter",
+    "RecorderStatus",
+    "EvaluationReadinessStatus",
+    "RecordedCandleRecord",
+    "ArchiveStats",
+    "EvaluationReadinessReport",
+    "IntradayArchiveStore",
+    "TestIntradayRecorderAdapter",
+    "IntradaySessionRecorder",
+    "check_evaluation_readiness",
 ]
 
 

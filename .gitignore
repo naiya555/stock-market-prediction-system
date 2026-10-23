@@ -35,6 +35,8 @@ data/raw/*
 !data/raw/.gitkeep
 data/processed/*
 !data/processed/.gitkeep
+data/intraday/*
+!data/intraday/.gitkeep
 *.db
 *.db-journal
 *.db-wal

@@ -1812,3 +1812,36 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
   - Zero duplicate validation pooling: Enforces that out-of-fold validation observation timestamps across all folds are strictly disjoint. Any duplicate timestamp collision raises `ValidationError`.
   - Synthetic Data Quarantine: Detects observations tagged with `source="synthetic_test"` and flags `is_synthetic_fixture=True` and `empirical_status="BLOCKED_NO_EMPIRICAL_DATA"`. Synthetic fixtures are never persisted as real market data or reported as empirical prediction validation.
   - Phase 16 operational status remains strictly **IN PROGRESS**.
+
+---
+
+### 4.45 Intraday Session Recorder & Real-Data Capture Foundation (Day 73)
+- **Objective & Architectural Scope:**
+  Establish a safe, restartable intraday session recorder orchestration layer (`app/market/recorder.py`), isolated append-only storage engine (`IntradayArchiveStore`), and empirical evaluation gate (`check_evaluation_readiness`) to capture genuine, timestamped 5-minute candles for authorized Indian equities (`BHARTIARTL`) without contaminating the protected prediction database (`data/predictions.db`).
+- **Provider Capability Audit & Verified Boundaries:**
+  - Audited existing `BaseMarketDataProvider`, `YFinanceProvider`, and `BaseIntradayDataProvider`.
+  - Free external providers (e.g. Yahoo Finance) provide delayed daily/intraday bars and quote lookups, but do NOT provide a licensed, real-time WebSocket tick stream for Indian equities (NSE/BSE).
+  - Exchange operating hours: Regular trading is strictly 09:15:00 to 15:30:00 IST on trading days. During closed sessions (e.g. night 21:50 IST, weekends, holidays), external quote endpoints reflect previous closes or return empty/stale bars.
+  - Operational Policy: In absence of live market provider credentials during off-market hours, the recorder reports `BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER` instead of fabricating pseudo-live observations.
+- **Completed-Candle Validation Boundary:**
+  - A 5-minute candle spanning $[T_{\text{bar}}, T_{\text{bar}} + 300\text{s})$ is strictly defined as forming/partial until current time $T_{\text{obs}} \ge T_{\text{bar}} + 300\text{s}$.
+  - The recorder enforces `is_candle_completed(candle, as_of)`. Any candle still forming is deferred from persistence and audit-logged, preventing partial-candle contamination.
+- **Append-Only Isolated Archive Store (`IntradayArchiveStore`):**
+  - **Storage Separation:** Strictly targets isolated files (`data/intraday/intraday_archive.jsonl` and `data/intraday/quarantined_candles.jsonl`). Explicitly rejects any configuration targeting `predictions.db` or its journals.
+  - **Deduplication Idempotency:** Records indexed in memory by `(symbol, interval, timestamp_iso)`. Subsequent processing of identical observations is a safe, zero-write no-op (`idempotent_duplicate`).
+  - **Conflicting Duplicate Quarantine:** Observations with differing OHLCV for the same bar timestamp are rejected from the archive and written to an audit log (`quarantine.jsonl`) with reason and diff metadata.
+  - **Restart Recovery:** Recovers existing indices and quarantine counts on startup to guarantee durability across process restarts.
+- **Data Provenance Schema & Evaluation Readiness Gate:**
+  - Three immutable provenance tags:
+    1. `synthetic_test`: Offline deterministic test fixtures (e.g. `DeterministicTestIntradayAdapter`).
+    2. `provider_observation`: Genuine observations captured from a configured provider.
+    3. `validated_archive`: Source-verified historical observations.
+  - `check_evaluation_readiness()`: Downstream backtest gate requiring:
+    - Zero synthetic contamination: `CONTAMINATED_SYNTHETIC` if any test fixtures exist in the archive.
+    - Verified provider provenance: `BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER` if 0 provider observations exist.
+    - Sufficient historical depth: `INSUFFICIENT_COVERAGE` if fewer than 75 bars (one complete 375-min regular NSE session).
+    - Session cleanliness: Audits gaps and rejects out-of-session anomalies (`PENDING_VALIDATION`).
+- **Operational CLI & Entry Point (`scripts/record_intraday_session.py`):**
+  - Controlled operational runner supporting `--status`, `--readiness-check`, `--once`, `--symbol`, and `--interval`.
+  - Detects market session state and transitions cleanly between `READY`, `RECORDING`, `DEGRADED`, `STOPPED`, and `MARKET_CLOSED`.
+  - Never executes automatically on module import or spawns unmanaged daemon background jobs.

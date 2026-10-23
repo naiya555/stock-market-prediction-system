@@ -6609,3 +6609,88 @@ Implement a reproducible, zero-leakage baseline benchmark evaluation framework o
 1. **Empirical Evaluation Blocked:** Genuine historical intraday bar depth is not available in free providers or local storage without real-time exchange streaming. Empirical evaluation is marked `BLOCKED_NO_EMPIRICAL_DATA`. Synthetic fixtures were used strictly for offline unit testing and are never claimed as market predictive performance.
 2. **No Machine Learning Models Trained:** In accordance with the Day 72 scope, no XGBoost, LightGBM, or neural models were trained or evaluated on intraday data.
 3. **Phase 16 Status:** **Strictly IN PROGRESS.** Phase 16 operational release criteria require live staging soak testing and operational deployment sign-off.
+
+---
+
+## Day 73 - Intraday Session Recorder and Real-Data Capture Foundation
+
+### Goal
+Build a safe, restartable intraday session recorder orchestration layer (`IntradaySessionRecorder`), isolated append-only storage engine (`IntradayArchiveStore`), and empirical evaluation readiness gate (`check_evaluation_readiness`) to capture genuine, timestamped 5-minute candles for authorized Indian equities (`BHARTIARTL`) without modifying the protected prediction database (`data/predictions.db`).
+
+---
+
+### 1. Preflight Repository & Environment Integrity
+- **Repository:** `https://github.com/naiya555/stock-market-prediction-system.git`
+- **Branch:** `main`
+- **Starting Commit:** `d9814b0` (`feat(market): implement intraday baseline benchmark evaluation and out-of-fold audit`)
+- **Remote Synchronization:** Verified synchronized with `origin/main` (commit `d9814b0` confirmed on both local and remote). Working tree clean.
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**)
+
+---
+
+### 2. Provider Capability Audit Findings
+- **Data Availability:** Existing `YFinanceProvider` supports historical unadjusted daily bars and delayed quotes, but lacks a licensed real-time streaming WebSocket or completed 5-minute candle push feed for Indian equities (NSE/BSE).
+- **Session Calendar:** NSE regular trading operates strictly 09:15:00 to 15:30:00 IST on trading days. During non-trading hours (e.g. night 21:50 IST, weekends, holidays), external quote endpoints return previous closes or empty bars.
+- **Compliance & Freshness:** Scraped or unauthenticated quote scraping is prohibited. In absence of active verified streaming feeds during closed hours, genuine live capture is marked `BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER`. No synthetic fixtures are passed off as live market observations.
+
+---
+
+### 3. Work Completed & Implementation Details
+
+1. **Intraday Session Recorder & Storage (`app/market/recorder.py`):**
+   - **`CandleProvenance` Enum:** Explicit tags: `synthetic_test`, `provider_observation`, `validated_archive`.
+   - **`RecorderStatus` Enum:** Discrete operational states: `READY`, `RECORDING`, `DEGRADED`, `STOPPED`, `MARKET_CLOSED`.
+   - **`EvaluationReadinessStatus` Enum:** Gate statuses: `READY`, `BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER`, `PENDING_VALIDATION`, `INSUFFICIENT_COVERAGE`, `CONTAMINATED_SYNTHETIC`.
+   - **`RecordedCandleRecord` Contract:** Frozen dataclass encapsulating `IntradayCandle`, provenance, capture timestamp (IST), source ID, completion flag, and quality flags (`VOLUME_REPORTED` / `VOLUME_UNREPORTED`).
+   - **`IntradayArchiveStore`:**
+     - Append-only thread-safe JSON Lines store (`data/intraday/intraday_archive.jsonl`).
+     - Absolute physical isolation from protected database `data/predictions.db` (enforced via path validator).
+     - Idempotent deduplication on `(symbol, interval, timestamp_iso)`.
+     - Conflicting duplicate detection and isolation into `quarantined_candles.jsonl`.
+     - Process restart recovery: populates index and quarantine metrics from disk on initialization.
+   - **`DeterministicTestIntradayAdapter`:** Offline, deterministic provider adapter with `__test__ = False` for reproducible unit tests and offline testing.
+   - **`IntradaySessionRecorder`:**
+     - Restricts execution strictly to authorized prediction instruments (`BHARTIARTL`). Rejects index instruments.
+     - Completed-candle boundary validation: defers forming/partial candles where $T_{\text{obs}} < T_{\text{bar}} + 300\text{s}$.
+     - Indian market session integration: detects `MarketSessionState.CLOSED` and idles without logging false provider failures.
+     - Bounded retries: 3 bounded attempts with backoff before entering `DEGRADED` state.
+     - Clean shutdown: `stop()` flushes pending state and transitions to `STOPPED`.
+   - **`check_evaluation_readiness()`:** Empirical verification gate auditing provenance, absence of synthetic fixtures, candle coverage (minimum 75 bars), and session integrity.
+2. **Operational CLI Entry Point (`scripts/record_intraday_session.py`):**
+   - CLI utility supporting `--status`, `--readiness-check`, `--once`, `--symbol`, `--interval`, and `--min-candles`.
+   - Never runs automatically on import.
+3. **Module Exports (`app/market/__init__.py`):**
+   - Exported all recorder classes, stores, adapters, and readiness functions.
+4. **Comprehensive Test Suite (`tests/test_intraday_recorder.py`):**
+   - 17 deterministic tests covering completed candle validation, partial candle deferral, missing volume preservation, idempotency, conflicting duplicate quarantine, restart recovery, prediction DB protection, holiday/closed session handling, bounded retries, gap detection, shutdown, and evaluation readiness gate.
+
+---
+
+### 4. Verification & Quality Gates
+
+- **Focused Intraday Test Suites:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest tests/test_intraday_recorder.py -v
+  ```
+  **17 passed** in 2.95s (0 failures, 0 warnings).
+- **Full Repository Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **896 passed**, 1 warning across all 62 test modules in 60.97s (0 failures, 0 regressions).
+- **Quality Checks:**
+  - `node -c app/api/static/js/app.js`: Clean (0 errors).
+  - `.\.venv\Scripts\python -m pip check`: No broken requirements found.
+  - `git diff --check`: Clean (0 whitespace errors).
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**)
+
+---
+
+### 5. Known Limitations & Next Steps
+1. **Empirical Capture Blocked:** Outside regular NSE trading hours (currently 21:50 IST), live market feeds are closed. Evaluation readiness gate accurately reports `BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER`. No synthetic fixtures were labeled or stored as live data.
+2. **No Model Training Today:** In accordance with Day 73 scope, no machine learning models were trained or evaluated.
+3. **Phase 16 Status:** **Strictly IN PROGRESS.** Phase 16 operational release criteria require live staging soak testing and operational deployment sign-off.
