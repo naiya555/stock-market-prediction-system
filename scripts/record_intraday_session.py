@@ -122,6 +122,11 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Minimum required candles for readiness evaluation (default: dynamically based on interval session expectation).",
     )
+    parser.add_argument(
+        "--diagnostics",
+        action="store_true",
+        help="Display comprehensive operational diagnostics report.",
+    )
     return parser.parse_args()
 
 
@@ -147,6 +152,39 @@ def display_status(store: IntradayArchiveStore, symbol: str, interval: IntradayI
     print(f"Timestamp Span:          {stats.min_timestamp} -> {stats.max_timestamp}")
     print(f"Provenance Breakdown:    {json.dumps(stats.provenance_counts)}")
     print(f"Quarantined Records:     {stats.quarantined_count}")
+    print(f"Corrupted Records:       {stats.corrupted_records_count}")
+    print("=" * 65)
+
+
+def display_operational_diagnostics(recorder: IntradaySessionRecorder) -> None:
+    diag = recorder.get_operational_diagnostics()
+    print("=" * 65)
+    print("INTRADAY RECORDER OPERATIONAL DIAGNOSTICS")
+    print("=" * 65)
+    print(f"Recorder Status:         {diag.recorder_status}")
+    print(f"Last Successful Poll:    {diag.last_successful_poll_time or 'N/A (never polled)'}")
+    print(f"Provider:                {diag.provider_name}")
+    print(f"Declared Delay:          {diag.provider_declared_delay}")
+    print(f"Latest Source Timestamp: {diag.latest_source_timestamp or 'N/A (unavailable)'}")
+    print(f"Latest Obs Timestamp:    {diag.latest_observation_timestamp or 'N/A (unavailable)'}")
+    print(f"Latest Capture Error:    {diag.latest_capture_error or 'None'}")
+    print(f"Last Error Retry Count:  {diag.last_error_retry_count}")
+    print("-" * 65)
+    print("ARCHIVE & FILE HEALTH:")
+    print(f"Archive File Exists:     {diag.archive_file_exists}")
+    print(f"Total Persisted Records: {diag.total_persisted_records}")
+    print(f"Provenance Breakdown:    {json.dumps(diag.provenance_counts)}")
+    print(f"Corrupted Records:       {diag.archive_corrupted_records_count}")
+    print(f"Quarantined Records:     {diag.quarantine_records_count}")
+    print("-" * 65)
+    print("READINESS STATUS:")
+    print(f"Readiness Status:        {diag.readiness_status}")
+    if diag.readiness_blocking_reasons:
+        print("Blocking Reasons:")
+        for reason in diag.readiness_blocking_reasons:
+            print(f"  - {reason}")
+    else:
+        print("Blocking Reasons:        None (Ready for empirical evaluation)")
     print("=" * 65)
 
 
@@ -205,13 +243,12 @@ def main() -> int:
     now_ist = datetime.now(IST)
     session_info = get_market_session(now_ist)
 
-    # Instantiate chosen provider
     if args.provider == "yfinance":
         provider = YFinanceIntradayProvider()
-        print("Configured Provider:     yfinance (15m delayed exchange data disclosed; no real-time stream)")
+        provider_desc = "yfinance (15m delayed exchange data disclosed; no real-time stream)"
     else:
         provider = TestIntradayRecorderAdapter(name="cli_offline_adapter")
-        print("Configured Provider:     test (Deterministic test adapter; offline fixtures only)")
+        provider_desc = "test (Deterministic test adapter; offline fixtures only)"
 
     recorder = IntradaySessionRecorder(
         provider=provider,
@@ -220,6 +257,12 @@ def main() -> int:
         interval=parsed_interval,
         provenance=CandleProvenance.PROVIDER_OBSERVATION,
     )
+
+    if args.diagnostics:
+        display_operational_diagnostics(recorder)
+        return 0
+
+    print(f"Configured Provider:     {provider_desc}")
 
     if args.once:
         print(f"Initiating single polling cycle for {args.symbol} [{parsed_interval.value}]...")

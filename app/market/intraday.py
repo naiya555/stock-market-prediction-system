@@ -400,6 +400,11 @@ class BaseIntradayDataProvider(ABC):
         """Return provider identifier."""
         pass
 
+    @property
+    def declared_delay(self) -> str:
+        """Declared market data latency or delay description."""
+        return "unknown"
+
     @abstractmethod
     def fetch_intraday_candles(
         self,
@@ -421,6 +426,10 @@ class SyntheticTestIntradayProvider(BaseIntradayDataProvider):
     @property
     def name(self) -> str:
         return self._name
+
+    @property
+    def declared_delay(self) -> str:
+        return "synthetic test fixture (0s delay)"
 
     def register_candles(
         self,

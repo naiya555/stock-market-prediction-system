@@ -186,6 +186,7 @@ class ArchiveStats:
     max_timestamp: Optional[str]
     provenance_counts: Dict[str, int]
     quarantined_count: int
+    corrupted_records_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -225,6 +226,31 @@ class SessionCaptureSummary:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class OperationalDiagnostics:
+    """Operational diagnostics snapshot of recorder, provider, archive, and readiness state."""
+
+    recorder_status: str
+    last_successful_poll_time: Optional[str]
+    provider_name: str
+    provider_declared_delay: str
+    latest_source_timestamp: Optional[str]
+    latest_observation_timestamp: Optional[str]
+    total_persisted_records: int
+    provenance_counts: Dict[str, int]
+    latest_capture_error: Optional[str]
+    last_error_retry_count: int
+    archive_file_exists: bool
+    archive_corrupted_records_count: int
+    quarantine_records_count: int
+    readiness_status: str
+    readiness_blocking_reasons: List[str]
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize diagnostics report to dictionary."""
+        return asdict(self)
+
+
 def _field_isclose(a: Optional[float], b: Optional[float], abs_tol: float = 1e-5) -> bool:
     """Compare two float values for near-equality, treating None == None as True."""
     if a is None and b is None:
@@ -259,6 +285,8 @@ class IntradayArchiveStore:
         # In-memory index of stored records: (symbol, interval, timestamp_iso) -> RecordedCandleRecord
         self._index: Dict[Tuple[str, str, str], RecordedCandleRecord] = {}
         self._quarantined_count = 0
+        self._corrupted_records_count = 0
+        self._corrupted_record_details: List[Dict[str, Any]] = []
 
         # Create parent directories safely
         self.archive_path.parent.mkdir(parents=True, exist_ok=True)
@@ -266,6 +294,16 @@ class IntradayArchiveStore:
 
         # Recover index from existing archive file
         self._recover_index()
+
+    @property
+    def corrupted_records_count(self) -> int:
+        """Count of malformed or corrupted records found in archive file."""
+        return self._corrupted_records_count
+
+    @property
+    def corrupted_record_details(self) -> List[Dict[str, Any]]:
+        """List of corrupted record diagnostics."""
+        return list(self._corrupted_record_details)
 
     def _validate_paths(self) -> None:
         """Ensure storage paths never point to protected prediction database."""
@@ -301,6 +339,10 @@ class IntradayArchiveStore:
                                 )
                                 self._index[key] = record
                             except Exception as e:
+                                self._corrupted_records_count += 1
+                                self._corrupted_record_details.append(
+                                    {"line_number": line_num, "error": str(e)}
+                                )
                                 logger.warning(
                                     "Skipping corrupt archive record at %s:%d: %s",
                                     self.archive_path,
@@ -402,6 +444,7 @@ class IntradayArchiveStore:
                 max_timestamp=None,
                 provenance_counts={},
                 quarantined_count=quarantined,
+                corrupted_records_count=self._corrupted_records_count,
             )
 
         symbols = sorted(list({r.symbol for r in records}))
@@ -422,6 +465,7 @@ class IntradayArchiveStore:
             max_timestamp=max_ts,
             provenance_counts=prov_counts,
             quarantined_count=quarantined,
+            corrupted_records_count=self._corrupted_records_count,
         )
 
 
@@ -444,6 +488,10 @@ class DeterministicTestIntradayAdapter(BaseIntradayDataProvider):
     @property
     def name(self) -> str:
         return self._name
+
+    @property
+    def declared_delay(self) -> str:
+        return "offline deterministic test fixture (0s delay)"
 
     def queue_candles(self, candles: Sequence[IntradayCandle]) -> None:
         """Enqueue candles to be emitted on fetch."""
@@ -518,6 +566,13 @@ class IntradaySessionRecorder:
                 f"Unauthorized instrument '{symbol}' for intraday recording. Supported: {self.supported_symbols}"
             )
         self.symbol = clean_symbol
+
+        # Operational diagnostics tracking
+        self._last_successful_poll_time: Optional[datetime] = None
+        self._last_error: Optional[str] = None
+        self._last_error_retry_count: int = 0
+        self._latest_source_timestamp: Optional[datetime] = None
+        self._latest_observation_timestamp: Optional[datetime] = None
 
     @property
     def status(self) -> RecorderStatus:
@@ -601,6 +656,8 @@ class IntradaySessionRecorder:
 
         if fetch_error is not None:
             self._status = RecorderStatus.DEGRADED
+            self._last_error = str(fetch_error)
+            self._last_error_retry_count = self.max_retries
             logger.error("Provider '%s' fetch exhausted all retries: %s", self.provider.name, fetch_error)
             return {
                 "status": self._status.value,
@@ -612,6 +669,14 @@ class IntradaySessionRecorder:
                 "quarantined_count": 0,
                 "error": str(fetch_error),
             }
+
+        # Update poll success state
+        self._last_successful_poll_time = now_ist
+        self._last_error = None
+        self._last_error_retry_count = 0
+        if raw_candles:
+            self._latest_source_timestamp = max(c.timestamp for c in raw_candles)
+            self._latest_observation_timestamp = now_ist
 
         # Validate and clean candles using existing clean_intraday_candles utility
         cleaning_result = clean_intraday_candles(
@@ -689,6 +754,44 @@ class IntradaySessionRecorder:
         """Stop recorder and mark status STOPPED."""
         self._status = RecorderStatus.STOPPED
         logger.info("Recorder stopped cleanly.")
+
+    def get_operational_diagnostics(self) -> OperationalDiagnostics:
+        """Construct a point-in-time operational diagnostics report."""
+        stats = self.store.get_stats()
+        readiness = check_evaluation_readiness(
+            store=self.store,
+            symbol=self.symbol,
+            interval=self.interval,
+        )
+        return OperationalDiagnostics(
+            recorder_status=self._status.value,
+            last_successful_poll_time=(
+                self._last_successful_poll_time.isoformat()
+                if self._last_successful_poll_time is not None
+                else None
+            ),
+            provider_name=self.provider.name,
+            provider_declared_delay=getattr(self.provider, "declared_delay", "unknown"),
+            latest_source_timestamp=(
+                self._latest_source_timestamp.isoformat()
+                if self._latest_source_timestamp is not None
+                else (stats.max_timestamp if stats.total_records > 0 else None)
+            ),
+            latest_observation_timestamp=(
+                self._latest_observation_timestamp.isoformat()
+                if self._latest_observation_timestamp is not None
+                else None
+            ),
+            total_persisted_records=stats.total_records,
+            provenance_counts=stats.provenance_counts,
+            latest_capture_error=self._last_error,
+            last_error_retry_count=self._last_error_retry_count,
+            archive_file_exists=self.store.archive_path.exists(),
+            archive_corrupted_records_count=stats.corrupted_records_count,
+            quarantine_records_count=stats.quarantined_count,
+            readiness_status=readiness.status.value,
+            readiness_blocking_reasons=readiness.issues,
+        )
 
     def run_bounded_session(
         self,
@@ -859,6 +962,23 @@ def check_evaluation_readiness(
     prov_counts: Dict[str, int] = {}
     for r in records:
         prov_counts[r.provenance.value] = prov_counts.get(r.provenance.value, 0) + 1
+
+    # Check 0: Archive structural integrity (malformed or corrupt records)
+    if store.corrupted_records_count > 0:
+        issues.append(
+            f"Archive contains {store.corrupted_records_count} malformed or corrupted JSONL records. Archive structure must be completely uncorrupted before evaluation."
+        )
+        return EvaluationReadinessReport(
+            status=EvaluationReadinessStatus.PENDING_VALIDATION,
+            is_ready_for_evaluation=False,
+            reason=f"Archive contains {store.corrupted_records_count} corrupted or truncated records requiring manual inspection.",
+            total_candles=len(records),
+            provenance_counts=prov_counts,
+            symbol=clean_sym,
+            interval=interval.value,
+            gaps_count=0,
+            issues=issues,
+        )
 
     # Check 1: Synthetic test contamination
     if prov_counts.get(CandleProvenance.SYNTHETIC_TEST.value, 0) > 0:

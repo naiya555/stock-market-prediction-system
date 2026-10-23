@@ -38,6 +38,7 @@ from app.market.recorder import (
     EvaluationReadinessStatus,
     IntradayArchiveStore,
     IntradaySessionRecorder,
+    OperationalDiagnostics,
     RecordedCandleRecord,
     RecorderStatus,
     SessionCaptureSummary,
@@ -989,3 +990,178 @@ class TestBoundedSessionCapture:
 
         assert summary.termination_reason == "manual_stop"
         assert summary.cycles_completed == 0
+
+
+class TestRecorderReliabilityAndOperationalDiagnostics:
+    """Tests for archive corruption handling, error tracking, and operational diagnostics."""
+
+    def test_archive_recovery_with_corrupted_lines(self, temp_archive_paths):
+        archive_path, quarantine_path = temp_archive_paths
+
+        # Pre-seed archive file with 1 valid line, 1 unparseable JSON line, and 1 invalid schema line
+        valid_candle = _create_sample_candle(session_date=date(2026, 6, 1), bar_time=time(9, 15))
+        valid_record = RecordedCandleRecord(
+            symbol=valid_candle.symbol,
+            timestamp=valid_candle.timestamp,
+            interval=valid_candle.interval,
+            open=valid_candle.open,
+            high=valid_candle.high,
+            low=valid_candle.low,
+            close=valid_candle.close,
+            volume=valid_candle.volume,
+            volume_reported=valid_candle.volume_reported,
+            source="test_provider",
+            provenance=CandleProvenance.PROVIDER_OBSERVATION,
+            capture_timestamp=datetime(2026, 6, 1, 9, 21, tzinfo=IST),
+            is_completed=True,
+        )
+
+        with open(archive_path, "w", encoding="utf-8") as f:
+            f.write(json.dumps(valid_record.to_dict()) + "\n")
+            f.write("{malformed json line truncated\n")
+            f.write(json.dumps({"symbol": "BHARTIARTL", "missing_ohlc": True}) + "\n")
+
+        # Instantiate store: must recover valid record and count corrupted lines without crashing
+        store = IntradayArchiveStore(archive_path=archive_path, quarantine_path=quarantine_path)
+
+        assert store.corrupted_records_count == 2
+        assert len(store.corrupted_record_details) == 2
+        assert store.corrupted_record_details[0]["line_number"] == 2
+        assert store.corrupted_record_details[1]["line_number"] == 3
+
+        # Valid record was safely recovered into index
+        recovered = store.get_records(symbol="BHARTIARTL", interval=IntradayInterval.M5)
+        assert len(recovered) == 1
+        assert recovered[0].timestamp == valid_candle.timestamp
+
+        # Archive stats expose corruption count
+        stats = store.get_stats()
+        assert stats.total_records == 1
+        assert stats.corrupted_records_count == 2
+
+    def test_readiness_gate_rejects_corrupted_archive(self, temp_archive_paths):
+        archive_path, quarantine_path = temp_archive_paths
+
+        # Generate a full session of 75 valid provider records
+        trading_day = date(2026, 6, 1)
+        valid_records = []
+        for i in range(75):
+            h, m = divmod(9 * 60 + 15 + i * 5, 60)
+            c = _create_sample_candle(session_date=trading_day, bar_time=time(h, m))
+            rec = RecordedCandleRecord(
+                symbol=c.symbol,
+                timestamp=c.timestamp,
+                interval=c.interval,
+                open=c.open,
+                high=c.high,
+                low=c.low,
+                close=c.close,
+                volume=c.volume,
+                volume_reported=True,
+                source="test_provider",
+                provenance=CandleProvenance.PROVIDER_OBSERVATION,
+                capture_timestamp=c.timestamp + timedelta(minutes=5),
+                is_completed=True,
+            )
+            valid_records.append(rec)
+
+        with open(archive_path, "w", encoding="utf-8") as f:
+            for r in valid_records:
+                f.write(json.dumps(r.to_dict()) + "\n")
+            # Append 1 corrupted line
+            f.write("{corrupt_trailing_line\n")
+
+        store = IntradayArchiveStore(archive_path=archive_path, quarantine_path=quarantine_path)
+        assert store.corrupted_records_count == 1
+
+        # Gate must reject due to corrupted archive structure
+        report = check_evaluation_readiness(store=store, symbol="BHARTIARTL", interval=IntradayInterval.M5)
+        assert report.is_ready_for_evaluation is False
+        assert report.status == EvaluationReadinessStatus.PENDING_VALIDATION
+        assert "Archive contains 1 malformed or corrupted JSONL records" in report.issues[0]
+
+    def test_operational_diagnostics_report_unpolled(self, temp_archive_paths):
+        archive_path, quarantine_path = temp_archive_paths
+        store = IntradayArchiveStore(archive_path=archive_path, quarantine_path=quarantine_path)
+        adapter = TestIntradayRecorderAdapter()
+        recorder = IntradaySessionRecorder(
+            symbol="BHARTIARTL",
+            interval=IntradayInterval.M5,
+            provider=adapter,
+            store=store,
+        )
+
+        diag = recorder.get_operational_diagnostics()
+        assert isinstance(diag, OperationalDiagnostics)
+        assert diag.recorder_status == RecorderStatus.READY.value
+        assert diag.last_successful_poll_time is None
+        assert diag.provider_name == "test_adapter"
+        assert diag.provider_declared_delay == "offline deterministic test fixture (0s delay)"
+        assert diag.latest_source_timestamp is None
+        assert diag.latest_observation_timestamp is None
+        assert diag.total_persisted_records == 0
+        assert diag.latest_capture_error is None
+        assert diag.last_error_retry_count == 0
+        assert diag.archive_corrupted_records_count == 0
+        assert diag.readiness_status == EvaluationReadinessStatus.BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER.value
+        assert len(diag.readiness_blocking_reasons) > 0
+
+    def test_operational_diagnostics_after_successful_cycle(self, temp_archive_paths):
+        archive_path, quarantine_path = temp_archive_paths
+        store = IntradayArchiveStore(archive_path=archive_path, quarantine_path=quarantine_path)
+
+        candle = _create_sample_candle(session_date=date(2026, 6, 1), bar_time=time(9, 15))
+        adapter = TestIntradayRecorderAdapter(candle_queue=[candle])
+        recorder = IntradaySessionRecorder(
+            symbol="BHARTIARTL",
+            interval=IntradayInterval.M5,
+            provider=adapter,
+            store=store,
+        )
+
+        poll_time = datetime(2026, 6, 1, 9, 21, tzinfo=IST)
+        result = recorder.record_cycle(as_of=poll_time)
+        assert result["persisted_count"] == 1
+
+        diag = recorder.get_operational_diagnostics()
+        assert diag.last_successful_poll_time == poll_time.isoformat()
+        assert diag.latest_source_timestamp == candle.timestamp.isoformat()
+        assert diag.latest_observation_timestamp == poll_time.isoformat()
+        assert diag.total_persisted_records == 1
+        assert diag.latest_capture_error is None
+        assert diag.last_error_retry_count == 0
+
+    def test_operational_diagnostics_after_fetch_failure(self, temp_archive_paths):
+        archive_path, quarantine_path = temp_archive_paths
+        store = IntradayArchiveStore(archive_path=archive_path, quarantine_path=quarantine_path)
+
+        adapter = MagicMock()
+        adapter.name = "failing_provider"
+        adapter.declared_delay = "test mock delay"
+        adapter.fetch_intraday_candles.side_effect = ConnectionError("Upstream connection refused")
+
+        recorder = IntradaySessionRecorder(
+            symbol="BHARTIARTL",
+            interval=IntradayInterval.M5,
+            provider=adapter,
+            store=store,
+            max_retries=2,
+            retry_backoff_seconds=0.01,
+        )
+
+        poll_time = datetime(2026, 6, 1, 10, 0, tzinfo=IST)
+        result = recorder.record_cycle(as_of=poll_time)
+        assert result["status"] == RecorderStatus.DEGRADED.value
+
+        diag = recorder.get_operational_diagnostics()
+        assert diag.recorder_status == RecorderStatus.DEGRADED.value
+        assert "Upstream connection refused" in str(diag.latest_capture_error)
+        assert diag.last_error_retry_count == 2
+        assert diag.last_successful_poll_time is None
+
+    def test_provider_declared_delay_property(self):
+        yfinance_prov = YFinanceIntradayProvider()
+        test_prov = TestIntradayRecorderAdapter()
+
+        assert "15m delayed" in yfinance_prov.declared_delay
+        assert "0s delay" in test_prov.declared_delay

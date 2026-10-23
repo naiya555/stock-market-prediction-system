@@ -431,6 +431,10 @@ class YFinanceIntradayProvider(BaseIntradayDataProvider):
     def name(self) -> str:
         return "yfinance"
 
+    @property
+    def declared_delay(self) -> str:
+        return "15m delayed exchange data (no real-time stream)"
+
     def fetch_intraday_candles(
         self,
         symbol: str,

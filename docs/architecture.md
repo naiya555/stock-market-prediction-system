@@ -1994,3 +1994,42 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
   - SHA-256 `data/predictions.db`: `D0CCE57F5CA61F2732E233E89667A29DC4FA0DA4BFFDA29438E3FFD7EABD473E` (Pristine).
   - SHA-256 `models/.gitkeep`: `E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855` (Pristine).
   - Phase 16 operational status remains strictly **IN PROGRESS**.
+
+---
+
+### 4.50 Intraday Recorder Reliability, Archive Integrity & Operational Diagnostics (Day 78)
+- **Objective & Architectural Scope:**
+  Audit intraday recorder reliability under crash, restart, and data corruption scenarios; enforce archive structural integrity where corrupted/truncated JSONL lines cannot silently pass readiness evaluation; implement a compact, testable operational diagnostics report (`OperationalDiagnostics`) exposing runtime telemetry, poll timestamps, provider delay declarations, error/retry states, file health, and gate blockers without external paid dependencies or unmanaged daemons; expand deterministic test coverage to 918 tests; and maintain strict Phase 16 operational boundaries.
+- **Archive Structural Integrity & Recovery Architecture (`app/market/recorder.py`):**
+  - **Truncated & Corrupted Record Tracking:** `IntradayArchiveStore._recover_index()` detects malformed JSON lines, schema decoding failures, and partial writes upon process restart or reload. Rather than silently skipping corruption or allowing corrupted files to pass quality gates, the store tracks `corrupted_records_count` and details in memory, while successfully recovering valid records.
+  - **Readiness Gate Check 0 (Structural Integrity):** `check_evaluation_readiness()` checks archive structural integrity *before* bar counts or continuity. If `store.corrupted_records_count > 0`, the evaluation gate immediately returns `EvaluationReadinessStatus.PENDING_VALIDATION`, preventing corrupted datasets from advancing to model training or walk-forward evaluation.
+  - **Quarantine Isolation:** Conflicting records (differing OHLCV for identical timestamp) are automatically diverted to `quarantined_candles.jsonl`, isolating data anomalies from clean historical archives.
+- **Operational Diagnostics Specification (`OperationalDiagnostics`):**
+  - Schema exposed in `app/market/recorder.py` and exported via `app/market`:
+    - `recorder_status`: Current lifecycle state (`IDLE`, `RECORDING`, `DEGRADED`, `STOPPED`, `MARKET_CLOSED`).
+    - `last_successful_poll_time`: UTC ISO-8601 string of last successful poll cycle, or `None` if unpolled.
+    - `provider_name`: Name of active data provider (e.g., `yfinance`, `synthetic_test_provider`).
+    - `provider_declared_delay`: Explicit disclosure of upstream feed latency (e.g., `"15m delayed exchange data (no real-time stream)"`).
+    - `latest_source_timestamp`: ISO-8601 timestamp of newest candle received from provider, or `None` if unavailable.
+    - `latest_observation_timestamp`: ISO-8601 timestamp when recorder ingested candle, or `None` if unavailable.
+    - `total_persisted_records`: Integer count of clean persisted records in the archive.
+    - `provenance_counts`: Mapping of provider names to persisted bar counts (e.g., `{"yfinance": 75}`).
+    - `latest_capture_error`: Last caught exception message or `None`.
+    - `last_error_retry_count`: Retries attempted during most recent error state.
+    - `archive_file_health`: File existence, size in bytes, and corruption status.
+    - `quarantine_file_health`: File existence, size in bytes, and quarantined count.
+    - `readiness_status`: Current evaluation readiness (`BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER`, `READY`, etc.).
+    - `blocking_reasons`: Detailed list of blocking reasons preventing evaluation readiness.
+  - CLI Integration: `--diagnostics` flag on `scripts/record_intraday_session.py` renders an ASCII operational dashboard without launching network polling or fabricating missing timestamps.
+- **Provider Latency Truthfulness:**
+  - `BaseIntradayDataProvider` enforces abstract property `declared_delay: str`.
+  - `YFinanceIntradayProvider` explicitly declares `"15m delayed exchange data (no real-time stream)"`.
+  - Zero fabricated market observations or zero-valued synthetic timestamps are used when values are unavailable.
+- **Test Evidence & Protected Hashes:**
+  - Focused Suite: 39 passed in `tests/test_intraday_recorder.py` (6 new deterministic tests added).
+  - Full Pytest Suite: 918 passed, 1 warning across all 62 test modules in 48.93s (0 regressions).
+  - Pip Check: No broken requirements found.
+  - Git Diff Check: 0 whitespace errors.
+  - SHA-256 `data/predictions.db`: `D0CCE57F5CA61F2732E233E89667A29DC4FA0DA4BFFDA29438E3FFD7EABD473E` (Pristine).
+  - SHA-256 `models/.gitkeep`: `E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855` (Pristine).
+  - Phase 16 operational status remains strictly **IN PROGRESS**.

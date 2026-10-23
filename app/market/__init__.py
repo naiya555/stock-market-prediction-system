@@ -134,6 +134,7 @@ from app.market.recorder import (
     EvaluationReadinessStatus,
     IntradayArchiveStore,
     IntradaySessionRecorder,
+    OperationalDiagnostics,
     RecordedCandleRecord,
     RecorderStatus,
     SessionCaptureSummary,
@@ -255,6 +256,7 @@ __all__ = [
     "IntradayArchiveStore",
     "TestIntradayRecorderAdapter",
     "IntradaySessionRecorder",
+    "OperationalDiagnostics",
     "SessionCaptureSummary",
     "check_evaluation_readiness",
 ]

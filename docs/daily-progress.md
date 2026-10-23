@@ -7056,3 +7056,77 @@ Verify provider data ingestion semantics, audit rate-limiting and delay disclosu
 ### 6. Operational Status & Phase Tracking
 - **Phase 16 Status:** **Strictly IN PROGRESS.**
   Phase 16 operational sign-off criteria require live market session staging, soak-testing across consecutive regular trading sessions, and operational monitoring sign-off before production readiness can be claimed.
+
+---
+
+## Day 78 - Intraday Recorder Reliability, Archive Integrity & Monitoring Preparation
+
+### 1. Git Preflight & Integrity Verification
+- **Starting Commit:** `66acdfc` (Day 77 milestone commit).
+- **Git Divergence Status:** Local `main` is ahead of `origin/main` by 1 commit. Non-interactive push attempt confirmed standard interactive authentication prompt; all commits preserved cleanly without history rewrite.
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**)
+
+---
+
+### 2. Reliability Audit & Archive Structural Integrity
+- **Identified Reliability Gaps:**
+  - In crash/restart recovery, partial or corrupted JSONL records were skipped during index recovery without surfacing in archive stats or evaluation readiness checks.
+  - A corrupted archive could theoretically pass bar count and continuity checks if sufficient valid bars existed alongside corrupt lines.
+- **Implemented Fixes (`app/market/recorder.py`):**
+  - Added `_corrupted_records_count` and `_corrupted_record_details` tracking in `IntradayArchiveStore._recover_index()`.
+  - Added `corrupted_records_count: int = 0` to `ArchiveStats`.
+  - Added Check 0 in `check_evaluation_readiness`: If `store.corrupted_records_count > 0`, immediately return `EvaluationReadinessStatus.PENDING_VALIDATION` with explicit corruption count and blocking details.
+  - Recoverable clean records remain intact while preventing corrupted archives from being silently treated as valid.
+
+---
+
+### 3. Operational Diagnostics & Monitoring Preparation
+- **Implemented Telemetry Contract (`OperationalDiagnostics` dataclass):**
+  - Exposes `recorder_status`, `last_successful_poll_time`, `provider_name`, `provider_declared_delay`, `latest_source_timestamp`, `latest_observation_timestamp`, `total_persisted_records`, `provenance_counts`, `latest_capture_error`, `last_error_retry_count`, `archive_file_health`, `quarantine_file_health`, `readiness_status`, and `blocking_reasons`.
+  - Missing telemetry values are explicitly represented as `None` / `"N/A"`, strictly preventing fabricated timestamps, prices, or zero-valued synthetic observations.
+  - Zero external paid monitoring services, cloud daemons, or unmanaged background processes introduced.
+- **CLI Diagnostics Tooling (`scripts/record_intraday_session.py --diagnostics`):**
+  - Added `--diagnostics` flag rendering an ASCII operational dashboard summarizing active recorder state, file health, and gate blockers.
+
+---
+
+### 4. Provider Delay Transparency
+- Added abstract `declared_delay: str` property to `BaseIntradayDataProvider`.
+- `YFinanceIntradayProvider` explicitly declares `"15m delayed exchange data (no real-time stream)"`.
+- `DeterministicTestIntradayAdapter` and `SyntheticTestIntradayProvider` declare their respective operational timings.
+
+---
+
+### 5. Verification & Quality Gates
+- **Focused Recorder Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest tests/test_intraday_recorder.py -v
+  ```
+  **39 passed** in 1.85s (6 new deterministic tests added, 0 failures, 0 warnings).
+  - `test_archive_recovery_with_corrupted_lines`: Verifies recovery of valid records alongside corrupted record tracking.
+  - `test_readiness_gate_rejects_corrupted_archive`: Verifies readiness gate rejects corrupted archive with `PENDING_VALIDATION`.
+  - `test_operational_diagnostics_report_unpolled`: Verifies diagnostic reporting on clean unpolled recorder.
+  - `test_operational_diagnostics_after_successful_cycle`: Verifies populated telemetry, timestamps, and provenance.
+  - `test_operational_diagnostics_after_fetch_failure`: Verifies error reporting, degraded status, and retry counts.
+  - `test_provider_declared_delay_property`: Verifies transparent latency disclosure across providers.
+- **Full Repository Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **918 passed**, 1 warning across all 62 test modules in 48.93s (0 failures, 0 regressions).
+- **Environment & Lint Checks:**
+  - `.\.venv\Scripts\python -m pip check`: No broken requirements found.
+  - `git diff --check`: Clean (0 whitespace errors).
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**)
+
+---
+
+### 6. Operational Status & Phase Tracking
+- **Market State:** Continuous trading session remains `CLOSED` (Friday night, 23:30 IST).
+- **Next Regular Session:** Monday, 2026-10-26 at 09:15:00 IST.
+- **Evaluation Readiness:** `BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER` (Truthful; zero genuine live candles captured yet).
+- **Phase 16 Status:** **Strictly IN PROGRESS.**
