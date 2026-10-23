@@ -1953,3 +1953,44 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
   - SHA-256 `data/predictions.db`: `D0CCE57F5CA61F2732E233E89667A29DC4FA0DA4BFFDA29438E3FFD7EABD473E` (Pristine).
   - SHA-256 `models/.gitkeep`: `E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855` (Pristine).
   - Phase 16 operational status remains strictly **IN PROGRESS**.
+
+---
+
+### 4.49 Provider Data Ingestion Verification & Operational Readiness (Day 77)
+- **Objective & Architectural Scope:**
+  Verify provider data ingestion semantics, audit rate-limiting and delay disclosures, confirm official NSE session calendar boundaries, execute bounded live-session capture with cycle/runtime limits, inspect isolated archive storage, audit the hardened readiness gate, and verify repository invariants without synthetic substitution.
+- **Git Synchronization Resolution:**
+  - Local commit `1c558ce` is ahead of remote `origin/main` (`6d2fef1`) by 1 commit.
+  - Headless non-interactive push verification confirmed authentication dialog; commits are preserved intact locally without force-pushing or history rewriting.
+- **Session Verification & Official NSE Trading Calendar:**
+  - Execution Timestamp: Friday night, 2026-10-23 23:11:30 IST.
+  - Session State: `MarketSessionState.CLOSED` (Regular NSE hours: 09:15:00 to 15:30:00 IST).
+  - Official NSE 2026 Holiday Calendar Audit (`NSE_HOLIDAYS_2026` in `app/market/session.py`):
+    - Saturday 2026-10-24: Weekend exchange closure.
+    - Sunday 2026-10-25: Weekend exchange closure.
+    - Monday 2026-10-26: Regular trading day (non-holiday). Next continuous trading session opens at 09:15:00 IST.
+- **Provider Capabilities & Boundary Invariants (`YFinanceIntradayProvider`):**
+  - **Data Delay:** Free-tier Yahoo Finance data carries ~15-minute exchange delay on Indian equities; zero real-time streaming WebSocket capability.
+  - **Timestamp Semantics:** Timestamps normalized to `Asia/Kolkata` (`IST`). Bar completion boundary enforced strictly ($T_{\text{obs}} \ge T_{\text{bar}} + D$).
+  - **Error & Empty Response Handling:** Returns empty list `[]` when no bars exist; rate limiting guarded by bounded exponential retry backoff (`max_retries=3`, `retry_backoff_seconds=2.0`).
+- **Bounded Session Capture Execution:**
+  - Command: `python scripts/record_intraday_session.py --symbol BHARTIARTL --interval 5m --provider yfinance --session --max-cycles 2 --poll-interval 10 --max-runtime 60`.
+  - Provider Configuration: `yfinance (15m delayed exchange data disclosed; no real-time stream)`.
+  - Safety Boundary: Cleanly halted immediately upon detecting `MarketSessionState.CLOSED`.
+  - Aggregated Metrics:
+    - Status: `MARKET_CLOSED`.
+    - Termination Reason: `market_closed`.
+    - Cycles Completed: `0`.
+    - Total Fetched: `0`, Total Persisted: `0`, Total Deferred: `0`, Total Quarantined: `0`, Total Idempotent: `0`.
+- **Archive & Readiness Gate Audit:**
+  - Isolated Archive: `data/intraday/intraday_archive.jsonl` contains 0 records (does not exist on disk).
+  - Quarantine Log: `data/intraday/quarantined_candles.jsonl` contains 0 records.
+  - Readiness Audit Status: `BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER`.
+  - Zero synthetic fixtures were used to fill missing intervals or satisfy the readiness gate.
+- **Test Evidence & Protected Hashes:**
+  - Focused Suite: 33 passed in `tests/test_intraday_recorder.py`.
+  - Full Pytest Suite: 912 passed, 1 warning in 96.92s.
+  - Pip Check: No broken requirements found.
+  - SHA-256 `data/predictions.db`: `D0CCE57F5CA61F2732E233E89667A29DC4FA0DA4BFFDA29438E3FFD7EABD473E` (Pristine).
+  - SHA-256 `models/.gitkeep`: `E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855` (Pristine).
+  - Phase 16 operational status remains strictly **IN PROGRESS**.
