@@ -6421,3 +6421,107 @@ Design and implement a deterministic point-in-time intraday feature-extraction l
 ### 5. Known Limitations & Next Steps
 1. **Intraday Model Training:** No intraday machine learning model is claimed or trained. The feature layer outputs raw numerical features for downstream modeling.
 2. **Phase 16 Status:** **Strictly IN PROGRESS.** Phase 16 operational release criteria require live staging soak testing and operational deployment sign-off.
+
+---
+
+## Day 71 - Intraday Dataset Assembly and Walk-Forward Validation Foundation
+
+### Goal
+Build a deterministic, leakage-safe intraday dataset assembly and expanding-window chronological walk-forward split engine on top of the existing `IntradayCandle` and `IntradayFeatureRecord` contracts. Prove that future target labels, feature availability timestamps, session boundaries, and chronological partitions are mathematically correct and leakage-free without training an intraday ML model.
+
+---
+
+### 1. Preflight Repository & Environment Integrity
+- **Repository:** `https://github.com/naiya555/stock-market-prediction-system.git`
+- **Branch:** `main`
+- **Starting Commit:** `ae7bfdd` (`feat(market): implement deterministic intraday feature extraction layer`)
+- **Remote Synchronization:** Local commit `ae7bfdd` is ahead of `origin/main` by 1 commit due to non-interactive Git Credential Manager authentication in headless runner. Preserved cleanly locally.
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**)
+
+---
+
+### 2. Dataset Contract & Target Design Specifications
+
+1. **Intraday Dataset Observation Contract (`IntradayDatasetObservation`):**
+   - Typed frozen dataclass combining point-in-time features with forward target outcomes and explicit temporal timestamps.
+   - Fields: `symbol`, `session_date`, `candle_timestamp`, `available_at`, `interval`, `features`, `candle`, `target_horizon_bars`, `target_return`, `target_direction`, `target_binary`, `target_realized_at`, `target_status`.
+   - Property helpers: `has_target`, `feature_record`, `feature_available_at`, `observation_timestamp`.
+2. **Target Label Definition:**
+   - Prediction Timestamp: Made at candle $t$ close (`available_at = candle_t.bar_end_timestamp`).
+   - Horizon: $H$ completed bars in the same session (default 3 bars).
+   - Target Return: $(P_{t+H} - P_t) / P_t$.
+   - Direction & Binary Label: $1$ / `"UP"` if $P_{t+H} > P_t$ else $0$ / `"DOWN"`.
+   - Equal Price Policy: Zero return ($P_{t+H} == P_t$) deterministically maps to $0$ / `"DOWN"` (not up).
+   - Realization Timestamp: Target is known only at $t+H$ close (`target_candle.bar_end_timestamp`).
+3. **Quarantine & Safety Guards (`IntradayTargetStatus`):**
+   - `SESSION_CLOSE_CUTOFF`: Observations within $H$ bars of session close (15:30:00 IST). Target return and direction are strictly `None`. Targets NEVER cross overnight or non-trading gaps.
+   - `INCOMPLETE_HORIZON_GAP`: Intraday feed gaps between $t$ and $t+H$ ($\Delta t \neq H \times \text{duration}$). Target is strictly `None` (zero price fabrication).
+   - `MISSING_OUTCOME`: Current or target candle has non-positive or missing close price.
+4. **Chronological Splitting & Target Embargo (`IntradaySplit`):**
+   - `generate_intraday_chronological_splits()`: Expanding-window chronological partitions with target embargo cutoff ($T_{\text{cutoff}} = \text{last\_train.target\_realized\_at}$).
+   - Embargo Purging: Any observation whose candle was forming or realized on or before $T_{\text{cutoff}}$ is moved to `embargo_observations` and excluded from `val_observations`.
+   - Disjointness: Train, validation, and embargo sets are strictly pairwise disjoint.
+
+---
+
+### 3. Work Completed & Implementation Details
+
+1. **Core Dataset Assembly & Split Engine (`app/market/intraday.py`):**
+   - Implemented `IntradayTargetStatus` enum.
+   - Implemented `IntradayDatasetObservation` typed contract.
+   - Implemented `assemble_intraday_dataset()`:
+     - Enforces single-symbol isolation (rejects cross-instrument candle sequences).
+     - Computes point-in-time features from past candles only.
+     - Calculates forward returns strictly within session boundaries.
+     - Quarantines incomplete horizons and session-close cutoffs.
+   - Implemented `IntradaySplit` dataclass with fold tracking, indices, and sample metrics.
+   - Implemented `generate_intraday_chronological_splits()`:
+     - Rejects unsorted inputs and insufficient datasets with actionable messages.
+     - Enforces purged target embargo cutoff $T_{\text{cutoff}}$.
+2. **Module Exports (`app/market/__init__.py`):**
+   - Exported `IntradayTargetStatus`, `IntradayDatasetObservation`, `assemble_intraday_dataset`, `IntradaySplit`, `generate_intraday_chronological_splits`.
+3. **Comprehensive Leakage & Unit Test Suite (`tests/test_intraday_dataset.py`):**
+   - 12 focused deterministic unit tests:
+     - Observation timestamp sequencing (`target_realized_at > available_at`).
+     - Target label alignment and return calculation against hand-calculated prices.
+     - Equal price handling (zero return $\to 0$ / `"DOWN"`).
+     - No future data in feature columns (strict lookahead isolation).
+     - Incomplete horizon gaps quarantined to `INCOMPLETE_HORIZON_GAP`.
+     - Session boundary and overnight isolation quarantined to `SESSION_CLOSE_CUTOFF`.
+     - Preservation of missing volume without fabrication (`session_vwap is None`).
+     - Rejection of cross-instrument candle sequences.
+     - Expanding walk-forward splits with strict target embargo enforcement.
+     - Byte-for-byte split boundary reproducibility.
+     - Insufficient dataset size rejection.
+     - Future-data tampering test: modifying future candles leaves past features, targets, and split boundaries 100% unaltered.
+
+---
+
+### 4. Verification & Quality Gates
+
+- **Focused Intraday Test Suites:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest tests/test_intraday_engine.py tests/test_intraday_features.py tests/test_intraday_dataset.py -q
+  ```
+  **44 passed** in 2.93s (0 failures).
+- **Full Repository Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **866 passed**, 1 warning across all 60 test modules in 64.50s (0 failures, 0 regressions).
+- **Quality Checks:**
+  - `node -c app/api/static/js/app.js`: Clean (0 errors).
+  - `.\.venv\Scripts\python -m pip check`: No broken requirements found.
+  - `git diff --check`: Clean (0 whitespace errors).
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**)
+
+---
+
+### 5. Known Limitations & Next Steps
+1. **Intraday Model Training:** No machine learning models were trained or evaluated on Day 71. The dataset assembly layer prepares verified, leakage-free tabular partitions for downstream modeling.
+2. **Real Data Availability:** Genuine historical intraday tick/bar depth is constrained in current free external data providers; unit and leakage tests use isolated deterministic synthetic test fixtures.
+3. **Phase 16 Status:** **Strictly IN PROGRESS.** Phase 16 operational release criteria require live staging soak testing and operational deployment sign-off.

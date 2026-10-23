@@ -781,11 +781,27 @@ class IntradayDatasetObservation:
     target_binary: Optional[int]     # 1, 0, or None
     target_realized_at: Optional[datetime]
     target_status: IntradayTargetStatus
+    candle: Optional[IntradayCandle] = None
 
     @property
     def has_target(self) -> bool:
         """Return True if this observation has a complete, valid forward label."""
         return self.target_status == IntradayTargetStatus.AVAILABLE and self.target_binary is not None
+
+    @property
+    def feature_record(self) -> IntradayFeatureRecord:
+        """Alias for features record."""
+        return self.features
+
+    @property
+    def feature_available_at(self) -> datetime:
+        """Alias for available_at timestamp."""
+        return self.available_at
+
+    @property
+    def observation_timestamp(self) -> datetime:
+        """Alias for candle_timestamp."""
+        return self.candle_timestamp
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert observation to flat dictionary for tabular processing."""
@@ -841,6 +857,13 @@ def assemble_intraday_dataset(
         return []
     if horizon_bars < 1:
         raise ValidationError(f"horizon_bars must be >= 1 (got {horizon_bars})")
+
+    # Multi-symbol check for instrument isolation
+    symbols = {c.symbol for c in candles}
+    if len(symbols) > 1:
+        raise ValidationError(
+            f"Multiple symbols detected in candle sequence: {sorted(symbols)}. Single-symbol isolation is required."
+        )
 
     # Sort strictly chronologically
     sorted_candles = sorted(candles, key=lambda c: (c.symbol, c.timestamp))
@@ -911,6 +934,7 @@ def assemble_intraday_dataset(
                 target_binary=target_binary,
                 target_realized_at=target_realized_at,
                 target_status=target_status,
+                candle=current_candle,
             )
             dataset.append(obs)
 
@@ -937,6 +961,24 @@ class IntradaySplit:
     train_down_count: int
     val_up_count: int
     val_down_count: int
+    train_indices: Sequence[int] = ()
+    val_indices: Sequence[int] = ()
+    embargo_indices: Sequence[int] = ()
+
+    @property
+    def fold_index(self) -> int:
+        """Alias for fold index."""
+        return self.fold
+
+    @property
+    def train_end_timestamp(self) -> datetime:
+        """Alias for train_end timestamp."""
+        return self.train_end
+
+    @property
+    def val_end_timestamp(self) -> datetime:
+        """Alias for val_end timestamp."""
+        return self.val_end
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize fold split metadata."""
@@ -954,6 +996,9 @@ class IntradaySplit:
             "train_down_count": self.train_down_count,
             "val_up_count": self.val_up_count,
             "val_down_count": self.val_down_count,
+            "train_indices": list(self.train_indices),
+            "val_indices": list(self.val_indices),
+            "embargo_indices": list(self.embargo_indices),
         }
 
 
@@ -991,6 +1036,9 @@ def generate_intraday_chronological_splits(
     if not observations:
         raise ValidationError("Cannot split an empty observation sequence.")
 
+    # Build reference mapping for index retrieval
+    obs_to_idx = {id(o): idx for idx, o in enumerate(observations)}
+
     # Filter strictly to labeled observations
     labeled = [o for o in observations if o.has_target]
     if not labeled:
@@ -1005,7 +1053,7 @@ def generate_intraday_chronological_splits(
     min_required = min_train_samples + (n_splits * min_val_samples)
     if N < min_required:
         raise ValidationError(
-            f"Insufficient labeled observations ({N}) for {n_splits} folds with min_train={min_train_samples} "
+            f"Insufficient dataset observations: {N} labeled samples for {n_splits} folds with min_train={min_train_samples} "
             f"and min_val={min_val_samples} (requires at least {min_required} samples)."
         )
 
@@ -1030,13 +1078,13 @@ def generate_intraday_chronological_splits(
             raise ValidationError(f"Last training observation in fold {fold} has None target_realized_at.")
 
         # Find observations that fall within the embargo window
-        # (any observation whose feature realization timestamp <= training target realization cutoff)
+        # (any observation that was forming or realized on or before training target realization cutoff)
         rem_obs = labeled[train_end_idx:]
         embargo_obs: List[IntradayDatasetObservation] = []
         val_candidates: List[IntradayDatasetObservation] = []
 
         for candidate in rem_obs:
-            if candidate.available_at <= target_cutoff:
+            if candidate.candle_timestamp < target_cutoff or candidate.available_at <= target_cutoff:
                 embargo_obs.append(candidate)
             else:
                 val_candidates.append(candidate)
@@ -1059,6 +1107,10 @@ def generate_intraday_chronological_splits(
         val_up = sum(1 for o in val_obs if o.target_binary == 1)
         val_down = sum(1 for o in val_obs if o.target_binary == 0)
 
+        train_indices = [obs_to_idx[id(o)] for o in train_obs if id(o) in obs_to_idx]
+        val_indices = [obs_to_idx[id(o)] for o in val_obs if id(o) in obs_to_idx]
+        embargo_indices = [obs_to_idx[id(o)] for o in embargo_obs if id(o) in obs_to_idx]
+
         split = IntradaySplit(
             fold=fold,
             train_observations=train_obs,
@@ -1076,6 +1128,9 @@ def generate_intraday_chronological_splits(
             train_down_count=train_down,
             val_up_count=val_up,
             val_down_count=val_down,
+            train_indices=train_indices,
+            val_indices=val_indices,
+            embargo_indices=embargo_indices,
         )
         splits.append(split)
 

@@ -1739,3 +1739,39 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
   - **Availability Timestamp:** Every feature record carries `available_at = candle.bar_end_timestamp`, prohibiting consumers from observing completed candle statistics at bar open time.
   - **Future Invariance:** Formally proven via automated regression tests: appending or altering future candles leaves all earlier feature records 100% bit-for-bit unchanged.
   - **Zero Model Evaluation:** Feature engineering only; no intraday ML models trained or evaluated.
+
+---
+
+### 4.43 Intraday Dataset Assembly and Walk-Forward Validation Foundation (Day 71)
+- **Objective & Scope:**
+  Construct a deterministic, leakage-safe intraday dataset assembly and expanding-window chronological walk-forward split engine in `app/market/intraday.py`. Establishes typed dataset observation contracts, explicit forward prediction targets, session boundary guards, and purged target embargoes without training or deploying machine learning models.
+- **Dataset Contract (`IntradayDatasetObservation`):**
+  - Typed, frozen dataclass linking a point-in-time intraday observation with its forward prediction target and realization timing:
+    - `symbol`: Ticker string (single-instrument isolation enforced).
+    - `session_date`: Exchange trading calendar date (`datetime.date`).
+    - `candle_timestamp`: Start timestamp of the observation candle (localized to `Asia/Kolkata` IST).
+    - `available_at`: Point in time when candle $t$ and its features become known (`candle.bar_end_timestamp`).
+    - `interval`: Intraday interval enum (`1m`, `5m`, etc.).
+    - `features`: Validated `IntradayFeatureRecord` computed from past and current candles only.
+    - `candle`: Reference to validated `IntradayCandle`.
+    - `target_horizon_bars`: Configurable prediction horizon $H$ (default 3 bars).
+    - `target_return`: Percentage close-to-close return $(P_{t+H} - P_t) / P_t$, or `None` if incomplete.
+    - `target_direction`: Categorical direction `"UP"` or `"DOWN"` (or `None`).
+    - `target_binary`: Binary direction label ($1$ if $P_{t+H} > P_t$ else $0$, or `None`).
+    - `target_realized_at`: Timestamp when the target outcome is realized ($t+H$ candle's `bar_end_timestamp`).
+    - `target_status`: Target quality classification (`IntradayTargetStatus`).
+- **Target Label Design & Quarantine Rules (`IntradayTargetStatus`):**
+  1. `AVAILABLE`: Contiguous $H$-bar forward horizon within the same session.
+  2. `SESSION_CLOSE_CUTOFF`: Observation occurs within $H$ bars of regular market close (15:30:00 IST). Target return and direction are strictly `None`. Targets NEVER span overnight gaps or non-trading closures.
+  3. `INCOMPLETE_HORIZON_GAP`: Intraday feed gap between $t$ and $t+H$ ($\Delta t \neq H \times \text{duration}$). Target is strictly `None` (zero price fabrication).
+  4. `MISSING_OUTCOME`: Invalid or zero price on current or target candle.
+  5. **Equal Price Handling:** If $P_{t+H} == P_t$ (zero return), target is deterministically classified as `"DOWN"` / $0$ (requiring strictly positive excess return for an `"UP"` label).
+- **Chronological Walk-Forward Splits & Target Embargo (`IntradaySplit`):**
+  - `generate_intraday_chronological_splits()`: Generates expanding-window walk-forward folds without random shuffling.
+  - **Purged Target Embargo Invariant:** For a training window ending at observation $t_k$, its forward label realizes at $T_{\text{cutoff}} = t_k.\text{target\_realized\_at}$. Any subsequent observation whose candle was forming or realized on or before $T_{\text{cutoff}}$ ($\text{candle\_timestamp} < T_{\text{cutoff}}$ or $\text{available\_at} \le T_{\text{cutoff}}$) is placed into the `EMBARGO` partition.
+  - **Disjoint Partitions:** $\text{Train} \cap \text{Val} = \emptyset$, $\text{Train} \cap \text{Embargo} = \emptyset$, $\text{Val} \cap \text{Embargo} = \emptyset$.
+  - Validation observations are guaranteed to start strictly at or after training target realization ($\text{val.observation\_timestamp} \ge T_{\text{cutoff}}$), eliminating target overlap leakage.
+- **Data Source Reality & Verification:**
+  - Real historical intraday candles remain limited in current free providers (e.g. YFinance intraday depth constraints).
+  - Provider integration is decoupled; deterministic unit tests use synthetic test fixtures (`source='synthetic_test'`) to guarantee reproducible, offline validation.
+  - Zero model training or forecast accuracy claims today. Phase 16 operational status remains strictly **IN PROGRESS**.

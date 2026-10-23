@@ -40,6 +40,7 @@ def _make_candle(
     close: float,
     volume: int | None = 1000,
     interval: IntradayInterval = IntradayInterval.M5,
+    source: str = "synthetic_test",
 ) -> IntradayCandle:
     return IntradayCandle(
         symbol=symbol,
@@ -50,6 +51,7 @@ def _make_candle(
         close=close,
         volume=volume,
         interval=interval,
+        source=source,
     )
 
 
@@ -124,32 +126,38 @@ def test_target_label_alignment_and_return():
     # Bar 0
     assert dataset[0].target_status == IntradayTargetStatus.AVAILABLE
     assert dataset[0].target_return == pytest.approx(0.10, abs=1e-5)
-    assert dataset[0].target_direction == 1
+    assert dataset[0].target_binary == 1
+    assert dataset[0].target_direction == "UP"
 
     # Bar 1
     assert dataset[1].target_status == IntradayTargetStatus.AVAILABLE
     assert dataset[1].target_return == pytest.approx((102.0 - 105.0) / 105.0, abs=1e-5)
-    assert dataset[1].target_direction == 0
+    assert dataset[1].target_binary == 0
+    assert dataset[1].target_direction == "DOWN"
 
     # Bar 2
     assert dataset[2].target_status == IntradayTargetStatus.AVAILABLE
-    assert dataset[2].target_direction == 0
+    assert dataset[2].target_binary == 0
+    assert dataset[2].target_direction == "DOWN"
 
     # Bar 3
     assert dataset[3].target_status == IntradayTargetStatus.AVAILABLE
-    assert dataset[3].target_direction == 1
+    assert dataset[3].target_binary == 1
+    assert dataset[3].target_direction == "UP"
 
     # Bar 4 & 5 (Cutoff)
     assert dataset[4].target_status == IntradayTargetStatus.SESSION_CLOSE_CUTOFF
     assert dataset[4].target_return is None
     assert dataset[4].target_direction is None
+    assert dataset[4].target_binary is None
 
     assert dataset[5].target_status == IntradayTargetStatus.SESSION_CLOSE_CUTOFF
     assert dataset[5].target_return is None
+    assert dataset[5].target_binary is None
 
 
 def test_equal_price_handling():
-    """Zero return (equal price) must map deterministically to direction 0 (not up)."""
+    """Zero return (equal price) must map deterministically to direction DOWN / 0 (not up)."""
     day = date(2026, 10, 15)
     start_time = datetime(2026, 10, 15, 9, 15, tzinfo=IST)
     # Bar 0: 100, Bar 1: 100
@@ -160,7 +168,8 @@ def test_equal_price_handling():
     dataset = assemble_intraday_dataset(candles, horizon_bars=1)
     assert dataset[0].target_status == IntradayTargetStatus.AVAILABLE
     assert dataset[0].target_return == 0.0
-    assert dataset[0].target_direction == 0  # Not strictly positive
+    assert dataset[0].target_binary == 0  # Not strictly positive
+    assert dataset[0].target_direction == "DOWN"
 
 
 # =========================================================================
@@ -180,7 +189,7 @@ def test_feature_columns_contain_no_future_data():
         
         # Compare key metrics
         assert obs.feature_record.close == isolated_features.close
-        assert obs.feature_record.vwap == isolated_features.vwap
+        assert obs.feature_record.session_vwap == isolated_features.session_vwap
         assert obs.feature_record.return_1bar == isolated_features.return_1bar
         assert obs.feature_record.opening_range_breakout == isolated_features.opening_range_breakout
 
@@ -271,7 +280,7 @@ def test_missing_volume_preservation():
         _make_candle("WIPRO", start_time + timedelta(minutes=5), 505.0, volume=None),
     ]
     dataset = assemble_intraday_dataset(candles, horizon_bars=1)
-    assert dataset[0].feature_record.vwap is None
+    assert dataset[0].feature_record.session_vwap is None
     assert dataset[0].candle.volume is None
 
 
@@ -333,10 +342,11 @@ def test_expanding_chronological_splits_and_embargo():
         # Last training observation with an available target
         last_train_obs = dataset[max_train_idx]
         if last_train_obs.target_realized_at is not None:
-            # All validation observations must occur strictly AFTER train target realization!
+            # All validation observations must start at or after train target realization!
             for val_idx in split.val_indices:
                 val_obs = dataset[val_idx]
-                assert val_obs.observation_timestamp > last_train_obs.target_realized_at
+                assert val_obs.observation_timestamp >= last_train_obs.target_realized_at
+                assert val_obs.available_at > last_train_obs.target_realized_at
 
 
 def test_split_reproducibility():
@@ -393,6 +403,7 @@ def test_future_data_tampering_zero_leakage():
             close=c.close * 10.0,
             volume=(c.volume or 1000) * 10,
             interval=c.interval,
+            source=c.source,
         )
         tampered_candles.append(tampered_c)
 
