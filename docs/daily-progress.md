@@ -6234,3 +6234,97 @@ Execute the final integration and release-readiness audit for the six-day Web Ap
 - **Web Application Phase (Days 63–68) Development Complete:** The user-facing web dashboard, API contracts, presentation honesty, accessibility standards, and browser workflows are verified and regression-free.
 - **Phase 16 Status:** **Strictly IN PROGRESS.** In accordance with roadmap exit criteria, Phase 16 remains active until external staging cluster deployment, live market soak testing, and operational release sign-off are completed.
 - **Handoff Target:** Ready for staging operations, production deployment packaging, and external infrastructure verification.
+
+---
+
+## Day 69 - Intraday Engine: Architecture Audit & Safe Implementation
+
+### Goal
+Audit the repository's intraday architecture, document existing versus missing components, and implement a minimal, robust, and testable intraday engine foundation in `app/market/intraday.py` that strictly prevents data contamination with daily pipelines, preserves authentic volume and session boundaries, and enforces zero-fabrication safety.
+
+---
+
+### 1. Preflight Repository & Environment Integrity
+- **Repository:** `https://github.com/naiya555/stock-market-prediction-system.git`
+- **Branch:** `main`
+- **Baseline Commit:** `528e7e2` (`docs(web): complete phase 16 web application integration and readiness audit`)
+- **Remote Synchronization:** Verified local `main` synchronized with `origin/main`. Working tree clean.
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**)
+
+---
+
+### 2. Architecture Inspection & Gap Analysis
+
+#### A. Existing Components
+1. **`MarketOHLCV` (`app/core/schemas.py`):** Canonical contract with `has_intraday_ohl` property (used to verify if index history has true intraday OHL vs. close-only). However, it lacks interval identifiers and was designed for multi-year daily series.
+2. **`app/market/session.py`:** Complete Indian equity trading calendar engine in `Asia/Kolkata` (IST) with `PRE_OPEN` (09:00–09:15), `REGULAR_HOURS` (09:15–15:30), `POST_CLOSE` (15:30–16:00), `CLOSED`, and declared 2026 NSE exchange holidays.
+3. **`LiveQuote` (`app/market/quote.py`):** Near-real-time single quote contract disclosing 15-minute delay on free feeds and assessing freshness.
+4. **`YFinanceProvider` (`app/market/providers/yfinance_provider.py`):** Contains fallback 1-minute quote polling, but no continuous intraday bar series ingestion or session caching.
+
+#### B. Missing Components Identified
+1. **Intraday Data Contract:** Lack of a dedicated `IntradayCandle` contract with interval specifications (`1m`, `5m`, `15m`, `30m`, `60m`), bar start/end timestamps, and explicit volume availability tracking.
+2. **Daily vs. Intraday Isolation:** Risk of passing intraday candles into daily indicators (e.g. 200 SMA or 14 ATR expecting daily bars) or daily prediction models.
+3. **Intraday Data Cleaning & Auditing:** No validation pipeline for duplicate candle resolution, out-of-order sorting, interval consistency, or market session boundaries.
+4. **Session Gap Detection:** No mechanism to detect missing candles during active trading hours without synthesizing fake prices.
+5. **Intraday Predictive Model:** Daily models (`models/xgboost_direction.json`, `models/lightgbm_direction.txt`) are trained on daily features for `BHARTIARTL`. Zero intraday models currently exist in the repository.
+
+---
+
+### 3. Work Completed & Implementation Details
+
+1. **Canonical Intraday Candlestick Contract (`app/market/intraday.py`):**
+   - Implemented `IntradayInterval` enum (`M1`, `M5`, `M15`, `M30`, `M60`) with `duration_seconds`, `duration_minutes`, and `expected_bars_per_regular_session` (e.g. 75 bars for 5m across 375 minutes).
+   - Implemented `IntradayCandle` frozen dataclass:
+     - Fields: `symbol`, `timestamp` (normalized to `Asia/Kolkata`), `interval`, `open`, `high`, `low`, `close`, optional `volume`, `volume_reported`, `source`.
+     - Physical boundary validation: `high >= low`, `high >= max(open, close)`, `low <= min(open, close)`.
+     - Explicit optional volume: `volume=None` sets `volume_reported=False` and preserves `None`, avoiding silent conversion to `0`. Genuine `0` volume is tracked with `volume_reported=True`.
+     - Properties: `bar_end_timestamp`, `is_regular_hours` (09:15 <= time < 15:30 IST on trading days).
+2. **Intraday Cleaning & Quality Audit (`clean_intraday_candles`):**
+   - Validates timestamps and converts timezone to `Asia/Kolkata`.
+   - Collapses identical duplicates into a single candle.
+   - Quarantines and rejects conflicting duplicate quotes on the same timestamp.
+   - Enforces chronological sort by `(symbol, timestamp)` ascending.
+   - Performs O(n) continuous gap auditing: detects missing intervals between consecutive bars in a session and logs `gap_intervals` without fabricating fake candles.
+   - Filters out-of-session candles (pre-open, post-market, weekend, holiday) unless `allow_out_of_session=True`.
+3. **Provider Abstraction & Synthetic Fixture:**
+   - Defined `BaseIntradayDataProvider` abstract base contract.
+   - Implemented `SyntheticTestIntradayProvider` for deterministic, offline testing without external network flakiness.
+4. **Intraday Engine & Safety Guards (`IntradayEngine`):**
+   - Restricts ingestion to supported instrument catalog (`BHARTIARTL`); rejects unauthorized stocks (`TCS`, `RELIANCE`) or indices (`NIFTY_*`).
+   - Integrates with `get_market_session` for session validation.
+   - Forecast safety guard: `verify_forecast_readiness()` strictly returns `MODEL_UNAVAILABLE`, preventing daily models (`models/xgboost_direction.*`) from being evaluated on intraday bars.
+5. **Module Exports:**
+   - Exported intraday contracts and engine cleanly from `app/market/__init__.py`.
+6. **Deterministic Test Suite (`tests/test_intraday_engine.py`):**
+   - Created 23 focused test cases covering valid candle acceptance, invalid OHLC rejection, duplicate handling, gap auditing, optional volume, session filtering, instrument guards, and forecast safety.
+
+---
+
+### 4. Verification & Quality Gates
+
+- **Targeted Intraday Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest tests/test_intraday_engine.py -q
+  ```
+  **23 passed** in 3.76s (0 failures).
+- **Full Repository Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **845 passed**, 1 warning across all 58 test modules in 72.38s (0 failures, 0 regressions).
+- **Quality Checks:**
+  - `node -c app/api/static/js/app.js`: Clean (0 errors).
+  - `.\.venv\Scripts\python -m pip check`: No broken requirements found.
+  - `git diff --check`: Clean (0 whitespace errors).
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**)
+
+---
+
+### 5. Known Limitations & Next Steps
+1. **Intraday Model:** No intraday machine learning model is claimed or deployed. The engine explicitly guards against evaluating daily models on intraday bars.
+2. **Data Providers:** Live intraday streaming remains subject to free tier latency and rate limits (~15m delay on Yahoo Finance). High-frequency tick feeds require dedicated broker API integrations.
+3. **Phase 16 Status:** **Strictly IN PROGRESS.**

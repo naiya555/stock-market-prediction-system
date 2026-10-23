@@ -1683,3 +1683,30 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
   - This integration audit marks the web application layer as development-complete.
   - This is not a production release, public deployment, multi-hour cloud soak test, or claim of trading edge.
   - Phase 16 remains strictly **IN PROGRESS** pending external staging cluster provisioning, multi-hour soak testing during live exchange hours, and operational deployment sign-off.
+
+---
+
+### 4.41 Intraday Engine: Architecture Audit and Safe Implementation (Day 69)
+- **Objective & Architectural Scope:**
+  Audit existing repository capabilities for intraday data processing, identify missing components, and implement a minimal, robust, and testable intraday engine foundation in `app/market/intraday.py` that strictly prevents data contamination with daily pipelines and enforces zero-fabrication safety.
+- **Architectural Components Implemented:**
+  1. **Canonical Intraday Candlestick Contract (`IntradayCandle`):**
+     - Typed, frozen dataclass carrying `symbol`, `timestamp` (strictly localized to `Asia/Kolkata` IST), `interval` (`IntradayInterval`: `1m`, `5m`, `15m`, `30m`, `60m`), `open`, `high`, `low`, `close`, optional `volume` (`int >= 0` or `None`), `volume_reported` boolean flag, and `source`.
+     - Validates physical boundary invariants: `high >= low`, `high >= max(open, close)`, and `low <= min(open, close)`.
+     - Strictly distinct from daily `MarketOHLCV` to prevent intraday bars from polluting daily indicator engines (e.g. 200 SMA warmup) or daily prediction models.
+     - Optional volume preservation: volume of `None` is explicitly tracked with `volume_reported = False`, never silently defaulted to 0.
+  2. **Intraday Data Cleaning & Quality Audit (`clean_intraday_candles`):**
+     - Deduplication: Identical duplicates on (symbol, timestamp, interval) are safely collapsed into 1 candle; conflicting duplicate quotes are quarantined/rejected.
+     - Chronological Monotonicity: Strict sorting by `(symbol, timestamp)` ascending.
+     - Gap Auditing Without Fabrication: Detects missing intervals during continuous trading sessions (09:15 to 15:30 IST) and logs `gap_intervals` without synthesizing fake interpolated candles.
+     - Market Session Conformance: Quarantines pre-open, post-market, weekend, and holiday bars unless `allow_out_of_session=True`.
+  3. **Provider Interface & Synthetic Fixture:**
+     - `BaseIntradayDataProvider`: Abstract interface enforcing provider separation from feature computation and inference logic.
+     - `SyntheticTestIntradayProvider`: In-memory deterministic fixture provider for offline regression testing without external network flakiness.
+  4. **Intraday Engine & Safety Guards (`IntradayEngine`):**
+     - Instrument Taxonomy Isolation: Enforces authorized instrument catalog (`BHARTIARTL`); strictly fast-fails on unauthorized equities (`TCS`, `RELIANCE`) or indices (`NIFTY_*`).
+     - Session Calendar Integration: Validates trading session status using `app/market/session.py`.
+     - Forecast Safety Guard: `verify_forecast_readiness()` strictly returns `MODEL_UNAVAILABLE`, preventing premature forecast execution and preventing daily models (`models/xgboost_direction.*`) from being evaluated on intraday bars.
+- **Protected Files & Roadmaps:**
+  - `data/predictions.db` and `models/.gitkeep` verified 100% immutable and untouched.
+  - Phase 16 remains strictly **IN PROGRESS**.

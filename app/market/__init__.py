@@ -94,6 +94,16 @@ from app.market.visualizer import (
     plot_closing_prices,
     plot_daily_returns,
 )
+from app.market.intraday import (
+    BaseIntradayDataProvider,
+    IntradayCandle,
+    IntradayCleaningResult,
+    IntradayEngine,
+    IntradayInterval,
+    IntradayQualitySummary,
+    SyntheticTestIntradayProvider,
+    clean_intraday_candles,
+)
 
 __all__ = [
     "BaseMarketDataProvider",
@@ -171,6 +181,14 @@ __all__ = [
     "LiveQuote",
     "DEFAULT_DELAY_DISCLAIMER",
     "fetch_live_quote",
+    "IntradayInterval",
+    "IntradayCandle",
+    "IntradayQualitySummary",
+    "IntradayCleaningResult",
+    "clean_intraday_candles",
+    "BaseIntradayDataProvider",
+    "SyntheticTestIntradayProvider",
+    "IntradayEngine",
 ]
 
 
