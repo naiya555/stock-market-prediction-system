@@ -1775,3 +1775,40 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
   - Real historical intraday candles remain limited in current free providers (e.g. YFinance intraday depth constraints).
   - Provider integration is decoupled; deterministic unit tests use synthetic test fixtures (`source='synthetic_test'`) to guarantee reproducible, offline validation.
   - Zero model training or forecast accuracy claims today. Phase 16 operational status remains strictly **IN PROGRESS**.
+
+---
+
+### 4.44 Intraday Baseline Benchmark Evaluation & Out-of-Fold Audit (Day 72)
+- **Objective & Architectural Scope:**
+  Implement a reproducible, zero-leakage baseline benchmark evaluation framework in `app/market/intraday.py` using chronological expanding-window walk-forward splits. Evaluates simple, non-parametric reference baselines against forward intraday direction targets without training complex ML models, while strictly enforcing synthetic data quarantine (`BLOCKED_NO_EMPIRICAL_DATA`).
+- **Baseline Strategies Implemented:**
+  1. **Majority-Class Baseline (`MajorityClassBaseline`):**
+     - Selects the majority class strictly from the training partition.
+     - Deterministic Tie-Breaking: If UP count equals DOWN count, defaults to $0$ / DOWN with probability $0.0$, matching the conservative non-positive return default policy.
+  2. **Constant-Probability Reference (`ConstantProbabilityBaseline`):**
+     - Emits a fixed uninformative probability reference of $P(\text{UP}) = 0.50$ and $P(\text{DOWN}) = 0.50$.
+     - Hard label maps to $0$ (DOWN) by conservative decision boundary ($p > 0.50$ for UP).
+     - Probabilistic scoring (Brier score and Log Loss) strictly uses the continuous $0.50$ output, yielding theoretical baselines of $\text{Brier} = 0.2500$ and $\text{LogLoss} = \ln(2) \approx 0.6931$.
+  3. **Training-Prior Baseline (`TrainingPriorBaseline`):**
+     - Estimates the empirical base rate $p_{\text{up}} = N_{\text{up}} / N_{\text{train}}$ strictly from the training partition.
+     - Hard prediction: $1$ if $p_{\text{up}} > 0.50$, else $0$.
+     - Safeguard: Defaults to $0.50$ on empty or unpopulated training folds.
+  4. **Persistence Baseline (`PersistenceBaseline`):**
+     - Utilizes the most recent completed 1-bar percentage return (`return_1bar`) available at candle $t$'s close ($T_{\text{pred}}$).
+     - Predicts $1$ (UP) if $\text{return\_1bar} > 0.0$, and $0$ (DOWN) if $\text{return\_1bar} \le 0.0$.
+     - Fallback: On session open bars where $\text{return\_1bar}$ is `None`, falls back safely to the training prior $p_{\text{up}}$.
+- **Comprehensive Evaluation Metrics (`IntradayEvaluationMetrics`):**
+  - Confusion Matrix: `[[TN, FP], [FN, TP]]`.
+  - Accuracy: $(TP + TN) / \text{Total}$.
+  - Precision (UP): $TP / (TP + FP)$ if $(TP + FP) > 0$ else `None` (explicitly undefined, never silently replaced with $0.0$).
+  - Recall (UP) / Sensitivity: $TP / (TP + FN)$ if $(TP + FN) > 0$ else `None`.
+  - Specificity (Recall DOWN): $TN / (TN + FP)$ if $(TN + FP) > 0$ else `None`.
+  - F1 (UP): $2 \times (\text{Prec} \times \text{Rec}) / (\text{Prec} + \text{Rec})$ if defined and non-zero, else `None`.
+  - Balanced Accuracy: $0.5 \times (\text{Sensitivity} + \text{Specificity})$ if both defined, else `None`.
+  - Brier Score: $(1/N) \sum (p_i - y_i)^2$.
+  - Log Loss: Binary cross-entropy with probability clipping to $[\epsilon, 1-\epsilon]$ ($\epsilon = 10^{-15}$).
+- **Walk-Forward Audit & Anti-Leakage Protocol (`evaluate_intraday_baseline_walk_forward`):**
+  - Full audit trail of excluded observations (`SESSION_CLOSE_CUTOFF`, `INCOMPLETE_HORIZON_GAP`, `MISSING_OUTCOME`).
+  - Zero duplicate validation pooling: Enforces that out-of-fold validation observation timestamps across all folds are strictly disjoint. Any duplicate timestamp collision raises `ValidationError`.
+  - Synthetic Data Quarantine: Detects observations tagged with `source="synthetic_test"` and flags `is_synthetic_fixture=True` and `empirical_status="BLOCKED_NO_EMPIRICAL_DATA"`. Synthetic fixtures are never persisted as real market data or reported as empirical prediction validation.
+  - Phase 16 operational status remains strictly **IN PROGRESS**.

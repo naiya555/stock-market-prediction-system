@@ -6525,3 +6525,87 @@ Build a deterministic, leakage-safe intraday dataset assembly and expanding-wind
 1. **Intraday Model Training:** No machine learning models were trained or evaluated on Day 71. The dataset assembly layer prepares verified, leakage-free tabular partitions for downstream modeling.
 2. **Real Data Availability:** Genuine historical intraday tick/bar depth is constrained in current free external data providers; unit and leakage tests use isolated deterministic synthetic test fixtures.
 3. **Phase 16 Status:** **Strictly IN PROGRESS.** Phase 16 operational release criteria require live staging soak testing and operational deployment sign-off.
+
+---
+
+## Day 72 - Intraday Baseline Benchmark Evaluation and Out-of-Fold Audit
+
+### Goal
+Implement a reproducible, zero-leakage baseline benchmark evaluation framework on top of the existing intraday dataset assembly and chronological walk-forward splitting engine. Establish non-parametric baseline reference predictors (`MajorityClassBaseline`, `ConstantProbabilityBaseline`, `TrainingPriorBaseline`, `PersistenceBaseline`), robust metric evaluations handling undefined edge cases explicitly, and an out-of-fold audit enforcing strict synthetic data quarantine (`BLOCKED_NO_EMPIRICAL_DATA`).
+
+---
+
+### 1. Preflight Repository & Environment Integrity
+- **Repository:** `https://github.com/naiya555/stock-market-prediction-system.git`
+- **Branch:** `main`
+- **Starting Commit:** `eff0ccd` (`feat(market): implement intraday dataset assembly and walk-forward validation`)
+- **Remote Synchronization:** Verified synchronized with `origin/main` (commit `eff0ccd` confirmed on both local and remote). Working tree clean.
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**)
+
+---
+
+### 2. Baseline Predictors & Evaluation Design
+
+1. **Baseline Predictor Contracts:**
+   - **`MajorityClassBaseline`:** Predicts the most frequent class in the training partition. Deterministic tie-breaking defaults to 0 (DOWN) with probability 0.0.
+   - **`ConstantProbabilityBaseline`:** Uninformative reference emitting $P(\text{UP}) = 0.50$ and hard label 0 (DOWN). Brier score and Log Loss evaluate directly against 0.50.
+   - **`TrainingPriorBaseline`:** Estimates $p_{\text{up}} = N_{\text{up}} / N_{\text{train}}$ from training data. Predicts 1 if $p_{\text{up}} > 0.50$, else 0. Safeguarded fallback to 0.50 on empty training sets.
+   - **`PersistenceBaseline`:** Predicts direction of most recent completed 1-bar return (`return_1bar`) available at candle $t$'s close ($T_{\text{pred}}$). Falls back to training prior on session open bars.
+2. **Comprehensive Metric Formulations (`compute_intraday_evaluation_metrics`):**
+   - Confusion matrix `[[TN, FP], [FN, TP]]`.
+   - Accuracy, Precision (UP), Recall (UP), Specificity (DOWN), F1 (UP), Balanced accuracy.
+   - Undefined metric handling: When $TP + FP = 0$, precision and F1 evaluate explicitly to `None` (never silently fabricated as 0.0).
+   - Continuous Brier score: $(1/N) \sum (p_i - y_i)^2$.
+   - Binary Log Loss with epsilon clipping to $[\epsilon, 1-\epsilon]$ ($\epsilon = 10^{-15}$).
+3. **Walk-Forward Audit & Quarantine Protocol (`evaluate_intraday_baseline_walk_forward`):**
+   - Fits baselines strictly on `split.train_observations` and predicts on `split.val_observations`.
+   - Rejects duplicate prediction timestamps across folds with `ValidationError` to guarantee non-overlapping out-of-fold validation windows.
+   - Tracks total, eligible, and excluded observations with explicit counts and reasons (`SESSION_CLOSE_CUTOFF`, `INCOMPLETE_HORIZON_GAP`, `MISSING_OUTCOME`).
+   - Synthetic Data Quarantine: Identifies `source="synthetic_test"` and flags `empirical_status="BLOCKED_NO_EMPIRICAL_DATA"` to prevent test fixtures from being represented as market performance.
+
+---
+
+### 3. Work Completed & Implementation Details
+
+1. **Baseline Evaluation Core (`app/market/intraday.py`):**
+   - Implemented `IntradayBaselinePrediction` frozen dataclass.
+   - Implemented `IntradayEvaluationMetrics` frozen dataclass with `to_dict()`.
+   - Implemented `compute_intraday_evaluation_metrics()`.
+   - Implemented `MajorityClassBaseline`, `ConstantProbabilityBaseline`, `TrainingPriorBaseline`, `PersistenceBaseline`.
+   - Implemented `IntradayFoldResult` and `IntradayBaselineAudit`.
+   - Implemented `evaluate_intraday_baseline_walk_forward()`.
+2. **Module Exports (`app/market/__init__.py`):**
+   - Cleanly exported all new baseline predictors and evaluation contracts.
+3. **Deterministic Test Suite (`tests/test_intraday_baselines.py`):**
+   - 13 focused unit tests covering majority-class calculations, tie-breaking, constant 0.50 probability metrics, training-prior base rates, persistence return inspection, undefined metric handling, duplicate validation collision rejection, synthetic data isolation, and validation label tampering zero-leakage invariance.
+
+---
+
+### 4. Verification & Quality Gates
+
+- **Focused Intraday Test Suites:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest tests/test_intraday_engine.py tests/test_intraday_features.py tests/test_intraday_dataset.py tests/test_intraday_baselines.py -v
+  ```
+  **57 passed** in 2.88s (0 failures).
+- **Full Repository Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **879 passed**, 1 warning across all 61 test modules in 77.50s (0 failures, 0 regressions).
+- **Quality Checks:**
+  - `node -c app/api/static/js/app.js`: Clean (0 errors).
+  - `.\.venv\Scripts\python -m pip check`: No broken requirements found.
+  - `git diff --check`: Clean (0 whitespace errors).
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**)
+
+---
+
+### 5. Known Limitations & Next Steps
+1. **Empirical Evaluation Blocked:** Genuine historical intraday bar depth is not available in free providers or local storage without real-time exchange streaming. Empirical evaluation is marked `BLOCKED_NO_EMPIRICAL_DATA`. Synthetic fixtures were used strictly for offline unit testing and are never claimed as market predictive performance.
+2. **No Machine Learning Models Trained:** In accordance with the Day 72 scope, no XGBoost, LightGBM, or neural models were trained or evaluated on intraday data.
+3. **Phase 16 Status:** **Strictly IN PROGRESS.** Phase 16 operational release criteria require live staging soak testing and operational deployment sign-off.

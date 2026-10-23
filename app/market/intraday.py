@@ -1135,3 +1135,509 @@ def generate_intraday_chronological_splits(
         splits.append(split)
 
     return splits
+
+
+# =========================================================================
+# DAY 72: Intraday Baseline Benchmark Evaluation & Out-of-Fold Audit
+# =========================================================================
+
+
+@dataclass(frozen=True)
+class IntradayBaselinePrediction:
+    """Out-of-fold directional prediction record from an intraday baseline model."""
+
+    symbol: str
+    session_date: date
+    candle_timestamp: datetime
+    prediction_timestamp: datetime
+    target_realized_at: datetime
+    target_horizon_bars: int
+    fold: int
+    model_name: str
+    predicted_probability: float  # Continuous probability of UP in [0.0, 1.0]
+    predicted_binary: int         # Hard binary prediction (1 for UP, 0 for DOWN)
+    actual_binary: int            # Ground truth direction (1 for UP, 0 for DOWN)
+    actual_return: Optional[float]
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize prediction metadata."""
+        return {
+            "symbol": self.symbol,
+            "session_date": self.session_date.isoformat(),
+            "candle_timestamp": self.candle_timestamp.isoformat(),
+            "prediction_timestamp": self.prediction_timestamp.isoformat(),
+            "target_realized_at": self.target_realized_at.isoformat(),
+            "target_horizon_bars": self.target_horizon_bars,
+            "fold": self.fold,
+            "model_name": self.model_name,
+            "predicted_probability": round(self.predicted_probability, 4),
+            "predicted_binary": self.predicted_binary,
+            "actual_binary": self.actual_binary,
+            "actual_return": round(self.actual_return, 6) if self.actual_return is not None else None,
+        }
+
+
+@dataclass(frozen=True)
+class IntradayEvaluationMetrics:
+    """Comprehensive performance metrics for an intraday classifier."""
+
+    model_name: str
+    sample_count: int
+    up_count: int
+    down_count: int
+    true_positives: int
+    true_negatives: int
+    false_positives: int
+    false_negatives: int
+    accuracy: float
+    precision_up: Optional[float]
+    recall_up: Optional[float]
+    f1_up: Optional[float]
+    balanced_accuracy: Optional[float]
+    brier_score: float
+    log_loss: float
+    confusion_matrix: List[List[int]]  # [[TN, FP], [FN, TP]]
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert metrics to dictionary with rounded floats."""
+        return {
+            "model_name": self.model_name,
+            "sample_count": self.sample_count,
+            "up_count": self.up_count,
+            "down_count": self.down_count,
+            "true_positives": self.true_positives,
+            "true_negatives": self.true_negatives,
+            "false_positives": self.false_positives,
+            "false_negatives": self.false_negatives,
+            "accuracy": round(self.accuracy, 4),
+            "precision_up": round(self.precision_up, 4) if self.precision_up is not None else None,
+            "recall_up": round(self.recall_up, 4) if self.recall_up is not None else None,
+            "f1_up": round(self.f1_up, 4) if self.f1_up is not None else None,
+            "balanced_accuracy": round(self.balanced_accuracy, 4) if self.balanced_accuracy is not None else None,
+            "brier_score": round(self.brier_score, 4),
+            "log_loss": round(self.log_loss, 4),
+            "confusion_matrix": self.confusion_matrix,
+        }
+
+
+def compute_intraday_evaluation_metrics(
+    y_true: Sequence[int],
+    y_pred: Sequence[int],
+    y_prob: Sequence[float],
+    model_name: str = "baseline",
+    eps: float = 1e-15,
+) -> IntradayEvaluationMetrics:
+    """Calculate comprehensive evaluation metrics handling edge cases and undefined metrics explicitly.
+
+    Mathematical Formulations & Edge Case Guarantees:
+    - Confusion Matrix: [[TN, FP], [FN, TP]]
+    - Accuracy: (TP + TN) / Total
+    - Precision (UP): TP / (TP + FP) if (TP + FP) > 0 else None (explicitly undefined, never fabricated as 0.0)
+    - Recall (UP): TP / (TP + FN) if (TP + FN) > 0 else None
+    - F1 (UP): 2 * (Prec * Rec) / (Prec + Rec) if Prec and Rec are defined and sum > 0 else None
+    - Balanced Accuracy: 0.5 * (Sensitivity + Specificity) where:
+        Sensitivity = Recall(UP) = TP / (TP + FN)
+        Specificity = Recall(DOWN) = TN / (TN + FP)
+        If either class has 0 true samples, balanced_accuracy evaluates to None.
+    - Brier Score: (1/N) * sum((prob - true)^2)
+    - Log Loss: Binary cross-entropy with epsilon clipping to [eps, 1-eps].
+    """
+    if len(y_true) != len(y_pred) or len(y_true) != len(y_prob):
+        raise ValidationError(
+            f"Length mismatch: len(y_true)={len(y_true)}, len(y_pred)={len(y_pred)}, len(y_prob)={len(y_prob)}"
+        )
+    if len(y_true) == 0:
+        raise ValidationError("Cannot calculate evaluation metrics on empty prediction sequences.")
+
+    N = len(y_true)
+    tp = sum(1 for yt, yp in zip(y_true, y_pred) if yt == 1 and yp == 1)
+    tn = sum(1 for yt, yp in zip(y_true, y_pred) if yt == 0 and yp == 0)
+    fp = sum(1 for yt, yp in zip(y_true, y_pred) if yt == 0 and yp == 1)
+    fn = sum(1 for yt, yp in zip(y_true, y_pred) if yt == 1 and yp == 0)
+
+    up_count = sum(1 for yt in y_true if yt == 1)
+    down_count = sum(1 for yt in y_true if yt == 0)
+
+    accuracy = (tp + tn) / N
+
+    # Precision UP
+    precision_up = tp / (tp + fp) if (tp + fp) > 0 else None
+
+    # Recall UP (Sensitivity)
+    recall_up = tp / (tp + fn) if (tp + fn) > 0 else None
+
+    # Specificity (Recall DOWN)
+    specificity = tn / (tn + fp) if (tn + fp) > 0 else None
+
+    # F1 UP
+    if precision_up is not None and recall_up is not None and (precision_up + recall_up) > 0:
+        f1_up = 2.0 * (precision_up * recall_up) / (precision_up + recall_up)
+    else:
+        f1_up = None
+
+    # Balanced Accuracy
+    if recall_up is not None and specificity is not None:
+        balanced_accuracy = 0.5 * (recall_up + specificity)
+    else:
+        balanced_accuracy = None
+
+    # Brier Score
+    brier_score = sum((float(p) - float(yt)) ** 2 for yt, p in zip(y_true, y_prob)) / N
+
+    # Log Loss (with epsilon clipping)
+    loss_sum = 0.0
+    for yt, p in zip(y_true, y_prob):
+        p_clipped = max(eps, min(1.0 - eps, float(p)))
+        loss_sum -= (float(yt) * math.log(p_clipped) + (1.0 - float(yt)) * math.log(1.0 - p_clipped))
+    log_loss = loss_sum / N
+
+    return IntradayEvaluationMetrics(
+        model_name=model_name,
+        sample_count=N,
+        up_count=up_count,
+        down_count=down_count,
+        true_positives=tp,
+        true_negatives=tn,
+        false_positives=fp,
+        false_negatives=fn,
+        accuracy=accuracy,
+        precision_up=precision_up,
+        recall_up=recall_up,
+        f1_up=f1_up,
+        balanced_accuracy=balanced_accuracy,
+        brier_score=brier_score,
+        log_loss=log_loss,
+        confusion_matrix=[[tn, fp], [fn, tp]],
+    )
+
+
+class IntradayBaseline:
+    """Protocol for intraday baseline predictors."""
+
+    name: str
+
+    def fit(self, train_obs: Sequence[IntradayDatasetObservation]) -> None:
+        """Fit baseline strategy strictly from the training partition."""
+        pass
+
+    def predict(self, obs: IntradayDatasetObservation) -> Tuple[int, float]:
+        """Predict directional class and continuous probability for an observation.
+
+        Returns:
+            Tuple of (predicted_binary: 0 or 1, predicted_probability: float in [0.0, 1.0]).
+        """
+        raise NotImplementedError
+
+
+class MajorityClassBaseline(IntradayBaseline):
+    """Predicts majority directional class strictly using training partition labels.
+
+    Deterministic Tie-Breaking Rule:
+    If UP count == DOWN count, predict 0 (DOWN) with probability 0.0,
+    conforming to the conservative zero-return non-positive directional default.
+    """
+
+    name = "majority_class"
+
+    def __init__(self) -> None:
+        self.majority_label: int = 0
+        self.majority_prob: float = 0.0
+
+    def fit(self, train_obs: Sequence[IntradayDatasetObservation]) -> None:
+        labeled = [o for o in train_obs if o.has_target and o.target_binary is not None]
+        if not labeled:
+            self.majority_label = 0
+            self.majority_prob = 0.0
+            return
+
+        up_count = sum(1 for o in labeled if o.target_binary == 1)
+        down_count = sum(1 for o in labeled if o.target_binary == 0)
+
+        if up_count > down_count:
+            self.majority_label = 1
+            self.majority_prob = 1.0
+        else:
+            self.majority_label = 0
+            self.majority_prob = 0.0
+
+    def predict(self, obs: IntradayDatasetObservation) -> Tuple[int, float]:
+        return self.majority_label, self.majority_prob
+
+
+class ConstantProbabilityBaseline(IntradayBaseline):
+    """Predicts a fixed reference probability of 0.50 for UP and 0.50 for DOWN.
+
+    This is an uninformative reference anchor, not a trained statistical model.
+    Hard classification maps to 0 (DOWN) by conservative decision boundary (requires p > 0.50 for UP).
+    Probability metrics (Brier score and Log Loss) evaluate directly against the continuous 0.50 probability.
+    """
+
+    name = "constant_probability_0.50"
+
+    def fit(self, train_obs: Sequence[IntradayDatasetObservation]) -> None:
+        pass  # Zero parameters fitted
+
+    def predict(self, obs: IntradayDatasetObservation) -> Tuple[int, float]:
+        return 0, 0.50
+
+
+class TrainingPriorBaseline(IntradayBaseline):
+    """Predicts the empirical base-rate prior P(UP) observed in the training partition.
+
+    Hard prediction maps to 1 if p_up > 0.50, else 0.
+    Probability metrics evaluate against the actual continuous base rate p_up.
+    Empty training partition safeguard: defaults to 0.50.
+    """
+
+    name = "training_prior"
+
+    def __init__(self) -> None:
+        self.p_up: float = 0.50
+        self.hard_label: int = 0
+
+    def fit(self, train_obs: Sequence[IntradayDatasetObservation]) -> None:
+        labeled = [o for o in train_obs if o.has_target and o.target_binary is not None]
+        if not labeled:
+            self.p_up = 0.50
+            self.hard_label = 0
+            return
+
+        up_count = sum(1 for o in labeled if o.target_binary == 1)
+        self.p_up = up_count / len(labeled)
+        self.hard_label = 1 if self.p_up > 0.50 else 0
+
+    def predict(self, obs: IntradayDatasetObservation) -> Tuple[int, float]:
+        return self.hard_label, self.p_up
+
+
+class PersistenceBaseline(IntradayBaseline):
+    """Predicts direction of the most recent completed 1-bar return in the same session.
+
+    Formulation:
+    - If return_1bar > 0.0: predict 1 (UP) with probability 1.0.
+    - If return_1bar <= 0.0: predict 0 (DOWN) with probability 0.0.
+    - If return_1bar is None (e.g. session open bar): fallback to training prior p_up.
+    """
+
+    name = "persistence_return_1bar"
+
+    def __init__(self) -> None:
+        self.fallback_p_up: float = 0.50
+        self.fallback_hard_label: int = 0
+
+    def fit(self, train_obs: Sequence[IntradayDatasetObservation]) -> None:
+        labeled = [o for o in train_obs if o.has_target and o.target_binary is not None]
+        if not labeled:
+            self.fallback_p_up = 0.50
+            self.fallback_hard_label = 0
+            return
+
+        up_count = sum(1 for o in labeled if o.target_binary == 1)
+        self.fallback_p_up = up_count / len(labeled)
+        self.fallback_hard_label = 1 if self.fallback_p_up > 0.50 else 0
+
+    def predict(self, obs: IntradayDatasetObservation) -> Tuple[int, float]:
+        ret1 = obs.features.return_1bar
+        if ret1 is not None:
+            if ret1 > 0.0:
+                return 1, 1.0
+            else:
+                return 0, 0.0
+        return self.fallback_hard_label, self.fallback_p_up
+
+
+@dataclass(frozen=True)
+class IntradayFoldResult:
+    """Evaluation result for a single walk-forward fold."""
+
+    fold: int
+    model_name: str
+    train_count: int
+    train_up_count: int
+    train_down_count: int
+    val_count: int
+    metrics: IntradayEvaluationMetrics
+    predictions: List[IntradayBaselinePrediction]
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert fold result to dictionary."""
+        return {
+            "fold": self.fold,
+            "model_name": self.model_name,
+            "train_count": self.train_count,
+            "train_up_count": self.train_up_count,
+            "train_down_count": self.train_down_count,
+            "val_count": self.val_count,
+            "metrics": self.metrics.to_dict(),
+            "prediction_count": len(self.predictions),
+        }
+
+
+@dataclass(frozen=True)
+class IntradayBaselineAudit:
+    """Complete walk-forward evaluation audit report for an intraday predictor."""
+
+    model_name: str
+    n_splits: int
+    total_observations: int
+    eligible_observations: int
+    excluded_observations: int
+    exclusion_reasons: Dict[str, int]
+    is_synthetic_fixture: bool
+    empirical_status: str  # "BLOCKED_NO_EMPIRICAL_DATA" or "EVALUATED"
+    fold_results: List[IntradayFoldResult]
+    aggregate_metrics: Optional[IntradayEvaluationMetrics]
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert complete audit to dictionary."""
+        return {
+            "model_name": self.model_name,
+            "n_splits": self.n_splits,
+            "total_observations": self.total_observations,
+            "eligible_observations": self.eligible_observations,
+            "excluded_observations": self.excluded_observations,
+            "exclusion_reasons": self.exclusion_reasons,
+            "is_synthetic_fixture": self.is_synthetic_fixture,
+            "empirical_status": self.empirical_status,
+            "fold_results": [f.to_dict() for f in self.fold_results],
+            "aggregate_metrics": self.aggregate_metrics.to_dict() if self.aggregate_metrics else None,
+        }
+
+
+def evaluate_intraday_baseline_walk_forward(
+    observations: Sequence[IntradayDatasetObservation],
+    splits: Sequence[IntradaySplit],
+    baseline: IntradayBaseline,
+) -> IntradayBaselineAudit:
+    """Evaluate an intraday baseline across expanding-window walk-forward splits with full out-of-fold auditing.
+
+    Protocol Invariants:
+    1. Zero Validation Leakage: The baseline is fitted on split.train_observations only.
+    2. Zero Duplicate Pooling: Checks that validation observation timestamps across folds are 100% disjoint.
+       If any observation timestamp appears in multiple folds, an error is raised.
+    3. Audit Trail: Tracks total observations, eligible observations, and counts per exclusion reason
+       (SESSION_CLOSE_CUTOFF, INCOMPLETE_HORIZON_GAP, MISSING_OUTCOME).
+    4. Synthetic Data Isolation: Detects if observations originate from synthetic fixtures (source == "synthetic_test")
+       and flags empirical_status as "BLOCKED_NO_EMPIRICAL_DATA" to prevent reporting test fixtures as market evidence.
+
+    Args:
+        observations: Sequence of all IntradayDatasetObservation objects in the dataset.
+        splits: Pre-computed sequence of disjoint IntradaySplit objects.
+        baseline: Instantiated IntradayBaseline predictor.
+
+    Returns:
+        IntradayBaselineAudit with fold results and aggregate out-of-fold metrics.
+    """
+    if not observations:
+        raise ValidationError("Cannot evaluate baselines on an empty observation sequence.")
+    if not splits:
+        raise ValidationError("Cannot evaluate baselines without walk-forward splits.")
+
+    total_obs = len(observations)
+    eligible_obs = sum(1 for o in observations if o.has_target)
+    excluded_obs = total_obs - eligible_obs
+
+    exclusion_reasons: Dict[str, int] = defaultdict(int)
+    for o in observations:
+        if not o.has_target:
+            exclusion_reasons[o.target_status.value] += 1
+
+    # Check for synthetic test fixture usage
+    is_synthetic = any(
+        o.candle is not None and o.candle.source == "synthetic_test"
+        for o in observations
+    )
+    empirical_status = "BLOCKED_NO_EMPIRICAL_DATA" if is_synthetic else "EVALUATED"
+
+    fold_results: List[IntradayFoldResult] = []
+    seen_val_timestamps: Set[Tuple[str, datetime]] = set()
+    all_oof_predictions: List[IntradayBaselinePrediction] = []
+
+    for split in splits:
+        # Fit baseline on training partition only
+        baseline.fit(split.train_observations)
+
+        fold_preds: List[IntradayBaselinePrediction] = []
+        for val_obs in split.val_observations:
+            if not val_obs.has_target or val_obs.target_binary is None or val_obs.target_realized_at is None:
+                continue
+
+            ts_key = (val_obs.symbol, val_obs.candle_timestamp)
+            if ts_key in seen_val_timestamps:
+                raise ValidationError(
+                    f"Duplicate validation observation timestamp detected across folds: {ts_key}. "
+                    f"Out-of-fold windows must not overlap."
+                )
+            seen_val_timestamps.add(ts_key)
+
+            pred_binary, pred_prob = baseline.predict(val_obs)
+
+            pred = IntradayBaselinePrediction(
+                symbol=val_obs.symbol,
+                session_date=val_obs.session_date,
+                candle_timestamp=val_obs.candle_timestamp,
+                prediction_timestamp=val_obs.available_at,
+                target_realized_at=val_obs.target_realized_at,
+                target_horizon_bars=val_obs.target_horizon_bars,
+                fold=split.fold,
+                model_name=baseline.name,
+                predicted_probability=pred_prob,
+                predicted_binary=pred_binary,
+                actual_binary=val_obs.target_binary,
+                actual_return=val_obs.target_return,
+            )
+            fold_preds.append(pred)
+            all_oof_predictions.append(pred)
+
+        # Compute fold metrics
+        if fold_preds:
+            y_true_fold = [p.actual_binary for p in fold_preds]
+            y_pred_fold = [p.predicted_binary for p in fold_preds]
+            y_prob_fold = [p.predicted_probability for p in fold_preds]
+            fold_metrics = compute_intraday_evaluation_metrics(
+                y_true=y_true_fold,
+                y_pred=y_pred_fold,
+                y_prob=y_prob_fold,
+                model_name=baseline.name,
+            )
+        else:
+            raise ValidationError(f"Fold {split.fold} produced 0 eligible validation predictions.")
+
+        fold_result = IntradayFoldResult(
+            fold=split.fold,
+            model_name=baseline.name,
+            train_count=split.train_count,
+            train_up_count=split.train_up_count,
+            train_down_count=split.train_down_count,
+            val_count=len(fold_preds),
+            metrics=fold_metrics,
+            predictions=fold_preds,
+        )
+        fold_results.append(fold_result)
+
+    # Compute aggregate out-of-fold metrics across all disjoint validation folds
+    if all_oof_predictions:
+        y_true_all = [p.actual_binary for p in all_oof_predictions]
+        y_pred_all = [p.predicted_binary for p in all_oof_predictions]
+        y_prob_all = [p.predicted_probability for p in all_oof_predictions]
+        aggregate_metrics = compute_intraday_evaluation_metrics(
+            y_true=y_true_all,
+            y_pred=y_pred_all,
+            y_prob=y_prob_all,
+            model_name=baseline.name,
+        )
+    else:
+        aggregate_metrics = None
+
+    return IntradayBaselineAudit(
+        model_name=baseline.name,
+        n_splits=len(splits),
+        total_observations=total_obs,
+        eligible_observations=eligible_obs,
+        excluded_observations=excluded_obs,
+        exclusion_reasons=dict(exclusion_reasons),
+        is_synthetic_fixture=is_synthetic,
+        empirical_status=empirical_status,
+        fold_results=fold_results,
+        aggregate_metrics=aggregate_metrics,
+    )
