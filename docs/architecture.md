@@ -1710,3 +1710,32 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
 - **Protected Files & Roadmaps:**
   - `data/predictions.db` and `models/.gitkeep` verified 100% immutable and untouched.
   - Phase 16 remains strictly **IN PROGRESS**.
+
+---
+
+### 4.42 Intraday Feature Engineering & Zero-Lookahead Audit (Day 70)
+- **Objective & Architectural Scope:**
+  Design and implement a deterministic point-in-time intraday feature-extraction layer (`compute_intraday_features`) operating strictly on completed `IntradayCandle` objects. Enforces zero-lookahead bias, session boundary isolation, and explicit availability timestamps (`available_at = bar_end_timestamp`).
+- **Feature Contracts & Mathematical Formulations:**
+  1. **1-Bar Intraday Return (`return_1bar`):**
+     - Formulation: $\text{return\_1bar}_t = (\text{close}_t - \text{close}_{t-1}) / \text{close}_{t-1}$.
+     - Session Guard: Computed strictly between consecutive bars within the same session date. Evaluates to `None` on the session opening candle (no overnight contamination).
+  2. **3-Bar Rolling Return (`rolling_return_3bar`):**
+     - Formulation: $\text{rolling\_return\_3bar}_t = (\text{close}_t - \text{close}_{t-3}) / \text{close}_{t-3}$.
+     - Session Guard: Requires at least 4 completed candles in the current session; evaluates to `None` for the first 3 candles.
+  3. **5-Bar Rolling Volatility (`rolling_volatility_5bar`):**
+     - Formulation: Sample standard deviation (ddof=1) of 1-bar returns over a 5-bar rolling window:
+       $s = \sqrt{\frac{1}{4} \sum_{i=1}^5 (r_i - \bar{r})^2}$.
+     - Session Guard: Evaluates to `None` until at least 5 completed 1-bar returns exist within the active session.
+  4. **Session Volume-Weighted Average Price (`session_vwap`):**
+     - Formulation: $\text{VWAP}_t = \frac{\sum_{i=1}^t P_{typ, i} \times V_i}{\sum_{i=1}^t V_i}$ where $P_{typ} = (\text{high} + \text{low} + \text{close}) / 3$.
+     - Session Reset: Accumulators reset to zero at 09:15:00 IST on each trading day.
+     - Zero-Fabrication Guard: If any candle up to $t$ has missing/unreported volume or cumulative volume is 0, evaluates strictly to `None` (no silent 0-volume conversion).
+  5. **Session Opening Range (`opening_range_high`, `opening_range_low`, `opening_range_breakout`):**
+     - Formulation: Default 15-minute range (3 bars of 5m). Evaluates to `IN_PROGRESS` (with `None` values) until the range's closing timestamp (09:30:00 IST) is reached.
+     - Breakout Logic: Once `COMPLETED`, evaluates $\text{close}_t$ against $[ \text{OR\_Low}, \text{OR\_High} ]$: $+1$ (Bullish breakout above high), $-1$ (Bearish breakdown below low), $0$ (inside range).
+     - Missing Open Guard: Evaluates to `UNAVAILABLE` if the session feed starts after 09:15:00 IST.
+- **Strict Zero-Lookahead Invariants:**
+  - **Availability Timestamp:** Every feature record carries `available_at = candle.bar_end_timestamp`, prohibiting consumers from observing completed candle statistics at bar open time.
+  - **Future Invariance:** Formally proven via automated regression tests: appending or altering future candles leaves all earlier feature records 100% bit-for-bit unchanged.
+  - **Zero Model Evaluation:** Feature engineering only; no intraday ML models trained or evaluated.

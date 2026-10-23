@@ -6328,3 +6328,96 @@ Audit the repository's intraday architecture, document existing versus missing c
 1. **Intraday Model:** No intraday machine learning model is claimed or deployed. The engine explicitly guards against evaluating daily models on intraday bars.
 2. **Data Providers:** Live intraday streaming remains subject to free tier latency and rate limits (~15m delay on Yahoo Finance). High-frequency tick feeds require dedicated broker API integrations.
 3. **Phase 16 Status:** **Strictly IN PROGRESS.**
+
+---
+
+## Day 70 - Intraday Feature Engineering & Zero-Lookahead Audit
+
+### Goal
+Design and implement a deterministic point-in-time intraday feature-extraction layer on top of `IntradayCandle` and `IntradayEngine`. Ensure strict zero-lookahead guarantees, explicit availability timestamps (`available_at = bar_end_timestamp`), clean session boundary resets, zero volume fabrication, and comprehensive empirical validation without training an intraday ML model.
+
+---
+
+### 1. Preflight Repository & Environment Integrity
+- **Repository:** `https://github.com/naiya555/stock-market-prediction-system.git`
+- **Branch:** `main`
+- **Baseline Commit:** `dc95264` (`feat(market): implement minimal intraday engine foundation and contracts`)
+- **Remote Synchronization:** Local `main` verified up to date with `origin/main`. Working tree clean.
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**)
+
+---
+
+### 2. Feature Contract & Mathematical Specifications
+
+1. **1-Bar Intraday Return (`return_1bar`):**
+   - Formula: $\text{return\_1bar}_t = (\text{close}_t - \text{close}_{t-1}) / \text{close}_{t-1}$
+   - Availability Timestamp: `candle.bar_end_timestamp` (realized only upon candle close).
+   - Session Reset: Computed strictly within the same trading session. First bar of a session evaluates to `None` (preventing overnight gap leakage into intraday return metrics).
+2. **3-Bar Rolling Return (`rolling_return_3bar`):**
+   - Formula: $\text{rolling\_return\_3bar}_t = (\text{close}_t - \text{close}_{t-3}) / \text{close}_{t-3}$
+   - Availability Timestamp: `candle.bar_end_timestamp`.
+   - Minimum History: Requires at least 4 completed candles in the session (indices 0, 1, 2, 3); evaluates to `None` otherwise.
+3. **5-Bar Rolling Volatility (`rolling_volatility_5bar`):**
+   - Formula: Sample standard deviation (ddof=1) of 1-bar returns over a 5-bar window: $s = \sqrt{\frac{1}{4} \sum_{i=1}^5 (r_i - \bar{r})^2}$.
+   - Availability Timestamp: `candle.bar_end_timestamp`.
+   - Minimum History: Requires at least 5 completed 1-bar returns in the session (at least 6 completed candles).
+4. **Session VWAP (`session_vwap`):**
+   - Formula: $\text{VWAP}_t = \frac{\sum_{i=1}^t P_{typ, i} \times V_i}{\sum_{i=1}^t V_i}$ where $P_{typ} = (\text{high} + \text{low} + \text{close}) / 3$.
+   - Availability Timestamp: `candle.bar_end_timestamp`.
+   - Session Reset: Reset to zero at the start of each regular session (09:15:00 IST).
+   - Missing-Data / Zero-Fabrication Guard: If any candle up to $t$ has missing/unreported volume or $\sum V = 0$, VWAP evaluates to `None`. Never defaults missing volume to 0.
+5. **Session Opening Range (`opening_range_high`, `opening_range_low`, `opening_range_status`, `opening_range_breakout`):**
+   - Formula: Default 15 minutes of regular trading (3 bars of 5m).
+   - Lifecycle:
+     - `IN_PROGRESS`: Before 09:30:00 IST (high, low, and breakout evaluate to `None`).
+     - `COMPLETED`: At and after 09:30:00 IST (high and low locked to max/min of range bars).
+     - `UNAVAILABLE`: If session feed does not start at 09:15:00 IST.
+   - Breakout Signal: $+1$ if $\text{close}_t > \text{OR\_High}$, $-1$ if $\text{close}_t < \text{OR\_Low}$, $0$ if within range.
+
+---
+
+### 3. Work Completed & Implementation Details
+
+1. **Intraday Feature Extraction Core (`app/market/intraday.py`):**
+   - Implemented `OpeningRangeStatus` enum (`IN_PROGRESS`, `COMPLETED`, `UNAVAILABLE`).
+   - Implemented `IntradayFeatureRecord` immutable frozen dataclass.
+   - Implemented `compute_intraday_features()`:
+     - Validates and sorts candles chronologically before feature extraction.
+     - Enforces session boundary isolation (independent accumulators per session date).
+     - Preserves volume absence (evaluates VWAP to `None`).
+     - Tracks opening range completion state.
+   - Integrated `compute_features()` method onto `IntradayEngine`.
+2. **Module Exports (`app/market/__init__.py`):**
+   - Cleanly exported `IntradayFeatureRecord`, `OpeningRangeStatus`, and `compute_intraday_features`.
+3. **Deterministic Test Suite (`tests/test_intraday_features.py`):**
+   - 9 deterministic unit test methods covering hand-calculated values, insufficient history, missing volume, session boundary resets, opening range lifecycle, future candle invariance, and engine integration.
+
+---
+
+### 4. Verification & Quality Gates
+
+- **Focused Intraday Test Suites:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest tests/test_intraday_engine.py tests/test_intraday_features.py -q
+  ```
+  **32 passed** in 3.13s (0 failures).
+- **Full Repository Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **854 passed**, 1 warning across all 59 test modules in 77.00s (0 failures, 0 regressions).
+- **Quality Checks:**
+  - `node -c app/api/static/js/app.js`: Clean (0 errors).
+  - `.\.venv\Scripts\python -m pip check`: No broken requirements found.
+  - `git diff --check`: Clean (0 whitespace errors).
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**)
+
+---
+
+### 5. Known Limitations & Next Steps
+1. **Intraday Model Training:** No intraday machine learning model is claimed or trained. The feature layer outputs raw numerical features for downstream modeling.
+2. **Phase 16 Status:** **Strictly IN PROGRESS.** Phase 16 operational release criteria require live staging soak testing and operational deployment sign-off.

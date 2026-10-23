@@ -99,10 +99,13 @@ from app.market.intraday import (
     IntradayCandle,
     IntradayCleaningResult,
     IntradayEngine,
+    IntradayFeatureRecord,
     IntradayInterval,
     IntradayQualitySummary,
+    OpeningRangeStatus,
     SyntheticTestIntradayProvider,
     clean_intraday_candles,
+    compute_intraday_features,
 )
 
 __all__ = [
@@ -189,6 +192,9 @@ __all__ = [
     "BaseIntradayDataProvider",
     "SyntheticTestIntradayProvider",
     "IntradayEngine",
+    "OpeningRangeStatus",
+    "IntradayFeatureRecord",
+    "compute_intraday_features",
 ]
 
 

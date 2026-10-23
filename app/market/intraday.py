@@ -527,3 +527,226 @@ class IntradayEngine:
                 "Daily models (models/xgboost_direction.*) are strictly restricted from intraday inference."
             ),
         }
+
+    def compute_features(
+        self,
+        candles: Sequence[IntradayCandle],
+        opening_range_minutes: int = 15,
+    ) -> List["IntradayFeatureRecord"]:
+        """Compute point-in-time intraday features with zero lookahead leakage."""
+        return compute_intraday_features(candles=candles, opening_range_minutes=opening_range_minutes)
+
+
+class OpeningRangeStatus(str, Enum):
+    """Operational status of the session opening range calculation."""
+
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+    UNAVAILABLE = "UNAVAILABLE"
+
+
+@dataclass(frozen=True)
+class IntradayFeatureRecord:
+    """Canonical calculated intraday features for a single completed candle.
+
+    Guarantees:
+    - Zero Lookahead: 'available_at' is candle.bar_end_timestamp, representing the
+      exact point-in-time when the candle closed and became historically observable.
+    - Session Boundary Isolation: Returns, volatility, VWAP, and opening ranges reset
+      at each session boundary and never cross calendar dates.
+    - Zero Fabrication: If history or volume is insufficient or missing, features
+      strictly evaluate to None.
+    """
+
+    symbol: str
+    candle_timestamp: datetime
+    available_at: datetime
+    interval: IntradayInterval
+    close: float
+    volume: Optional[int]
+    return_1bar: Optional[float]
+    rolling_return_3bar: Optional[float]
+    rolling_volatility_5bar: Optional[float]
+    session_vwap: Optional[float]
+    opening_range_high: Optional[float]
+    opening_range_low: Optional[float]
+    opening_range_status: OpeningRangeStatus
+    opening_range_breakout: Optional[int]  # +1 (bullish), -1 (bearish), 0 (inside), None (before completion)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert feature record to dictionary for logging and downstream pipelines."""
+        data = asdict(self)
+        data["candle_timestamp"] = self.candle_timestamp.isoformat()
+        data["available_at"] = self.available_at.isoformat()
+        data["interval"] = self.interval.value
+        data["opening_range_status"] = self.opening_range_status.value
+        return data
+
+
+def compute_intraday_features(
+    candles: Sequence[IntradayCandle],
+    opening_range_minutes: int = 15,
+) -> List[IntradayFeatureRecord]:
+    """Extract deterministic intraday features from completed IntradayCandle objects.
+
+    Features Computed:
+    1. return_1bar: Percentage close-to-close return vs previous completed candle in the same session.
+    2. rolling_return_3bar: Percentage close-to-close return over 3 completed bars in the same session.
+    3. rolling_volatility_5bar: Sample standard deviation (ddof=1) of 1-bar returns over 5 completed bars.
+    4. session_vwap: Volume-weighted typical price (high + low + close)/3 cumulative from regular market open (09:15 IST).
+       Resets at session start. Evaluates to None if any prior bar in session has missing/unreported volume or cum_vol == 0.
+    5. opening_range (high, low, breakout): Highest high and lowest low during the first opening_range_minutes
+       (default 15m). Evaluates to IN_PROGRESS before the range completes, COMPLETED at and after completion,
+       or UNAVAILABLE if the session did not start at 09:15:00 IST with complete bars.
+
+    Zero-Lookahead Invariants:
+    - Input candles are validated and sorted chronologically before extraction.
+    - Feature record 'available_at' equals candle.bar_end_timestamp.
+    - Zero cross-session contamination: all window metrics reset on session date change.
+    - Future candles have zero influence on past feature values.
+
+    Args:
+        candles: Sequence of IntradayCandle objects.
+        opening_range_minutes: Duration of the opening range in minutes (default 15).
+
+    Returns:
+        List of IntradayFeatureRecord objects sorted by (symbol, candle_timestamp).
+    """
+    if not candles:
+        return []
+
+    # Sort strictly chronologically by (symbol, timestamp)
+    sorted_candles = sorted(candles, key=lambda c: (c.symbol, c.timestamp))
+
+    # Group candles by symbol for independent feature extraction
+    by_symbol: Dict[str, List[IntradayCandle]] = defaultdict(list)
+    for c in sorted_candles:
+        by_symbol[c.symbol].append(c)
+
+    all_features: List[IntradayFeatureRecord] = []
+
+    for sym, sym_candles in by_symbol.items():
+        # Track session state
+        current_session_date: Optional[date] = None
+        session_candles: List[IntradayCandle] = []
+        session_returns: List[float] = []
+
+        # VWAP accumulators
+        cum_typical_volume: float = 0.0
+        cum_volume: int = 0
+        is_vwap_valid: bool = True
+
+        # Opening range state
+        opening_range_candles: List[IntradayCandle] = []
+        opening_range_high: Optional[float] = None
+        opening_range_low: Optional[float] = None
+        opening_range_status: OpeningRangeStatus = OpeningRangeStatus.IN_PROGRESS
+        is_opening_range_valid: bool = True
+
+        for c in sym_candles:
+            candle_date = c.timestamp.date()
+
+            # Session boundary reset
+            if current_session_date != candle_date:
+                current_session_date = candle_date
+                session_candles = []
+                session_returns = []
+                cum_typical_volume = 0.0
+                cum_volume = 0
+                is_vwap_valid = True
+                opening_range_candles = []
+                opening_range_high = None
+                opening_range_low = None
+                opening_range_status = OpeningRangeStatus.IN_PROGRESS
+
+                # Check if session opens at official regular market open (09:15:00 IST)
+                if c.timestamp.time() != REGULAR_MARKET_OPEN:
+                    is_opening_range_valid = False
+                    opening_range_status = OpeningRangeStatus.UNAVAILABLE
+                else:
+                    is_opening_range_valid = True
+
+            session_candles.append(c)
+
+            # 1. return_1bar calculation (strictly within same session)
+            return_1bar: Optional[float] = None
+            if len(session_candles) >= 2:
+                prev_c = session_candles[-2]
+                if prev_c.close > 0:
+                    return_1bar = (c.close - prev_c.close) / prev_c.close
+                    session_returns.append(return_1bar)
+
+            # 2. rolling_return_3bar calculation (needs 3 prior completed candles in same session)
+            rolling_return_3bar: Optional[float] = None
+            if len(session_candles) >= 4:
+                base_c = session_candles[-4]  # candle from 3 bars ago
+                if base_c.close > 0:
+                    rolling_return_3bar = (c.close - base_c.close) / base_c.close
+
+            # 3. rolling_volatility_5bar calculation (needs 5 returns in same session)
+            rolling_volatility_5bar: Optional[float] = None
+            if len(session_returns) >= 5:
+                window_returns = session_returns[-5:]
+                mean_r = sum(window_returns) / 5.0
+                variance = sum((r - mean_r) ** 2 for r in window_returns) / 4.0  # sample variance ddof=1
+                rolling_volatility_5bar = math.sqrt(variance)
+
+            # 4. session_vwap calculation
+            session_vwap: Optional[float] = None
+            if is_vwap_valid:
+                if c.volume is not None and c.volume_reported and c.volume >= 0:
+                    typical_price = (c.high + c.low + c.close) / 3.0
+                    cum_typical_volume += typical_price * c.volume
+                    cum_volume += c.volume
+                    if cum_volume > 0:
+                        session_vwap = round(cum_typical_volume / cum_volume, 4)
+                else:
+                    # Volume missing or unreported: invalidate VWAP for remainder of this session
+                    is_vwap_valid = False
+                    session_vwap = None
+
+            # 5. Opening Range calculation
+            opening_range_breakout: Optional[int] = None
+            if is_opening_range_valid:
+                # Time elapsed from session open to this bar's completion
+                nominal_session_open = datetime.combine(candle_date, REGULAR_MARKET_OPEN, tzinfo=IST)
+                elapsed_minutes = (c.bar_end_timestamp - nominal_session_open).total_seconds() / 60.0
+
+                if opening_range_status == OpeningRangeStatus.IN_PROGRESS:
+                    opening_range_candles.append(c)
+                    if elapsed_minutes >= opening_range_minutes:
+                        # Opening range is now completed!
+                        opening_range_high = max(b.high for b in opening_range_candles)
+                        opening_range_low = min(b.low for b in opening_range_candles)
+                        opening_range_status = OpeningRangeStatus.COMPLETED
+
+                if opening_range_status == OpeningRangeStatus.COMPLETED and opening_range_high is not None and opening_range_low is not None:
+                    if c.close > opening_range_high:
+                        opening_range_breakout = 1
+                    elif c.close < opening_range_low:
+                        opening_range_breakout = -1
+                    else:
+                        opening_range_breakout = 0
+            else:
+                opening_range_status = OpeningRangeStatus.UNAVAILABLE
+
+            record = IntradayFeatureRecord(
+                symbol=c.symbol,
+                candle_timestamp=c.timestamp,
+                available_at=c.bar_end_timestamp,
+                interval=c.interval,
+                close=c.close,
+                volume=c.volume,
+                return_1bar=return_1bar,
+                rolling_return_3bar=rolling_return_3bar,
+                rolling_volatility_5bar=rolling_volatility_5bar,
+                session_vwap=session_vwap,
+                opening_range_high=opening_range_high,
+                opening_range_low=opening_range_low,
+                opening_range_status=opening_range_status,
+                opening_range_breakout=opening_range_breakout,
+            )
+            all_features.append(record)
+
+    # Sort final records by (symbol, candle_timestamp)
+    return sorted(all_features, key=lambda f: (f.symbol, f.candle_timestamp))
