@@ -22,10 +22,13 @@ Verifies:
 from datetime import date, datetime, time, timedelta
 import json
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+import pandas as pd
 import pytest
 from zoneinfo import ZoneInfo
 
 from app.core.schemas import ValidationError
+from app.market.providers.yfinance_provider import YFinanceIntradayProvider
 from app.market.intraday import (
     IntradayCandle,
     IntradayInterval,
@@ -524,3 +527,275 @@ class TestEvaluationReadinessGate:
         assert report.total_candles == 75
         assert report.gaps_count == 0
         assert len(report.issues) == 0
+
+    def test_readiness_rejected_on_missing_interval_gaps(self, temp_archive_paths):
+        archive_path, quarantine_path = temp_archive_paths
+        store = IntradayArchiveStore(archive_path=archive_path, quarantine_path=quarantine_path)
+
+        trading_day = date(2026, 6, 1)
+        base_time = datetime.combine(trading_day, time(9, 15), tzinfo=IST)
+        # Store 75 candles, but skip candle index 10 (gap!)
+        for i in range(76):
+            if i == 10:
+                continue  # Intentional missing interval gap
+            ts = base_time + timedelta(minutes=i * 5)
+            rec = RecordedCandleRecord(
+                symbol="BHARTIARTL",
+                timestamp=ts,
+                interval=IntradayInterval.M5,
+                open=1650.0 + (i * 0.1),
+                high=1652.0 + (i * 0.1),
+                low=1649.0 + (i * 0.1),
+                close=1651.0 + (i * 0.1),
+                volume=10000,
+                volume_reported=True,
+                source="live_provider",
+                provenance=CandleProvenance.PROVIDER_OBSERVATION,
+                capture_timestamp=datetime.now(IST),
+                is_completed=True,
+            )
+            store.append(rec)
+
+        report = check_evaluation_readiness(store, symbol="BHARTIARTL", min_required_candles=75)
+        assert report.is_ready_for_evaluation is False
+        assert report.status == EvaluationReadinessStatus.PENDING_VALIDATION
+        assert report.gaps_count == 1
+        assert any("missing interval gaps" in issue for issue in report.issues)
+
+    def test_readiness_rejected_on_unresolved_quarantined_conflicts(self, temp_archive_paths):
+        archive_path, quarantine_path = temp_archive_paths
+        store = IntradayArchiveStore(archive_path=archive_path, quarantine_path=quarantine_path)
+
+        candle = _create_sample_candle()
+        rec1 = RecordedCandleRecord(
+            symbol=candle.symbol,
+            timestamp=candle.timestamp,
+            interval=candle.interval,
+            open=1650.0,
+            high=1655.0,
+            low=1648.0,
+            close=1652.0,
+            volume=1000,
+            volume_reported=True,
+            source="src1",
+            provenance=CandleProvenance.PROVIDER_OBSERVATION,
+            capture_timestamp=datetime.now(IST),
+            is_completed=True,
+        )
+        rec2 = RecordedCandleRecord(
+            symbol=candle.symbol,
+            timestamp=candle.timestamp,
+            interval=candle.interval,
+            open=1650.0,
+            high=1655.0,
+            low=1648.0,
+            close=1690.0,  # Conflicting!
+            volume=1000,
+            volume_reported=True,
+            source="src2",
+            provenance=CandleProvenance.PROVIDER_OBSERVATION,
+            capture_timestamp=datetime.now(IST),
+            is_completed=True,
+        )
+        store.append(rec1)
+        store.append(rec2)  # Quarantined
+
+        report = check_evaluation_readiness(store, symbol="BHARTIARTL", min_required_candles=1)
+        assert report.is_ready_for_evaluation is False
+        assert report.status == EvaluationReadinessStatus.PENDING_VALIDATION
+        assert any("quarantined conflicting records" in issue for issue in report.issues)
+
+    def test_readiness_rejected_on_uncompleted_candles(self, temp_archive_paths):
+        archive_path, quarantine_path = temp_archive_paths
+        store = IntradayArchiveStore(archive_path=archive_path, quarantine_path=quarantine_path)
+
+        trading_day = date(2026, 6, 1)
+        ts = datetime.combine(trading_day, time(9, 15), tzinfo=IST)
+        rec = RecordedCandleRecord(
+            symbol="BHARTIARTL",
+            timestamp=ts,
+            interval=IntradayInterval.M5,
+            open=1650.0,
+            high=1655.0,
+            low=1648.0,
+            close=1652.0,
+            volume=1000,
+            volume_reported=True,
+            source="src",
+            provenance=CandleProvenance.PROVIDER_OBSERVATION,
+            capture_timestamp=datetime.now(IST),
+            is_completed=False,  # Uncompleted forming candle!
+        )
+        store.append(rec)
+
+        report = check_evaluation_readiness(store, symbol="BHARTIARTL", min_required_candles=1)
+        assert report.is_ready_for_evaluation is False
+        assert report.status == EvaluationReadinessStatus.PENDING_VALIDATION
+        assert any("forming or uncompleted candles" in issue for issue in report.issues)
+
+    def test_readiness_rejected_on_weekend_or_holiday_candles(self, temp_archive_paths):
+        archive_path, quarantine_path = temp_archive_paths
+        store = IntradayArchiveStore(archive_path=archive_path, quarantine_path=quarantine_path)
+
+        # Saturday June 6, 2026
+        weekend_ts = datetime(2026, 6, 6, 10, 0, tzinfo=IST)
+        rec = RecordedCandleRecord(
+            symbol="BHARTIARTL",
+            timestamp=weekend_ts,
+            interval=IntradayInterval.M5,
+            open=1650.0,
+            high=1655.0,
+            low=1648.0,
+            close=1652.0,
+            volume=1000,
+            volume_reported=True,
+            source="src",
+            provenance=CandleProvenance.PROVIDER_OBSERVATION,
+            capture_timestamp=datetime.now(IST),
+            is_completed=True,
+        )
+        store.append(rec)
+
+        report = check_evaluation_readiness(store, symbol="BHARTIARTL", min_required_candles=1)
+        assert report.is_ready_for_evaluation is False
+        assert report.status == EvaluationReadinessStatus.PENDING_VALIDATION
+        assert any("weekend or declared NSE holiday" in issue for issue in report.issues)
+
+    def test_readiness_dynamic_interval_expected_bars(self, temp_archive_paths):
+        archive_path, quarantine_path = temp_archive_paths
+        store = IntradayArchiveStore(archive_path=archive_path, quarantine_path=quarantine_path)
+
+        # For 15m interval, expected regular session bars = 375 // 15 = 25 bars
+        trading_day = date(2026, 6, 1)
+        base_time = datetime.combine(trading_day, time(9, 15), tzinfo=IST)
+        for i in range(25):
+            ts = base_time + timedelta(minutes=i * 15)
+            rec = RecordedCandleRecord(
+                symbol="BHARTIARTL",
+                timestamp=ts,
+                interval=IntradayInterval.M15,
+                open=1650.0 + (i * 0.1),
+                high=1653.0 + (i * 0.1),
+                low=1648.0 + (i * 0.1),
+                close=1652.0 + (i * 0.1),
+                volume=15000,
+                volume_reported=True,
+                source="live_nse",
+                provenance=CandleProvenance.PROVIDER_OBSERVATION,
+                capture_timestamp=datetime.now(IST),
+                is_completed=True,
+            )
+            store.append(rec)
+
+        # Default min_required_candles=None should dynamically deduce 25 bars for M15!
+        report = check_evaluation_readiness(store, symbol="BHARTIARTL", interval=IntradayInterval.M15)
+        assert report.is_ready_for_evaluation is True
+        assert report.status == EvaluationReadinessStatus.READY
+        assert report.total_candles == 25
+
+
+class TestYFinanceIntradayProvider:
+    """Tests for YFinanceIntradayProvider adapter implementation with deterministic mocks."""
+
+    def test_yfinance_provider_successful_candle_parsing(self):
+        provider = YFinanceIntradayProvider()
+        test_date = date(2026, 6, 1)
+
+        # Construct deterministic synthetic pandas DataFrame matching yfinance schema
+        timestamps = [
+            pd.Timestamp("2026-06-01 09:15:00", tz="Asia/Kolkata"),
+            pd.Timestamp("2026-06-01 09:20:00", tz="Asia/Kolkata"),
+        ]
+        mock_df = pd.DataFrame(
+            {
+                "Open": [1650.0, 1655.0],
+                "High": [1658.0, 1660.0],
+                "Low": [1648.0, 1652.0],
+                "Close": [1654.0, 1658.0],
+                "Volume": [12000, 14500],
+            },
+            index=timestamps,
+        )
+
+        with patch("yfinance.Ticker") as mock_ticker_cls:
+            mock_ticker_instance = MagicMock()
+            mock_ticker_instance.history.return_value = mock_df
+            mock_ticker_cls.return_value = mock_ticker_instance
+
+            candles = provider.fetch_intraday_candles(
+                symbol="BHARTIARTL",
+                session_date=test_date,
+                interval=IntradayInterval.M5,
+            )
+
+            assert len(candles) == 2
+            assert candles[0].symbol == "BHARTIARTL"
+            assert candles[0].timestamp == datetime(2026, 6, 1, 9, 15, tzinfo=IST)
+            assert candles[0].open == 1650.0
+            assert candles[0].close == 1654.0
+            assert candles[0].volume == 12000
+            assert candles[0].source == "yfinance"
+
+    def test_yfinance_provider_missing_volume_preservation(self):
+        provider = YFinanceIntradayProvider()
+        test_date = date(2026, 6, 1)
+
+        mock_df = pd.DataFrame(
+            {
+                "Open": [1650.0],
+                "High": [1655.0],
+                "Low": [1648.0],
+                "Close": [1652.0],
+                "Volume": [float("nan")],  # NaN volume
+            },
+            index=[pd.Timestamp("2026-06-01 09:15:00", tz="Asia/Kolkata")],
+        )
+
+        with patch("yfinance.Ticker") as mock_ticker_cls:
+            mock_ticker_instance = MagicMock()
+            mock_ticker_instance.history.return_value = mock_df
+            mock_ticker_cls.return_value = mock_ticker_instance
+
+            candles = provider.fetch_intraday_candles(
+                symbol="BHARTIARTL",
+                session_date=test_date,
+                interval=IntradayInterval.M5,
+            )
+
+            assert len(candles) == 1
+            assert candles[0].volume is None
+            assert candles[0].volume_reported is False
+
+    def test_yfinance_provider_rejects_index_instruments(self):
+        provider = YFinanceIntradayProvider()
+        test_date = date(2026, 6, 1)
+
+        with pytest.raises(ValidationError, match="Instrument 'NIFTY' is an index"):
+            provider.fetch_intraday_candles("NIFTY", test_date)
+
+        with pytest.raises(ValidationError, match="Instrument '\\^NSEI' is an index"):
+            provider.fetch_intraday_candles("^NSEI", test_date)
+
+    def test_yfinance_provider_empty_response(self):
+        provider = YFinanceIntradayProvider()
+        test_date = date(2026, 6, 1)
+
+        with patch("yfinance.Ticker") as mock_ticker_cls:
+            mock_ticker_instance = MagicMock()
+            mock_ticker_instance.history.return_value = pd.DataFrame()  # Empty
+            mock_ticker_cls.return_value = mock_ticker_instance
+
+            candles = provider.fetch_intraday_candles("BHARTIARTL", test_date)
+            assert candles == []
+
+    def test_yfinance_provider_network_error(self):
+        provider = YFinanceIntradayProvider()
+        test_date = date(2026, 6, 1)
+
+        with patch("yfinance.Ticker") as mock_ticker_cls:
+            mock_ticker_instance = MagicMock()
+            mock_ticker_instance.history.side_effect = ConnectionError("Network failure")
+            mock_ticker_cls.return_value = mock_ticker_instance
+
+            with pytest.raises(RuntimeError, match="yfinance intraday fetch failed"):
+                provider.fetch_intraday_candles("BHARTIARTL", test_date)

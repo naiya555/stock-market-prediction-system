@@ -21,6 +21,7 @@ import json
 import os
 from pathlib import Path
 import sys
+from typing import Optional
 
 # Ensure repository root is in python path
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -28,6 +29,7 @@ sys.path.insert(0, str(ROOT_DIR))
 
 from app.core.logging_config import get_logger
 from app.market.intraday import IntradayInterval
+from app.market.providers.yfinance_provider import YFinanceIntradayProvider
 from app.market.recorder import (
     CandleProvenance,
     EvaluationReadinessStatus,
@@ -85,10 +87,17 @@ def parse_args() -> argparse.Namespace:
         help="Evaluate whether the archive satisfies empirical evaluation criteria.",
     )
     parser.add_argument(
+        "--provider",
+        type=str,
+        choices=["yfinance", "test"],
+        default="yfinance",
+        help="Market data provider to use (default: yfinance).",
+    )
+    parser.add_argument(
         "--min-candles",
         type=int,
-        default=75,
-        help="Minimum required candles for readiness evaluation (default: 75).",
+        default=None,
+        help="Minimum required candles for readiness evaluation (default: dynamically based on interval session expectation).",
     )
     return parser.parse_args()
 
@@ -119,7 +128,10 @@ def display_status(store: IntradayArchiveStore, symbol: str, interval: IntradayI
 
 
 def run_readiness_audit(
-    store: IntradayArchiveStore, symbol: str, interval: IntradayInterval, min_candles: int
+    store: IntradayArchiveStore,
+    symbol: str,
+    interval: IntradayInterval,
+    min_candles: Optional[int] = None,
 ) -> int:
     report = check_evaluation_readiness(
         store=store,
@@ -170,12 +182,16 @@ def main() -> int:
     now_ist = datetime.now(IST)
     session_info = get_market_session(now_ist)
 
-    # Build test adapter / provider
-    # Notice: In absence of live market provider credentials during off-market hours,
-    # we report market state cleanly and test adapter status without claiming live capture.
-    adapter = TestIntradayRecorderAdapter(name="cli_offline_adapter")
+    # Instantiate chosen provider
+    if args.provider == "yfinance":
+        provider = YFinanceIntradayProvider()
+        print("Configured Provider:     yfinance (15m delayed exchange data disclosed; no real-time stream)")
+    else:
+        provider = TestIntradayRecorderAdapter(name="cli_offline_adapter")
+        print("Configured Provider:     test (Deterministic test adapter; offline fixtures only)")
+
     recorder = IntradaySessionRecorder(
-        provider=adapter,
+        provider=provider,
         store=store,
         symbol=args.symbol,
         interval=parsed_interval,

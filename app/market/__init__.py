@@ -56,7 +56,10 @@ from app.market.trend import (
 )
 from app.market.providers.base import BaseMarketDataProvider
 from app.market.providers.nifty_indices_provider import NiftyIndicesProvider
-from app.market.providers.yfinance_provider import YFinanceProvider
+from app.market.providers.yfinance_provider import (
+    YFinanceIntradayProvider,
+    YFinanceProvider,
+)
 from app.market.returns import (
     ReturnFeatures,
     calculate_daily_returns,
@@ -140,6 +143,7 @@ from app.market.recorder import (
 __all__ = [
     "BaseMarketDataProvider",
     "YFinanceProvider",
+    "YFinanceIntradayProvider",
     "MarketOHLCV",
     "MarketQuote",
     "DataSourceMetadata",

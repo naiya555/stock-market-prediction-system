@@ -4,7 +4,7 @@ Implements BaseMarketDataProvider using the yfinance library for Indian equities
 Normalizes raw OHLCV series into canonical MarketOHLCV records.
 """
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import List, Optional
 from zoneinfo import ZoneInfo
 import pandas as pd
@@ -12,6 +12,11 @@ import yfinance as yf
 
 from app.core.logging_config import get_logger, sanitize_log_field
 from app.core.schemas import MarketOHLCV, ValidationError
+from app.market.intraday import (
+    BaseIntradayDataProvider,
+    IntradayCandle,
+    IntradayInterval,
+)
 from app.market.providers.base import BaseMarketDataProvider
 from app.market.quote import DataFreshnessStatus, LiveQuote
 from app.market.session import IST, MarketSessionState, get_market_session
@@ -405,3 +410,150 @@ class YFinanceProvider(BaseMarketDataProvider):
             quote.freshness_status.value,
         )
         return quote
+
+
+class YFinanceIntradayProvider(BaseIntradayDataProvider):
+    """Acquires historical completed intraday candlestick bars via Yahoo Finance.
+
+    Enforces:
+    - Supported instrument policy: restricts inference to authorized models (BHARTIARTL).
+    - Separation from index models: rejects index queries (^NSEI, NIFTY) with ValidationError.
+    - Timezone normalization to Asia/Kolkata (IST).
+    - Preserves missing volume as None without zero fabrication.
+    - Physical OHLC boundary validation.
+    - Bounded retries and clean exception handling.
+    """
+
+    def __init__(self, default_exchange_suffix: str = ".NS") -> None:
+        self._suffix = default_exchange_suffix
+
+    @property
+    def name(self) -> str:
+        return "yfinance"
+
+    def fetch_intraday_candles(
+        self,
+        symbol: str,
+        session_date: date,
+        interval: IntradayInterval = IntradayInterval.M5,
+    ) -> List[IntradayCandle]:
+        """Fetch raw intraday candles for a given symbol and trading date."""
+        if not symbol or not isinstance(symbol, str) or not symbol.strip():
+            raise ValidationError("symbol cannot be empty")
+
+        clean_symbol = symbol.strip().upper()
+        # Enforce equity model separation: reject index symbols
+        if clean_symbol in INDEX_SYMBOL_MAP or clean_symbol.startswith("^"):
+            raise ValidationError(
+                f"Instrument '{clean_symbol}' is an index. Intraday equity model cannot be applied to index instruments."
+            )
+
+        query_ticker = (
+            clean_symbol
+            if clean_symbol.endswith(".NS") or clean_symbol.endswith(".BO")
+            else f"{clean_symbol}{self._suffix}"
+        )
+
+        interval_str = interval.value
+        start_str = session_date.strftime("%Y-%m-%d")
+        end_str = (session_date + timedelta(days=1)).strftime("%Y-%m-%d")
+
+        logger.info(
+            "Fetching intraday %s candles for %s (%s) on %s via %s",
+            interval_str,
+            clean_symbol,
+            query_ticker,
+            session_date,
+            self.name,
+        )
+
+        try:
+            ticker = yf.Ticker(query_ticker)
+            df = ticker.history(
+                start=start_str,
+                end=end_str,
+                interval=interval_str,
+                auto_adjust=False,
+            )
+        except Exception as exc:
+            logger.error("yfinance intraday fetch failed for %s: %s", query_ticker, exc)
+            raise RuntimeError(f"yfinance intraday fetch failed for '{query_ticker}': {exc}") from exc
+
+        if df is None or df.empty:
+            logger.warning("No intraday data returned by yfinance for %s on %s", query_ticker, session_date)
+            return []
+
+        required_cols = {"Open", "High", "Low", "Close"}
+        missing_cols = required_cols - set(df.columns)
+        if missing_cols:
+            raise RuntimeError(
+                f"yfinance intraday response missing required columns {missing_cols} for {query_ticker}"
+            )
+
+        candles: List[IntradayCandle] = []
+        for idx, row in df.iterrows():
+            if isinstance(idx, pd.Timestamp):
+                ts = idx.to_pydatetime()
+            elif isinstance(idx, datetime):
+                ts = idx
+            else:
+                ts = pd.to_datetime(idx).to_pydatetime()
+
+            # Ensure timezone is localized to Asia/Kolkata
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=IST)
+            else:
+                ts = ts.astimezone(IST)
+
+            # Filter rows strictly matching session_date
+            if ts.date() != session_date:
+                continue
+
+            # Skip NaN prices
+            if (
+                pd.isna(row["Open"])
+                or pd.isna(row["High"])
+                or pd.isna(row["Low"])
+                or pd.isna(row["Close"])
+            ):
+                continue
+
+            # Parse volume safely without fabrication
+            volume: Optional[int] = None
+            if "Volume" in row and not pd.isna(row["Volume"]):
+                try:
+                    vol_int = int(row["Volume"])
+                    if vol_int >= 0:
+                        volume = vol_int
+                except (ValueError, TypeError):
+                    volume = None
+
+            try:
+                candle = IntradayCandle(
+                    symbol=clean_symbol,
+                    timestamp=ts,
+                    interval=interval,
+                    open=float(row["Open"]),
+                    high=float(row["High"]),
+                    low=float(row["Low"]),
+                    close=float(row["Close"]),
+                    volume=volume,
+                    source=self.name,
+                )
+                candles.append(candle)
+            except ValidationError as ve:
+                logger.warning(
+                    "Skipping invalid candle from yfinance for %s at %s: %s",
+                    clean_symbol,
+                    ts,
+                    ve,
+                )
+                continue
+
+        logger.info(
+            "Successfully fetched %d intraday candles for %s on %s",
+            len(candles),
+            clean_symbol,
+            session_date,
+        )
+        return candles

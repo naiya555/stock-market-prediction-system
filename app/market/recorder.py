@@ -39,6 +39,7 @@ from app.market.session import (
     IST,
     MarketSessionInfo,
     MarketSessionState,
+    NSE_HOLIDAYS_2026,
     get_market_session,
 )
 
@@ -672,7 +673,7 @@ def check_evaluation_readiness(
     store: IntradayArchiveStore,
     symbol: str = "BHARTIARTL",
     interval: IntradayInterval = IntradayInterval.M5,
-    min_required_candles: int = 75,
+    min_required_candles: Optional[int] = None,
 ) -> EvaluationReadinessReport:
     """Verify whether the isolated intraday archive is ready for empirical backtest evaluation.
 
@@ -681,12 +682,25 @@ def check_evaluation_readiness(
        evaluation is blocked (CONTAMINATED_SYNTHETIC).
     2. Genuine provider observations present: must contain provider_observation or validated_archive.
        If none present, report BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER.
-    3. Sufficient historical depth: must contain at least min_required_candles
-       (default 75, representing one full continuous 375-min regular NSE session).
-    4. Session and timestamp consistency: audits gaps and monotonic timestamps.
+    3. Unresolved quarantine conflicts: if the store has quarantined conflicting records,
+       evaluation is blocked (PENDING_VALIDATION).
+    4. Completed candles only: all records must have is_completed=True.
+    5. Sufficient historical depth: must contain at least min_required_candles
+       (defaults dynamically to interval.expected_bars_per_regular_session, e.g. 75 for 5m, 25 for 15m).
+    6. Monotonic chronological ordering: timestamps must strictly increase.
+    7. Valid trading session calendar: candles must fall on valid NSE trading days (no weekends or holidays).
+    8. Interval continuity and zero gaps: sessions must have zero missing candle gaps.
+    9. Clean OHLCV: zero rejected candles during cleaning verification.
     """
     clean_sym = symbol.strip().upper()
     records = store.get_records(symbol=clean_sym, interval=interval)
+
+    # Dynamic minimum required candles based on interval session expectation
+    effective_min_candles = (
+        min_required_candles
+        if min_required_candles is not None
+        else interval.expected_bars_per_regular_session
+    )
 
     issues: List[str] = []
     prov_counts: Dict[str, int] = {}
@@ -728,15 +742,16 @@ def check_evaluation_readiness(
             issues=issues,
         )
 
-    # Check 3: Coverage sufficiency
-    if len(records) < min_required_candles:
+    # Check 3: Unresolved quarantined conflicts
+    quarantined = store.get_stats().quarantined_count
+    if quarantined > 0:
         issues.append(
-            f"Archive has {len(records)} candles, fewer than required minimum of {min_required_candles} bars."
+            f"Archive has {quarantined} unresolved quarantined conflicting records. Requires review before empirical validation."
         )
         return EvaluationReadinessReport(
-            status=EvaluationReadinessStatus.INSUFFICIENT_COVERAGE,
+            status=EvaluationReadinessStatus.PENDING_VALIDATION,
             is_ready_for_evaluation=False,
-            reason=f"Insufficient candle coverage ({len(records)} < {min_required_candles} bars).",
+            reason=f"Archive contains {quarantined} quarantined conflicting records requiring manual resolution.",
             total_candles=len(records),
             provenance_counts=prov_counts,
             symbol=clean_sym,
@@ -745,7 +760,75 @@ def check_evaluation_readiness(
             issues=issues,
         )
 
-    # Check 4: Session cleaning and gap auditing
+    # Check 4: Uncompleted/forming candles
+    uncompleted_count = sum(1 for r in records if not r.is_completed)
+    if uncompleted_count > 0:
+        issues.append(f"Archive contains {uncompleted_count} forming or uncompleted candles.")
+        return EvaluationReadinessReport(
+            status=EvaluationReadinessStatus.PENDING_VALIDATION,
+            is_ready_for_evaluation=False,
+            reason=f"Archive contains {uncompleted_count} incomplete/forming candles.",
+            total_candles=len(records),
+            provenance_counts=prov_counts,
+            symbol=clean_sym,
+            interval=interval.value,
+            gaps_count=0,
+            issues=issues,
+        )
+
+    # Check 5: Coverage sufficiency
+    if len(records) < effective_min_candles:
+        issues.append(
+            f"Archive has {len(records)} candles, fewer than required minimum of {effective_min_candles} bars."
+        )
+        return EvaluationReadinessReport(
+            status=EvaluationReadinessStatus.INSUFFICIENT_COVERAGE,
+            is_ready_for_evaluation=False,
+            reason=f"Insufficient candle coverage ({len(records)} < {effective_min_candles} bars).",
+            total_candles=len(records),
+            provenance_counts=prov_counts,
+            symbol=clean_sym,
+            interval=interval.value,
+            gaps_count=0,
+            issues=issues,
+        )
+
+    # Check 6: Monotonic timestamp ordering
+    for i in range(len(records) - 1):
+        if records[i + 1].timestamp <= records[i].timestamp:
+            issues.append(
+                f"Non-monotonic timestamp detected: {records[i].timestamp} -> {records[i + 1].timestamp}."
+            )
+            return EvaluationReadinessReport(
+                status=EvaluationReadinessStatus.PENDING_VALIDATION,
+                is_ready_for_evaluation=False,
+                reason="Archive timestamps are not strictly monotonic.",
+                total_candles=len(records),
+                provenance_counts=prov_counts,
+                symbol=clean_sym,
+                interval=interval.value,
+                gaps_count=0,
+                issues=issues,
+            )
+
+    # Check 7: Session calendar validation (weekdays and non-holidays)
+    for r in records:
+        r_date = r.timestamp.date()
+        if r_date.weekday() >= 5 or r_date in NSE_HOLIDAYS_2026:
+            issues.append(f"Candle at {r.timestamp} falls on a weekend or declared NSE holiday ({r_date}).")
+            return EvaluationReadinessReport(
+                status=EvaluationReadinessStatus.PENDING_VALIDATION,
+                is_ready_for_evaluation=False,
+                reason=f"Archive contains observation on non-trading session date {r_date}.",
+                total_candles=len(records),
+                provenance_counts=prov_counts,
+                symbol=clean_sym,
+                interval=interval.value,
+                gaps_count=0,
+                issues=issues,
+            )
+
+    # Check 8: Session cleaning, out-of-session checks, and gap auditing
     intraday_candles = [r.to_intraday_candle() for r in records]
     cleaning_res = clean_intraday_candles(
         intraday_candles,
@@ -755,6 +838,17 @@ def check_evaluation_readiness(
     gaps_count = cleaning_res.summary.missing_candle_gaps_count
     if gaps_count > 0:
         issues.append(f"{gaps_count} missing interval gaps detected during regular trading sessions.")
+        return EvaluationReadinessReport(
+            status=EvaluationReadinessStatus.PENDING_VALIDATION,
+            is_ready_for_evaluation=False,
+            reason=f"Archive contains {gaps_count} missing interval gaps during regular trading sessions.",
+            total_candles=len(records),
+            provenance_counts=prov_counts,
+            symbol=clean_sym,
+            interval=interval.value,
+            gaps_count=gaps_count,
+            issues=issues,
+        )
 
     if cleaning_res.summary.rejected_count > 0:
         issues.append(
@@ -781,6 +875,6 @@ def check_evaluation_readiness(
         provenance_counts=prov_counts,
         symbol=clean_sym,
         interval=interval.value,
-        gaps_count=gaps_count,
+        gaps_count=0,
         issues=[],
     )

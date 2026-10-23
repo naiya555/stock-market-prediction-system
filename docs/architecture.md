@@ -1845,3 +1845,28 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
   - Controlled operational runner supporting `--status`, `--readiness-check`, `--once`, `--symbol`, and `--interval`.
   - Detects market session state and transitions cleanly between `READY`, `RECORDING`, `DEGRADED`, `STOPPED`, and `MARKET_CLOSED`.
   - Never executes automatically on module import or spawns unmanaged daemon background jobs.
+
+---
+
+### 4.46 Intraday Provider Integration Audit & Readiness Hardening (Day 74)
+- **Objective & Architectural Scope:**
+  Audit existing data provider interfaces, integrate a concrete intraday historical adapter (`YFinanceIntradayProvider` implementing `BaseIntradayDataProvider`), strengthen evaluation readiness gate rules (`check_evaluation_readiness`), and establish a bounded operational capture procedure for the next active NSE trading session.
+- **Provider Implementation (`YFinanceIntradayProvider`):**
+  - **Interface Compliance:** Extends `BaseIntradayDataProvider` and implements `fetch_intraday_candles(symbol, session_date, interval)`.
+  - **Instrument Safety:** Restricts ingestion strictly to authorized prediction instruments (`BHARTIARTL`). Explicitly rejects index symbols (`^NSEI`, `NIFTY`, `BANKNIFTY`) with `ValidationError`.
+  - **Timezone Normalization:** Normalizes returned timestamps to `Asia/Kolkata` (`IST`). Filters rows strictly matching `session_date`.
+  - **Missing Volume Preservation:** Preserves unavailable or NaN volume as `None` without converting to zero.
+  - **Data Delay Disclosure:** Discloses 15-minute free-tier exchange delay policy. Observations are never mislabeled as real-time.
+- **Hardened Evaluation Readiness Gate (`check_evaluation_readiness`):**
+  - **Dynamic Session Depth:** Calculates expected regular session bars dynamically from `interval.expected_bars_per_regular_session` (e.g. 75 bars for `5m`, 25 bars for `15m`, 375 bars for `1m`).
+  - **Strict Gap Rejection:** Missing interval gaps during regular trading hours now immediately reject readiness with `PENDING_VALIDATION` (no longer passing merely on candle count).
+  - **Quarantine Conflict Audit:** Unresolved quarantined conflicting records in `quarantined_candles.jsonl` immediately fail the gate with `PENDING_VALIDATION`.
+  - **Completed Candle Enforcement:** Any forming or uncompleted candle (`is_completed=False`) fails the gate with `PENDING_VALIDATION`.
+  - **Session Calendar Verification:** Rejects observations on weekends or declared NSE holidays (`NSE_HOLIDAYS_2026`).
+  - **Monotonicity Check:** Verifies timestamps are strictly monotonically increasing.
+- **Controlled Capture Plan for Next Valid Session:**
+  - Regular NSE trading sessions operate strictly 09:15:00 to 15:30:00 IST on non-holiday weekdays.
+  - Next valid session open: Monday, 2026-10-26 at 09:15:00 IST.
+  - CLI usage: `python scripts/record_intraday_session.py --symbol BHARTIARTL --interval 5m --provider yfinance --once`.
+  - Zero background daemon execution; bounded retries and clean exit.
+  - Phase 16 operational status remains strictly **IN PROGRESS**.

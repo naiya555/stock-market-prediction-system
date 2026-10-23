@@ -6694,3 +6694,93 @@ Build a safe, restartable intraday session recorder orchestration layer (`Intrad
 1. **Empirical Capture Blocked:** Outside regular NSE trading hours (currently 21:50 IST), live market feeds are closed. Evaluation readiness gate accurately reports `BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER`. No synthetic fixtures were labeled or stored as live data.
 2. **No Model Training Today:** In accordance with Day 73 scope, no machine learning models were trained or evaluated.
 3. **Phase 16 Status:** **Strictly IN PROGRESS.** Phase 16 operational release criteria require live staging soak testing and operational deployment sign-off.
+
+---
+
+## Day 74 - Intraday Provider Integration Audit & Controlled Capture
+
+### Goal
+Audit existing market data provider interfaces, implement a verified intraday provider adapter (`YFinanceIntradayProvider` implementing `BaseIntradayDataProvider`), strengthen evaluation readiness gate rules (`check_evaluation_readiness`), and establish a bounded operational capture procedure for the next active NSE trading session.
+
+---
+
+### 1. Preflight Repository & Environment Integrity
+- **Repository:** `https://github.com/naiya555/stock-market-prediction-system.git`
+- **Branch:** `main`
+- **Starting Commit:** `6640c07` (`feat(market): implement intraday session recorder and isolated real-data capture foundation`)
+- **Remote Synchronization:** Local `main` is ahead of `origin/main` by 1 commit (`6640c07`). Remote push blocked by interactive credential prompt in headless background task; local commit preserved intact.
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**)
+
+---
+
+### 2. Provider Capability Audit Findings & Integration Decisions
+- **Interface Segregation:** Discovered `BaseMarketDataProvider` was tailored for daily unadjusted OHLCV bars (`MarketOHLCV`), while `BaseIntradayDataProvider` in `app/market/intraday.py` defines point-in-time intraday candles (`IntradayCandle`).
+- **Adapter Implementation:** Implemented `YFinanceIntradayProvider(BaseIntradayDataProvider)` in `app/market/providers/yfinance_provider.py`:
+  - Restricts symbols strictly to authorized equity models (`BHARTIARTL`). Rejects index instruments (`^NSEI`, `NIFTY`, `BANKNIFTY`) with `ValidationError`.
+  - Normalizes timestamps to `Asia/Kolkata` (`IST`). Filters observations strictly matching requested `session_date`.
+  - Preserves missing volume as `None` without converting to zero.
+  - Safe error handling: raises `RuntimeError` on network timeouts for bounded retry orchestration.
+- **Delay Disclosure:** Yahoo Finance free-tier data has an approximate 15-minute delay on Indian equities during trading sessions. Observations are strictly disclosed as delayed historical observations, never mislabeled as real-time.
+
+---
+
+### 3. Work Completed & Implementation Details
+
+1. **Provider Adapter (`app/market/providers/yfinance_provider.py` & `__init__.py`):**
+   - Implemented `YFinanceIntradayProvider` implementing `BaseIntradayDataProvider`.
+   - Exported in `app/market/providers/__init__.py` and `app/market/__init__.py`.
+2. **Readiness Gate Hardening (`app/market/recorder.py`):**
+   - **Dynamic Session Depth:** Calculates expected bars dynamically from `interval.expected_bars_per_regular_session` (e.g. 75 bars for `5m`, 25 bars for `15m`).
+   - **Strict Gap Rejection:** Missing interval gaps during regular trading hours now immediately reject readiness with `PENDING_VALIDATION` (no longer passing merely on candle count).
+   - **Quarantine Conflict Audit:** Unresolved quarantined conflicting records in `quarantined_candles.jsonl` immediately fail the gate with `PENDING_VALIDATION`.
+   - **Completed Candle Enforcement:** Any forming or uncompleted candle (`is_completed=False`) fails the gate with `PENDING_VALIDATION`.
+   - **Session Calendar Verification:** Rejects observations on weekends or declared NSE holidays (`NSE_HOLIDAYS_2026`).
+   - **Monotonicity Check:** Verifies timestamps are strictly monotonically increasing.
+3. **Operational CLI Enhancement (`scripts/record_intraday_session.py`):**
+   - Added `--provider` flag (`yfinance` or `test`).
+   - Discloses delay policies and market session states during execution.
+4. **Deterministic Unit Tests (`tests/test_intraday_recorder.py`):**
+   - 10 new deterministic tests (total 27 in suite) covering:
+     - `test_readiness_rejected_on_missing_interval_gaps`
+     - `test_readiness_rejected_on_unresolved_quarantined_conflicts`
+     - `test_readiness_rejected_on_uncompleted_candles`
+     - `test_readiness_rejected_on_weekend_or_holiday_candles`
+     - `test_readiness_dynamic_interval_expected_bars`
+     - `test_yfinance_provider_successful_candle_parsing`
+     - `test_yfinance_provider_missing_volume_preservation`
+     - `test_yfinance_provider_rejects_index_instruments`
+     - `test_yfinance_provider_empty_response`
+     - `test_yfinance_provider_network_error`
+
+---
+
+### 4. Verification & Quality Gates
+
+- **Focused Recorder Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest tests/test_intraday_recorder.py -v
+  ```
+  **27 passed** in 1.70s (0 failures, 0 warnings).
+- **Full Repository Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **906 passed**, 1 warning across all 62 test modules in 44.33s (0 failures, 0 regressions).
+- **Quality Checks:**
+  - `.\.venv\Scripts\python -m pip check`: No broken requirements found.
+  - `git diff --check`: Clean (0 whitespace errors).
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**)
+
+---
+
+### 5. Controlled Capture Results & Next Session Procedure
+- **Current Run Status:** Executed single-cycle poll at 22:38 IST. The market was correctly detected as `CLOSED` (`MarketSessionState.CLOSED`). Output: 0 fetched, 0 persisted, status: `MARKET_CLOSED`. Zero fake data was recorded.
+- **Readiness Gate Status:** `BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER` (0 genuine provider observations in archive).
+- **Next Valid Session Capture Plan:**
+  - Scheduled Trading Session: Monday, 2026-10-26 (09:15:00 to 15:30:00 IST).
+  - Command: `python scripts/record_intraday_session.py --symbol BHARTIARTL --interval 5m --provider yfinance --once`.
+- **Phase 16 Status:** **Strictly IN PROGRESS.** Phase 16 operational release criteria require live staging soak testing and operational deployment sign-off.
