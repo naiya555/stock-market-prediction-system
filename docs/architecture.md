@@ -1915,3 +1915,41 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
   - SHA-256 `data/predictions.db`: `D0CCE57F5CA61F2732E233E89667A29DC4FA0DA4BFFDA29438E3FFD7EABD473E` (Pristine).
   - SHA-256 `models/.gitkeep`: `E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855` (Pristine).
   - Phase 16 operational status remains strictly **IN PROGRESS**.
+
+---
+
+### 4.48 Live-Session Capture Validation & Git Synchronization (Day 76)
+- **Objective & Architectural Scope:**
+  Verify remote Git synchronization, confirm the official NSE trading calendar for the active and upcoming sessions, execute the bounded manual capture protocol (`scripts/record_intraday_session.py`), inspect the isolated archive store, audit readiness gate criteria, and verify repository invariants without synthetic substitution.
+- **Git Synchronization Resolution:**
+  - Local `HEAD` commit `6d2fef1` and remote `origin/main` match 100% bit-for-bit.
+  - All preceding commits (`6640c07`, `03d3a6e`, `6d2fef1`) are fully synchronized upstream on `origin/main`.
+  - Working tree clean; zero uncommitted or untracked changes at start of Day 76.
+- **Session Verification & Official NSE Trading Calendar:**
+  - Execution Timestamp: Friday night, 2026-10-23 22:58:41 IST.
+  - Session State: `MarketSessionState.CLOSED` (Regular NSE hours: 09:15:00 to 15:30:00 IST).
+  - Official NSE 2026 Holiday Calendar Audit (`NSE_HOLIDAYS_2026` in `app/market/session.py`):
+    - Saturday 2026-10-24: Weekend exchange closure.
+    - Sunday 2026-10-25: Weekend exchange closure.
+    - Monday 2026-10-26: Regular trading day (non-holiday). Next continuous trading session opens at 09:15:00 IST.
+- **Bounded Session Capture Execution:**
+  - Command: `python scripts/record_intraday_session.py --symbol BHARTIARTL --interval 5m --provider yfinance --session --max-cycles 6 --poll-interval 60 --max-runtime 600`.
+  - Provider Configuration: `yfinance` (disclosed ~15-minute delayed data; zero streaming WebSocket).
+  - Safety Boundary: Cleanly halted immediately upon detecting `MarketSessionState.CLOSED`.
+  - Aggregated Metrics:
+    - Status: `MARKET_CLOSED`.
+    - Termination Reason: `market_closed`.
+    - Cycles Completed: `0`.
+    - Total Fetched: `0`, Total Persisted: `0`, Total Deferred: `0`, Total Quarantined: `0`, Total Idempotent: `0`.
+- **Archive & Readiness Gate Audit:**
+  - Isolated Archive: `data/intraday/intraday_archive.jsonl` contains 0 records (does not exist on disk).
+  - Quarantine Log: `data/intraday/quarantined_candles.jsonl` contains 0 records.
+  - Readiness Audit Status: `BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER`.
+  - Zero synthetic fixtures were used to fill missing intervals or satisfy the readiness gate.
+- **Test Evidence & Protected Hashes:**
+  - Focused Suite: 33 passed in `tests/test_intraday_recorder.py`.
+  - Full Pytest Suite: 912 passed, 1 warning in 38.54s.
+  - Pip Check: No broken requirements found.
+  - SHA-256 `data/predictions.db`: `D0CCE57F5CA61F2732E233E89667A29DC4FA0DA4BFFDA29438E3FFD7EABD473E` (Pristine).
+  - SHA-256 `models/.gitkeep`: `E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855` (Pristine).
+  - Phase 16 operational status remains strictly **IN PROGRESS**.

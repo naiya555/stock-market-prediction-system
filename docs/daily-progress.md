@@ -6884,3 +6884,89 @@ Implement a bounded manual multi-cycle session capture workflow (`run_bounded_se
 ### 6. Operational Status & Phase Tracking
 - **Phase 16 Status:** **Strictly IN PROGRESS.**
   Phase 16 operational sign-off criteria require live market session staging, soak-testing across consecutive regular trading sessions, and operational monitoring sign-off before production readiness can be claimed.
+
+---
+
+## Day 76 - Live-Session Capture Validation & Git Synchronization
+
+### Goal
+Verify remote Git synchronization, confirm the official NSE trading calendar for the active and upcoming sessions, execute the bounded manual capture protocol (`scripts/record_intraday_session.py`), inspect the isolated archive store, audit readiness gate criteria, and verify repository invariants without synthetic substitution.
+
+---
+
+### 1. Preflight Repository & Environment Integrity
+- **Repository:** `https://github.com/naiya555/stock-market-prediction-system.git`
+- **Branch:** `main`
+- **Starting Commit:** `6d2fef1` (`feat(market): implement bounded manual intraday session capture workflow`)
+- **Remote Synchronization:** Verified local `HEAD` and remote `origin/main` match 100% bit-for-bit at `6d2fef180b724801ce6067f90198746d28c9997b`. All 3 previous commits (`6640c07`, `03d3a6e`, `6d2fef1`) are fully synchronized upstream on `origin/main`. Working tree clean.
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**)
+
+---
+
+### 2. Trading Session & Calendar Verification
+- **Current Observation Time:** Friday night, 2026-10-23 22:58:41 IST.
+- **Market Session State:** `MarketSessionState.CLOSED` (Regular continuous trading operates strictly 09:15:00 to 15:30:00 IST).
+- **Official NSE Trading Calendar Audit (`NSE_HOLIDAYS_2026`):**
+  - Saturday 2026-10-24: Weekend exchange closure.
+  - Sunday 2026-10-25: Weekend exchange closure.
+  - Monday 2026-10-26: Regular trading day (non-holiday). Next continuous trading session opens at 09:15:00 IST.
+- **Provider Status & Delay Disclosure:** Sourced via `YFinanceIntradayProvider`. Disclosed ~15-minute exchange delay on Indian equities; zero real-time streaming WebSocket capability.
+
+---
+
+### 3. Bounded Capture Execution
+- **Command:**
+  ```powershell
+  python scripts/record_intraday_session.py --symbol BHARTIARTL --interval 5m --provider yfinance --session --max-cycles 6 --poll-interval 60 --max-runtime 600
+  ```
+- **Execution Lifecycle:**
+  - Configured Provider: `yfinance (15m delayed exchange data disclosed; no real-time stream)`
+  - Evaluated session state: `CLOSED` on 2026-10-23 (22:58:41 IST).
+  - Terminated cleanly with `termination_reason="market_closed"`.
+  - Zero unmanaged background daemons or infinite polling loops.
+- **Execution Summary:**
+  - Operational Status: `MARKET_CLOSED`.
+  - Termination Reason: `market_closed`.
+  - Cycles Completed: `0`.
+  - Total Fetched: `0`, Total Persisted: `0`, Total Forming Deferred: `0`, Total Quarantined: `0`, Total Idempotent: `0`.
+
+---
+
+### 4. Persisted Observations & Readiness Gate Audit
+- **Isolated Archive Inspection:**
+  - `data/intraday/intraday_archive.jsonl` contains 0 records (does not exist on disk).
+  - `data/intraday/quarantined_candles.jsonl` contains 0 records.
+  - Primary prediction database `data/predictions.db` is 100% untouched.
+- **Readiness Gate Audit (`--readiness-check`):**
+  - Gate Status: `BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER`.
+  - Ready For Evaluation: `False`.
+  - Summary Reason: `Blocked: No verified intraday market data provider observations captured.`
+  - Zero synthetic records were fabricated to fill missing intervals or satisfy the gate.
+
+---
+
+### 5. Verification & Quality Gates
+- **Focused Recorder Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest tests/test_intraday_recorder.py -q
+  ```
+  **33 passed** in 1.47s (0 failures, 0 warnings).
+- **Full Repository Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **912 passed**, 1 warning across all 62 test modules in 38.54s (0 failures, 0 regressions).
+- **Quality Checks:**
+  - `.\.venv\Scripts\python -m pip check`: No broken requirements found.
+  - `git diff --check`: Clean (0 whitespace errors).
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**)
+
+---
+
+### 6. Operational Status & Phase Tracking
+- **Phase 16 Status:** **Strictly IN PROGRESS.**
+  Phase 16 operational sign-off criteria require live market session staging, soak-testing across consecutive regular trading sessions, and operational monitoring sign-off before production readiness can be claimed.
