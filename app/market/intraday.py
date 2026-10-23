@@ -750,3 +750,333 @@ def compute_intraday_features(
 
     # Sort final records by (symbol, candle_timestamp)
     return sorted(all_features, key=lambda f: (f.symbol, f.candle_timestamp))
+
+
+class IntradayTargetStatus(str, Enum):
+    """Status classification of the forward prediction target for an intraday observation."""
+
+    AVAILABLE = "AVAILABLE"
+    SESSION_CLOSE_CUTOFF = "SESSION_CLOSE_CUTOFF"
+    INCOMPLETE_HORIZON_GAP = "INCOMPLETE_HORIZON_GAP"
+    MISSING_OUTCOME = "MISSING_OUTCOME"
+
+
+@dataclass(frozen=True)
+class IntradayDatasetObservation:
+    """Canonical typed record representing a single point-in-time intraday observation.
+
+    Combines point-in-time features with forward prediction targets and explicit
+    realization timestamps to guarantee zero lookahead bias.
+    """
+
+    symbol: str
+    session_date: date
+    candle_timestamp: datetime
+    available_at: datetime
+    interval: IntradayInterval
+    features: IntradayFeatureRecord
+    target_horizon_bars: int
+    target_return: Optional[float]
+    target_direction: Optional[str]  # "UP", "DOWN", or None
+    target_binary: Optional[int]     # 1, 0, or None
+    target_realized_at: Optional[datetime]
+    target_status: IntradayTargetStatus
+
+    @property
+    def has_target(self) -> bool:
+        """Return True if this observation has a complete, valid forward label."""
+        return self.target_status == IntradayTargetStatus.AVAILABLE and self.target_binary is not None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert observation to flat dictionary for tabular processing."""
+        data = {
+            "symbol": self.symbol,
+            "session_date": self.session_date.isoformat(),
+            "candle_timestamp": self.candle_timestamp.isoformat(),
+            "available_at": self.available_at.isoformat(),
+            "interval": self.interval.value,
+            "target_horizon_bars": self.target_horizon_bars,
+            "target_return": self.target_return,
+            "target_direction": self.target_direction,
+            "target_binary": self.target_binary,
+            "target_realized_at": self.target_realized_at.isoformat() if self.target_realized_at else None,
+            "target_status": self.target_status.value,
+            "has_target": self.has_target,
+        }
+        # Flatten feature attributes
+        for k, v in self.features.to_dict().items():
+            if k not in data:
+                data[f"feat_{k}"] = v
+        return data
+
+
+def assemble_intraday_dataset(
+    candles: Sequence[IntradayCandle],
+    horizon_bars: int = 3,
+    opening_range_minutes: int = 15,
+) -> List[IntradayDatasetObservation]:
+    """Assemble a leakage-safe intraday dataset with point-in-time features and forward targets.
+
+    Mathematical Formulation:
+    - Feature Observation: Made at candle t, available strictly at t's close (available_at = candle_t.bar_end_timestamp).
+    - Prediction Target: Close-to-close percentage return over the next H completed candles in the SAME session:
+        target_return = (close_{t+H} - close_t) / close_t
+        target_direction = 'UP' if target_return > 0.0 else 'DOWN'
+        target_binary = 1 if target_return > 0.0 else 0
+    - Equal Price Policy: target_return == 0.0 deterministically grouped into 'DOWN' (target_binary = 0).
+    - Session Boundary Guard: If t+H exceeds available session candles (approaching 15:30:00 IST market close),
+      the label is marked SESSION_CLOSE_CUTOFF (target is None). Cross-session targets are strictly prohibited.
+    - Missing Candle Guard: If intermediate candles in the horizon are missing (intraday feed gap),
+      the label is marked INCOMPLETE_HORIZON_GAP (target is None). Zero synthetic price interpolation.
+
+    Args:
+        candles: Sequence of validated IntradayCandle objects.
+        horizon_bars: Number of future completed candles in the prediction horizon (default 3).
+        opening_range_minutes: Minutes for opening range feature calculation (default 15).
+
+    Returns:
+        List of IntradayDatasetObservation sorted chronologically.
+    """
+    if not candles:
+        return []
+    if horizon_bars < 1:
+        raise ValidationError(f"horizon_bars must be >= 1 (got {horizon_bars})")
+
+    # Sort strictly chronologically
+    sorted_candles = sorted(candles, key=lambda c: (c.symbol, c.timestamp))
+
+    # Compute features for all candles
+    feature_records = compute_intraday_features(sorted_candles, opening_range_minutes=opening_range_minutes)
+    features_by_key = {(f.symbol, f.candle_timestamp): f for f in feature_records}
+
+    # Group by (symbol, session_date) to prevent cross-session target generation
+    by_session: Dict[Tuple[str, date], List[IntradayCandle]] = defaultdict(list)
+    for c in sorted_candles:
+        by_session[(c.symbol, c.timestamp.date())].append(c)
+
+    dataset: List[IntradayDatasetObservation] = []
+
+    for (sym, s_date), s_candles in by_session.items():
+        n_candles = len(s_candles)
+        interval_seconds = s_candles[0].interval.duration_seconds
+
+        for idx, current_candle in enumerate(s_candles):
+            target_idx = idx + horizon_bars
+            target_return: Optional[float] = None
+            target_direction: Optional[str] = None
+            target_binary: Optional[int] = None
+            target_realized_at: Optional[datetime] = None
+            target_status: IntradayTargetStatus
+
+            if target_idx >= n_candles:
+                # Horizon extends beyond session close
+                target_status = IntradayTargetStatus.SESSION_CLOSE_CUTOFF
+            else:
+                target_candle = s_candles[target_idx]
+                expected_delta = timedelta(seconds=horizon_bars * interval_seconds)
+                actual_delta = target_candle.timestamp - current_candle.timestamp
+
+                if actual_delta != expected_delta:
+                    # Intraday missing candle gap between current candle and target candle
+                    target_status = IntradayTargetStatus.INCOMPLETE_HORIZON_GAP
+                else:
+                    # Valid contiguous horizon within the same session
+                    if current_candle.close > 0:
+                        target_return = (target_candle.close - current_candle.close) / current_candle.close
+                        if target_return > 0.0:
+                            target_direction = "UP"
+                            target_binary = 1
+                        else:
+                            target_direction = "DOWN"
+                            target_binary = 0
+                        target_realized_at = target_candle.bar_end_timestamp
+                        target_status = IntradayTargetStatus.AVAILABLE
+                    else:
+                        target_status = IntradayTargetStatus.MISSING_OUTCOME
+
+            feat_record = features_by_key.get((current_candle.symbol, current_candle.timestamp))
+            if feat_record is None:
+                continue
+
+            obs = IntradayDatasetObservation(
+                symbol=current_candle.symbol,
+                session_date=s_date,
+                candle_timestamp=current_candle.timestamp,
+                available_at=current_candle.bar_end_timestamp,
+                interval=current_candle.interval,
+                features=feat_record,
+                target_horizon_bars=horizon_bars,
+                target_return=target_return,
+                target_direction=target_direction,
+                target_binary=target_binary,
+                target_realized_at=target_realized_at,
+                target_status=target_status,
+            )
+            dataset.append(obs)
+
+    return sorted(dataset, key=lambda o: (o.symbol, o.candle_timestamp))
+
+
+@dataclass(frozen=True)
+class IntradaySplit:
+    """Artifacts and temporal boundaries for a single chronological or walk-forward split."""
+
+    fold: int
+    train_observations: List[IntradayDatasetObservation]
+    val_observations: List[IntradayDatasetObservation]
+    embargo_observations: List[IntradayDatasetObservation]
+    train_start: datetime
+    train_end: datetime
+    train_target_cutoff: datetime
+    val_start: datetime
+    val_end: datetime
+    train_count: int
+    val_count: int
+    embargo_count: int
+    train_up_count: int
+    train_down_count: int
+    val_up_count: int
+    val_down_count: int
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize fold split metadata."""
+        return {
+            "fold": self.fold,
+            "train_count": self.train_count,
+            "val_count": self.val_count,
+            "embargo_count": self.embargo_count,
+            "train_start": self.train_start.isoformat(),
+            "train_end": self.train_end.isoformat(),
+            "train_target_cutoff": self.train_target_cutoff.isoformat(),
+            "val_start": self.val_start.isoformat(),
+            "val_end": self.val_end.isoformat(),
+            "train_up_count": self.train_up_count,
+            "train_down_count": self.train_down_count,
+            "val_up_count": self.val_up_count,
+            "val_down_count": self.val_down_count,
+        }
+
+
+def generate_intraday_chronological_splits(
+    observations: Sequence[IntradayDatasetObservation],
+    n_splits: int = 3,
+    min_train_ratio: float = 0.4,
+    min_train_samples: int = 10,
+    min_val_samples: int = 5,
+) -> List[IntradaySplit]:
+    """Generate chronological expanding-window walk-forward splits with strict target embargoes.
+
+    Partitioning Mathematics & Temporal Leakage Invariants:
+    1. Chronological Sorting: Observations are filtered to labeled rows (has_target is True)
+       and partitioned strictly in forward chronological sequence. Random row shuffling is prohibited.
+    2. Target Embargo Invariant: For any training partition ending at observation t_k, its label outcome
+       realizes at T_cutoff = t_k.target_realized_at.
+       Any subsequent observation whose feature window is active on or before T_cutoff is placed into
+       the EMBARGO partition to prevent lookahead target overlap from contaminating validation metrics.
+    3. Disjoint Partitioning: Train ∩ Embargo = ∅, Train ∩ Val = ∅, Embargo ∩ Val = ∅.
+
+    Args:
+        observations: Sequence of IntradayDatasetObservation records.
+        n_splits: Number of expanding-window walk-forward folds (default 3).
+        min_train_ratio: Minimum fraction of labeled data reserved for fold 0 training (default 0.4).
+        min_train_samples: Minimum absolute sample count for initial training fold (default 10).
+        min_val_samples: Minimum sample count for each validation fold (default 5).
+
+    Returns:
+        List of IntradaySplit objects.
+
+    Raises:
+        ValidationError: If dataset is unsorted, insufficient in sample count, or lacks labels.
+    """
+    if not observations:
+        raise ValidationError("Cannot split an empty observation sequence.")
+
+    # Filter strictly to labeled observations
+    labeled = [o for o in observations if o.has_target]
+    if not labeled:
+        raise ValidationError("Observation sequence contains zero observations with valid targets (has_target=True).")
+
+    # Verify chronological ordering
+    for i in range(len(labeled) - 1):
+        if labeled[i].candle_timestamp > labeled[i + 1].candle_timestamp:
+            raise ValidationError("Observations must be sorted strictly in ascending chronological order.")
+
+    N = len(labeled)
+    min_required = min_train_samples + (n_splits * min_val_samples)
+    if N < min_required:
+        raise ValidationError(
+            f"Insufficient labeled observations ({N}) for {n_splits} folds with min_train={min_train_samples} "
+            f"and min_val={min_val_samples} (requires at least {min_required} samples)."
+        )
+
+    initial_train_size = max(min_train_samples, int(N * min_train_ratio))
+    val_pool = N - initial_train_size
+    step_size = val_pool // n_splits
+
+    if step_size < min_val_samples:
+        raise ValidationError(
+            f"Calculated validation fold size ({step_size}) is less than min_val_samples ({min_val_samples})."
+        )
+
+    splits: List[IntradaySplit] = []
+
+    for fold in range(n_splits):
+        train_end_idx = initial_train_size + (fold * step_size)
+        train_obs = labeled[:train_end_idx]
+
+        last_train = train_obs[-1]
+        target_cutoff = last_train.target_realized_at
+        if target_cutoff is None:
+            raise ValidationError(f"Last training observation in fold {fold} has None target_realized_at.")
+
+        # Find observations that fall within the embargo window
+        # (any observation whose feature realization timestamp <= training target realization cutoff)
+        rem_obs = labeled[train_end_idx:]
+        embargo_obs: List[IntradayDatasetObservation] = []
+        val_candidates: List[IntradayDatasetObservation] = []
+
+        for candidate in rem_obs:
+            if candidate.available_at <= target_cutoff:
+                embargo_obs.append(candidate)
+            else:
+                val_candidates.append(candidate)
+
+        # Bounded validation window for this fold
+        val_size = min(step_size, len(val_candidates))
+        if val_size < min_val_samples:
+            # If embargo reduced validation below threshold, take available or report fold limitation
+            val_obs = val_candidates
+        else:
+            val_obs = val_candidates[:val_size]
+
+        if not val_obs:
+            raise ValidationError(
+                f"Fold {fold} has 0 validation observations after applying target embargo to {target_cutoff}."
+            )
+
+        train_up = sum(1 for o in train_obs if o.target_binary == 1)
+        train_down = sum(1 for o in train_obs if o.target_binary == 0)
+        val_up = sum(1 for o in val_obs if o.target_binary == 1)
+        val_down = sum(1 for o in val_obs if o.target_binary == 0)
+
+        split = IntradaySplit(
+            fold=fold,
+            train_observations=train_obs,
+            val_observations=val_obs,
+            embargo_observations=embargo_obs,
+            train_start=train_obs[0].candle_timestamp,
+            train_end=train_obs[-1].candle_timestamp,
+            train_target_cutoff=target_cutoff,
+            val_start=val_obs[0].candle_timestamp,
+            val_end=val_obs[-1].candle_timestamp,
+            train_count=len(train_obs),
+            val_count=len(val_obs),
+            embargo_count=len(embargo_obs),
+            train_up_count=train_up,
+            train_down_count=train_down,
+            val_up_count=val_up,
+            val_down_count=val_down,
+        )
+        splits.append(split)
+
+    return splits

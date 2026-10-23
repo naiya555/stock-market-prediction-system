@@ -98,14 +98,19 @@ from app.market.intraday import (
     BaseIntradayDataProvider,
     IntradayCandle,
     IntradayCleaningResult,
+    IntradayDatasetObservation,
     IntradayEngine,
     IntradayFeatureRecord,
     IntradayInterval,
     IntradayQualitySummary,
+    IntradaySplit,
+    IntradayTargetStatus,
     OpeningRangeStatus,
     SyntheticTestIntradayProvider,
+    assemble_intraday_dataset,
     clean_intraday_candles,
     compute_intraday_features,
+    generate_intraday_chronological_splits,
 )
 
 __all__ = [
@@ -195,6 +200,11 @@ __all__ = [
     "OpeningRangeStatus",
     "IntradayFeatureRecord",
     "compute_intraday_features",
+    "IntradayTargetStatus",
+    "IntradayDatasetObservation",
+    "assemble_intraday_dataset",
+    "IntradaySplit",
+    "generate_intraday_chronological_splits",
 ]
 
 
