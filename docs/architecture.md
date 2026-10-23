@@ -1643,3 +1643,43 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
 - **Protected Files & Roadmaps:**
   - `data/predictions.db` (`d0cce57f...`) and `models/.gitkeep` (`e3b0c442...`) verified 100% pristine.
   - Roadmap invariant: Phase 16 remains strictly **IN PROGRESS**.
+
+---
+
+### 4.40 Web Application Phase Final Integration & Release-Readiness Audit (Day 68)
+- **Objective & Architectural Scope:**
+  Complete the comprehensive final integration audit for the six-day web application phase (Days 63–68). Synthesize frontend and backend verification, confirm data contract fidelity across all supported and blocked instruments, audit defensive security and accessibility standards, run full regression suites, verify protected database and model immutability, document outstanding operational boundaries, and establish a clean handoff to subsequent roadmap phases.
+- **Architectural Topology & Verified Integration Paths:**
+  1. **Application Foundation & Routing (`app/api/`):**
+     - Entry point: `create_app()` factory in `app/api/app.py` mounting modular APIRouters: `/api/predict`, `/api/predict/instruments`, `/api/history`, `/api/feedback`, `/api/events`, and `/api/health`.
+     - Static Asset Pipeline: Static directory mounted at `/static` (`app/api/static/`) serving semantic HTML5 (`index.html`), responsive CSS (`css/styles.css`), and vanilla ECMAScript (`js/app.js`). Browser requests to `/` and `/ui` route cleanly to the interactive dashboard.
+  2. **Authoritative Instrument Catalog & Gating:**
+     - `GET /api/predict/instruments` provides authoritative instrument taxonomy:
+       - `BHARTIARTL`: `EQUITY (NSE)` — `SUPPORTED` (active XGBoost, LightGBM, and Ensemble models).
+       - `TCS`, `RELIANCE`: `EQUITY (NSE)` — `BLOCKED` (model unavailable; equity models strictly symbol-specific).
+       - `NIFTY_TELECOMMUNICATIONS`, `NIFTY_50`: `INDEX (NSE)` — `BLOCKED` (sectoral and benchmark indices; equity models strictly prohibited from index inference).
+     - Frontend dynamically populates `#quick-ticker-chips` from this catalog and renders accessible error fallback notices if catalog fetching fails.
+  3. **Prediction Contract & Result Integrity:**
+     - Wire Serialization: Canonical `PredictionResponse` wire fields (`predicted_direction`, `probability_up`, `probability_down`, `quote_context`) bind directly to UI elements.
+     - Fail-Safe Status Gating: Non-success (`MODEL_UNAVAILABLE`, `DATA_QUALITY_ISSUE`, `FAILED`) and unknown statuses unconditionally suppress the hero forecast card and breakdown grid, rendering the diagnostic `#result-blocked-card` with sanitized status messaging and resolution actions.
+     - Factual Observed Quote vs. Forward Forecast Distinction: Historical market price is explicitly labeled `LAST_TRADED_PRICE • Feed: yfinance • Delayed ~15m • Session: CLOSED/OPEN • Not a predicted price`. Price targets are disclaimed as unsupported and not modeled.
+     - Probability Honesty: Raw tree decision probabilities are prominently labeled `[Uncalibrated]`, accompanied by evidence-aligned disclaimers noting underperformance relative to a constant 0.50 reference on holdout Brier scores ($0.2556$–$0.2562$ vs $0.2500$). Zero fabricated prices, directions, or confidence scores.
+     - State Management & Race Defenses: In-flight requests carry an incrementing sequence ID (`AppState.predictionRequestId`) to drop out-of-order stale responses. Form submissions activate `AppState.isPredicting = true` concurrency lock. Instrument changes immediately clear previous predictions (`clearStalePredictionIfSymbolChanged`). Retries preserve exact submitted parameters (`AppState.lastPredictionPayload`).
+- **Defensive Security & Accessibility Standards:**
+  1. **Defensive Security:**
+     - XSS Prevention: Untrusted text bound exclusively via `textContent` or `document.createElement`. URLs validated through `isSafeHttpUrl` enforcing `http:` or `https:`.
+     - Error Sanitization: Exception tracebacks, absolute filesystem paths, and internal configuration secrets are scrubbed from all API responses and UI displays.
+     - HTTP Response Headers: ASGI middleware enforces `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, and restrictive `Permissions-Policy`.
+     - Input Validation: Ticker symbols bounded to $[1, 30]$ characters matching `^[A-Z0-9_\-\.\^]{1,30}$`. Malformed payloads reject safely. Local development server confined strictly to loopback (`127.0.0.1:8000`).
+  2. **Accessibility (WCAG 2.1 AA Compliant Controls):**
+     - Form Labels: Explicit `<label for="...">` associations for `#symbol-input` and `#model-select`.
+     - Assistive Live Regions: `role="alert"` and `aria-live="polite"` on dynamic alerts and prediction containers.
+     - Non-Color Visual Cues: Direction communicated via Unicode glyphs (`↗`, `↘`, `⏸`) and textual labels (`PREDICTED UP (Bullish Return)`), never color alone.
+     - Responsive Layout: Tested on Desktop (1280x800) and Mobile (375x667) viewports, verifying zero unintended horizontal scroll (`scrollWidth <= innerWidth`).
+- **Browser Verification Status:**
+  - Headless Chrome DevTools Protocol (CDP) automated verification executed via `scripts/verify_real_browser.py` using local Google Chrome runtime, verifying loading states, hero card rendering, uncalibrated warnings, blocked instrument routing, recovery buttons, stale state clearing, double-submission concurrency guards, responsive viewports, and zero uncaught console exceptions.
+  - Dedicated interactive GUI and screen-reader hardware/software verification sessions remain cataloged for external staging environments.
+- **Handoff & Remaining Operational Boundaries:**
+  - This integration audit marks the web application layer as development-complete.
+  - This is not a production release, public deployment, multi-hour cloud soak test, or claim of trading edge.
+  - Phase 16 remains strictly **IN PROGRESS** pending external staging cluster provisioning, multi-hour soak testing during live exchange hours, and operational deployment sign-off.

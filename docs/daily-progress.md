@@ -6103,3 +6103,134 @@ Execute real browser interaction testing, runtime discovery, automated Chrome De
 **Phase 16 remains strictly IN PROGRESS.**
 Real browser interactions and workflows verified via headless Chrome DevTools Protocol; runtime JavaScript exception fixed; accessibility form associations, ARIA regions, and non-color indicators confirmed; responsive layouts validated; protected database restored to pristine 0-record state; 822 regression tests passing.
 
+---
+
+## Day 68 - Web Application Phase Final Integration & Release-Readiness Audit
+
+### Goal
+Execute the final integration and release-readiness audit for the six-day Web Application phase (Phase 16, Days 63–68) of the 84-day roadmap. Verify end-to-end integration between the FastAPI backend and vanilla JavaScript frontend, ensure truthful data presentation without fabricated prices or targets, audit defensive security and accessibility compliance, run comprehensive regression suites, verify protected database and model immutability, document remaining operational boundaries, and prepare a clean handoff to the next roadmap phase.
+
+---
+
+### 1. Pre-Flight Repository & Environment Integrity
+- **Repository:** `https://github.com/naiya555/stock-market-prediction-system.git`
+- **Branch:** `main`
+- **Baseline Commit:** `98665ae` (`feat(web): complete real browser interaction and accessibility audit`)
+- **Remote Synchronization:** Local `main` verified up to date with `origin/main`. Working tree clean.
+- **Entry Points & Architecture:**
+  - Backend Application Factory: `create_app()` in `app/api/app.py` mounting routers: `/api/predict`, `/api/predict/instruments`, `/api/history`, `/api/feedback`, `/api/events`, `/api/health`.
+  - Static Asset Pipeline: `/static` directory serving semantic `index.html`, responsive `css/styles.css`, and vanilla `js/app.js`. User dashboard served at `/ui` and browser `/`.
+  - Pydantic Wire Schemas: `PredictionRequest`, `PredictionResponse`, `QuoteContextResponse`, `InstrumentCatalogResponse`, `HealthResponse` (`app/api/schemas.py`).
+- **Protected File SHA-256 Baselines:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e`
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
+
+---
+
+### 2. Work Completed & Audit Findings
+
+#### A. End-to-End Integration & Data Contract Fidelity
+1. **Dashboard & Static Asset Loading:**
+   - Verified that GET `/ui`, GET `/static/css/styles.css`, and GET `/static/js/app.js` return HTTP 200 with appropriate content types (`text/html`, `text/css`, `application/javascript`) and complete UI markup.
+2. **Authoritative Instrument Catalog & Asset Isolation:**
+   - Catalog endpoint (`GET /api/predict/instruments`) reflects backend compatibility:
+     - `BHARTIARTL`: `EQUITY (NSE)` — Marked `SUPPORTED` with active model artifacts on disk.
+     - `TCS`, `RELIANCE`: `EQUITY (NSE)` — Marked `BLOCKED` (`MODEL_UNAVAILABLE`). Equity models are strictly symbol-specific and cannot be cross-applied.
+     - `NIFTY_TELECOMMUNICATIONS`, `NIFTY_50`: `INDEX (NSE)` — Marked `BLOCKED` (`MODEL_UNAVAILABLE`). Equity time-series models are strictly prohibited from index forecasting.
+   - Catalog dynamically renders clickable quick-ticker chips (`#quick-ticker-chips`). If catalog loading fails, an accessible fallback notice (`.catalog-error-notice`) is displayed.
+3. **Fail-Safe Status Gating:**
+   - Gated hero forecast display in `renderPredictionResult()`:
+     ```javascript
+     const isSuccess = res.status === 'SUCCESS' && !!(res.predicted_direction || res.direction);
+     ```
+   - For non-success statuses (`MODEL_UNAVAILABLE`, `DATA_QUALITY_ISSUE`, `FAILED`) or unknown statuses, the hero prediction card and breakdown grid are unconditionally hidden (`display: none`), and the diagnostic card (`#result-blocked-card`) is displayed with sanitized explanations and actionable recovery options.
+4. **Historical Fact vs. Forward Forecast Separation:**
+   - Historical observed market price is prominently presented under `#res-observed-meta`:
+     `LAST_TRADED_PRICE • Feed: yfinance • Delayed ~15m • Session: CLOSED/OPEN • Not a predicted price`.
+   - Forward prediction target is explicitly disclaimed under `#res-forecast-meta`:
+     `Price Target: Unsupported / Not Modeled (Direction Only)`.
+   - Price targets, opening/closing prices, and trade durations are never fabricated. Volatility bands (ATR-14) are rendered only when explicitly supplied by the multi-agent ensemble layer.
+5. **Probability Calibration Honesty:**
+   - Raw model scores are explicitly labeled `[Uncalibrated]` in probability progress bars (`#res-prob-up`, `#res-prob-down`).
+   - Warning banner references empirical holdout comparisons:
+     > "Reported holdout comparisons did not establish a statistically significant improvement. Raw model probabilities are uncalibrated and performed worse than the constant 0.50 probability baseline on the reported holdout Brier-score comparison (models scored Brier 0.2556–0.2562 vs. reference Brier 0.2500)."
+   - Missing probabilities are rendered as `--` and never defaulted to 50%.
+6. **State Cleanliness & Concurrency Controls:**
+   - `clearStalePredictionIfSymbolChanged()`: Purges previous prediction cards immediately when the user changes `#symbol-input` or selects a new chip.
+   - `AppState.predictionRequestId`: Monotonic request counter ensures out-of-order stale responses are dropped.
+   - `AppState.isPredicting`: Concurrency lock disables submit buttons, shows a spinner, and rejects concurrent double-submissions until the in-flight request resolves.
+   - `AppState.lastPredictionPayload`: Caches submitted parameters, enabling exact parameter-preserving retry via `#alert-retry-btn`.
+
+#### B. Security & Accessibility Audit
+1. **Defensive Security & Data Hygiene:**
+   - **XSS Prevention:** Dynamic DOM text binding strictly uses `textContent` and `document.createElement`. URLs bound to anchors are validated through `isSafeHttpUrl()` to permit only `http:` and `https:`.
+   - **Error Message Sanitization:** Internal tracebacks, absolute filesystem paths, and secrets are scrubbed from all API responses and client-visible error banners.
+   - **Security Headers:** Enforced via ASGI middleware: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Permissions-Policy: geolocation=(), microphone=(), camera=()`.
+   - **Input Validation:** Symbol input lengths bounded to $[1, 30]$ characters matching regex `^[A-Z0-9_\-\.\^]{1,30}$`. Malformed payloads, out-of-bounds parameters, and invalid model names return HTTP 422.
+   - **Local Loopback Enforcement:** Application is strictly bound to `127.0.0.1` and never exposed publicly.
+2. **Accessibility & Responsive Standards:**
+   - **Form Association:** Explicit `<label for="...">` associations for `#symbol-input` and `#model-select`.
+   - **ARIA Landmarks & Live Regions:** Alert container marked `role="alert"` and `aria-live="polite"`. Inputs marked with `aria-describedby` pointing to error containers.
+   - **Non-Color Visual Cues:** Directional indicators communicate state via Unicode glyphs (`↗`, `↘`, `⏸`) and textual return labels (`PREDICTED UP (Bullish Return)`), never color alone.
+   - **Responsive Design:** Tested on Desktop (1280x800) and Mobile (375x667) viewports with zero horizontal overflow (`scrollWidth <= innerWidth`).
+   - **Browser Verification:** Real browser interaction workflows verified via headless Chrome DevTools Protocol (CDP) in `scripts/verify_real_browser.py`. Interactive screen-reader sessions documented as pending dedicated assistive testing environments.
+
+---
+
+### 3. Verification, Quality Gates & Regression Suite
+
+- **Targeted Web Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest tests/test_api_contract_consistency.py tests/test_prediction_dashboard_completion.py tests/test_end_to_end_web_audit.py tests/test_web_foundation_audit.py tests/test_real_browser_and_accessibility.py -q
+  ```
+  **56 passed**, 1 warning in 41.24s (0 failures, 0 regressions).
+- **Full Repository Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **822 passed**, 1 warning across all 57 test modules in 68.10s (0 failures, 0 regressions).
+- **Warning Summary:**
+  1 Starlette deprecation warning noted (`StarletteDeprecationWarning: Using httpx with starlette.testclient is deprecated; install httpx2 instead.`). Non-breaking, zero test failures.
+- **JavaScript Syntax Check:**
+  ```powershell
+  node -c app/api/static/js/app.js
+  ```
+  `Clean (0 syntax errors).`
+- **Dependency Audit:**
+  ```powershell
+  .\.venv\Scripts\python -m pip check
+  ```
+  `No broken requirements found.`
+- **Git Diff Whitespace Check:**
+  ```powershell
+  git diff --check
+  ```
+  `Clean (0 whitespace errors).`
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**).
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**).
+
+---
+
+### 4. Phase 16 Web Application Completion & Handoff Report
+
+#### Web-Phase Components & Integration Summary (Days 63–68)
+| Component | Implementation | Verified Invariants |
+|---|---|---|
+| **API Entry Point & Routers** | `app/api/app.py`, `app/api/routers/` | Clean mounting, ASGI security middleware, dependency injection, loopback binding. |
+| **Prediction UI Dashboard** | `app/api/static/index.html` | Semantic HTML5, accessible form controls, ARIA live regions, responsive layout. |
+| **Client Logic & State** | `app/api/static/js/app.js` | Pure ECMAScript, zero external libraries, concurrency locks, stale response dropping. |
+| **Catalog Gating** | `GET /api/predict/instruments` | Strict asset taxonomy: BHARTIARTL supported; TCS, RELIANCE, NIFTY indices blocked. |
+| **Presentation Honesty** | Dashboard Hero & Cards | Factual last-traded prices distinct from forecasts; uncalibrated probabilities disclaimed. |
+| **Automated Regressions** | 5 web test suites (56 tests) | 100% passing contract, UI completion, browser interaction, and accessibility tests. |
+
+#### Remaining Known Limitations & Operational Boundaries
+1. **Model Scope:** Predictions supported strictly for `BHARTIARTL`. Equity models cannot forecast other equities (`TCS`, `RELIANCE`) or indices (`NIFTY_TELECOMMUNICATIONS`, `NIFTY_50`) without dedicated, retrained models.
+2. **Forecast Nature:** Binary directional classification only (close-to-close return sign). Price targets, open/close price levels, and trade execution durations are not modeled.
+3. **Probability Calibration:** Raw decision probabilities are uncalibrated (Brier score $0.2556$–$0.2562$ vs reference $0.2500$); cannot be interpreted as empirical odds.
+4. **Staging & Production Infrastructure:** Multi-hour soak testing on dedicated cloud/cluster staging infrastructure during live exchange hours remains pending external host provisioning.
+
+#### Roadmap Status & Handoff to Next Phase
+- **Web Application Phase (Days 63–68) Development Complete:** The user-facing web dashboard, API contracts, presentation honesty, accessibility standards, and browser workflows are verified and regression-free.
+- **Phase 16 Status:** **Strictly IN PROGRESS.** In accordance with roadmap exit criteria, Phase 16 remains active until external staging cluster deployment, live market soak testing, and operational release sign-off are completed.
+- **Handoff Target:** Ready for staging operations, production deployment packaging, and external infrastructure verification.
