@@ -259,7 +259,7 @@ def _sanitize_public_error_message(msg: Optional[str], model_name: str, symbol: 
         return None
     logger.warning("Internal prediction diagnostic for '%s' (model=%s): %s", symbol or "unknown", model_name, msg)
     lower = msg.lower()
-    if "index-specific forecasting model" in lower or "cannot be reused for sectoral index" in lower:
+    if "index-specific forecasting model" in lower or "cannot be reused for sectoral index" in lower or "sectoral" in lower:
         sym_part = f" for '{symbol}'" if symbol else ""
         return f"Index-specific forecasting model unavailable{sym_part}. BHARTIARTL equity models cannot be reused for sectoral indices."
     if "no trained model artifact found" in lower or "cannot be cross-applied to" in lower or "trained specifically for 'bhartiartl'" in lower:
@@ -556,6 +556,12 @@ def predict(
         )
 
     # 2. Handle Standalone Quantitative ML Prediction (XGBoost / LightGBM)
+    if selected_model not in ("xgboost", "lightgbm"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Unsupported model architecture '{selected_model}'. Must be 'xgboost', 'lightgbm', or 'ensemble'.",
+        )
+
     domain_req = DomainPredictionRequest(
         symbol=clean_symbol,
         model_name=selected_model,

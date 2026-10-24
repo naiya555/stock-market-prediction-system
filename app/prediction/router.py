@@ -42,7 +42,7 @@ CapabilityStatus = InstrumentCapability
 class RoutingDecision:
     """Decision outcome of the centralized model routing service."""
 
-    routed_model: str  # e.g. "ensemble", "xgboost", "lightgbm"
+    routed_model: Optional[str]  # e.g. "ensemble", "xgboost", "lightgbm", or None if unsupported
     is_supported: bool
     capability_status: InstrumentCapability
     reason: str
@@ -108,7 +108,7 @@ class ModelRouter:
             return (
                 canon,
                 InstrumentCapability.UNSUPPORTED_BY_CURRENT_MODEL,
-                f"No trained directional model artifact exists for '{canon}'. Production models are trained exclusively on BHARTIARTL feature distributions and cannot be cross-applied to other equities.",
+                f"No trained directional model artifact exists for '{canon}'. Production models are trained exclusively on BHARTIARTL feature distributions and cannot be cross-applied to other equities. Equity models are symbol-specific.",
                 f"Train and evaluate an equity model on historical {canon} data using walk-forward validation before enabling inference.",
             )
 
@@ -131,7 +131,7 @@ class ModelRouter:
 
         if capability != InstrumentCapability.SUPPORTED_AND_READY:
             return RoutingDecision(
-                routed_model=requested_model or "unavailable",
+                routed_model=None,
                 is_supported=False,
                 capability_status=capability,
                 reason=reason,

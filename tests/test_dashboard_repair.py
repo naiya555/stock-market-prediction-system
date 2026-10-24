@@ -62,9 +62,10 @@ def test_model_router_route_prediction():
     assert route.routed_model == "ensemble"
     assert route.capability_status == CapabilityStatus.SUPPORTED_AND_READY
 
-    # Blocked instrument produces non-supported route
+    # Blocked instrument produces non-supported route with None routed_model
     route_blocked = router.route_prediction("TCS", requested_model="auto")
     assert route_blocked.is_supported is False
+    assert route_blocked.routed_model is None
     assert route_blocked.capability_status == CapabilityStatus.UNSUPPORTED_BY_CURRENT_MODEL
     assert route_blocked.actionable_prerequisite is not None
 
@@ -216,3 +217,63 @@ def test_single_persistence_no_duplicate_predictions():
 
         count = repo.count_predictions(symbol="BHARTIARTL")
         assert count == 1
+
+
+def test_domain_contract_strictly_validates_model_names():
+    """Verify PredictionRequest rejects 'unavailable' and invalid model names."""
+    from app.prediction.contract import PredictionRequest
+
+    # Valid names
+    req_xgb = PredictionRequest(symbol="BHARTIARTL", model_name="xgboost")
+    assert req_xgb.model_name == "xgboost"
+    req_lgb = PredictionRequest(symbol="BHARTIARTL", model_name="lightgbm")
+    assert req_lgb.model_name == "lightgbm"
+
+    # 'unavailable' MUST raise ValueError
+    with pytest.raises(ValueError, match="Unsupported model_name 'unavailable'"):
+        PredictionRequest(symbol="BHARTIARTL", model_name="unavailable")
+
+    # Any other unsupported string MUST raise ValueError
+    with pytest.raises(ValueError, match="Unsupported model_name 'random_forest'"):
+        PredictionRequest(symbol="BHARTIARTL", model_name="random_forest")
+
+
+def test_predict_endpoint_rejects_invalid_model_names_with_422(client: TestClient):
+    """Verify /api/predict returns 422 for unsupported model_name string without throwing 500."""
+    res_unavail = client.post("/api/predict", json={"symbol": "BHARTIARTL", "model_name": "unavailable"})
+    assert res_unavail.status_code == 422
+
+    res_invalid = client.post("/api/predict", json={"symbol": "BHARTIARTL", "model_name": "invalid_model"})
+    assert res_invalid.status_code == 422
+
+
+def test_predict_endpoint_unsupported_instrument_does_not_500(client: TestClient):
+    """Verify /api/predict returns structured MODEL_UNAVAILABLE (HTTP 200) for unrouted instruments."""
+    # TCS equity
+    res_tcs = client.post("/api/predict", json={"symbol": "TCS", "model_name": "auto", "persist": True})
+    assert res_tcs.status_code == 200
+    data_tcs = res_tcs.json()
+    assert data_tcs["status"] == "MODEL_UNAVAILABLE"
+    assert data_tcs["capability_status"] == "UNSUPPORTED_BY_CURRENT_MODEL"
+    assert "TCS" in data_tcs["actionable_prerequisite"]
+    assert data_tcs["prediction_id"] is None  # Must NOT persist a fake/partial audit record
+
+    # NIFTY_50 index
+    res_nifty = client.post("/api/predict", json={"symbol": "NIFTY_50", "model_name": "auto", "persist": True})
+    assert res_nifty.status_code == 200
+    data_nifty = res_nifty.json()
+    assert data_nifty["status"] == "MODEL_UNAVAILABLE"
+    assert data_nifty["capability_status"] == "REQUIRES_SEPARATE_INDEX_PIPELINE"
+    assert "index" in data_nifty["actionable_prerequisite"].lower()
+    assert data_nifty["prediction_id"] is None
+
+
+def test_predict_endpoint_supported_instrument_success(client: TestClient):
+    """Verify /api/predict successfully routes BHARTIARTL with automatic routing."""
+    res = client.post("/api/predict", json={"symbol": "BHARTIARTL", "model_name": "auto", "persist": False})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "SUCCESS"
+    assert data["model_name"] == "ensemble"
+    assert data["capability_status"] == "SUPPORTED_AND_READY"
+    assert data["routing_metadata"]["ml_model"] == "xgboost"
