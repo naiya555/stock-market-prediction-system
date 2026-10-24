@@ -7206,3 +7206,75 @@ Verify provider data ingestion semantics, audit rate-limiting and delay disclosu
 - **Evaluation Readiness:** `BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER` (Honest, accurate state; zero genuine live market observations captured yet).
 - **Genuine Provider Observations Captured:** 0 (Market is closed; zero mock or synthetic data presented as live data).
 - **Phase 16 Status:** **Strictly IN PROGRESS.** Production deployment readiness cannot be claimed until live market capture, soak testing across continuous sessions, and monitoring sign-off are verified.
+
+---
+
+## Day 80 - Live Intraday Capture Preflight & Provider Observation Verification
+
+### 1. Market Calendar & Session Verification
+- **Audit Timestamp:** 2026-10-24 22:06:20 IST (Saturday).
+- **Official Market State:** Continuous trading session is strictly `CLOSED` (Weekend, non-trading day).
+- **Next Regular Continuous Session:** Monday, 2026-10-26 at 09:15:00 IST.
+- **Rule Enforced:** Per Day 80 operational protocol, live session capture was *not* launched because the market is closed. Safe preflight diagnostics and bounded shutdown verification were performed instead; no mock or synthetic observations were backfilled or simulated.
+
+---
+
+### 2. Preflight Diagnostics & Storage Integrity
+- **Configured Target Instrument:** `BHARTIARTL` (Authorized single-equity scope; indices prohibited).
+- **Configured Interval:** `5m` (Supported, 75 expected regular session bars).
+- **Configured Provider:** `yfinance` with explicit declared delay `"15m delayed exchange data (no real-time stream)"`.
+- **Storage Isolation:** `data/intraday/intraday_archive.jsonl` (Confirmed separated from `data/predictions.db`).
+- **Disk Space Check:** Drive `D:` has 191 GB available (adequate headroom).
+- **Operational Diagnostics Preflight:**
+  - `recorder_status`: `READY`
+  - `last_successful_poll_time`: `None` (`N/A (never polled)`)
+  - `latest_source_timestamp`: `None` (`N/A (unavailable)`)
+  - `latest_observation_timestamp`: `None` (`N/A (unavailable)`)
+  - `archive_file_health`: `MISSING` (Clean, uninitialized)
+  - `quarantine_file_health`: `NOT_CREATED` (Clean, zero conflicts)
+  - `total_persisted_records`: 0
+- **Closed-Session Graceful Stop Verification:**
+  - Single-cycle execution (`--once`): Cleanly returned `status: MARKET_CLOSED`, `fetched_count: 0`, `persisted_count: 0`.
+  - Bounded session execution (`--session --max-cycles 1`): Cleanly halted with `Operational Status: MARKET_CLOSED`, `Termination Reason: market_closed`, `Cycles Completed: 0`, `Total Persisted: 0`.
+
+---
+
+### 3. Empirical Readiness & Observation Verification
+- **Genuine Provider Observations Captured:** **0** (Market closed; zero observations present).
+- **Corrupted Records Count:** 0.
+- **Quarantined Records Count:** 0.
+- **Readiness Gate Status:** `BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER`
+  - Blocking Reason: *"No genuine provider observations have been captured into the archive."*
+  - Synthetic data separation verified: 0 synthetic fixtures in production archive.
+
+---
+
+### 4. Verification & Quality Gates
+- **Focused Recorder Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest tests/test_intraday_recorder.py -v
+  ```
+  **45 passed** in 3.79s (0 failures, 0 warnings).
+- **Full Automated Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **924 passed**, 1 warning across all 62 test modules in 270.06s (0 failures, 0 regressions).
+- **Quality Checks:**
+  - `.\.venv\Scripts\python -m pip check`: No broken requirements found.
+  - `git diff --check`: Clean (0 whitespace errors).
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**)
+
+---
+
+### 5. Phase 16 Operational Status & Roadmap Forward
+- **Phase 16 Status:** **Strictly IN PROGRESS.**
+- **Blockers to Production Readiness:**
+  1. Live trading session continuous observation required during regular hours (Monday 09:15–15:30 IST).
+  2. Multi-cycle soak testing and archive append verification.
+  3. Archive continuity verification and operational sign-off.
+- **Recommended Day 81 Scope:**
+  - Conduct live bounded recording session during the Monday continuous trading window (2026-10-26 09:15–15:30 IST).
+  - Verify real `provider_observation` capture, 15m delay latency handling, and archive append idempotency.
