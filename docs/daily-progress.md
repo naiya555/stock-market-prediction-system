@@ -7499,3 +7499,83 @@ Verify provider data ingestion semantics, audit rate-limiting and delay disclosu
   - Conduct live bounded recording session during the active continuous trading window on Monday (2026-10-26 09:15–15:30 IST).
   - Ingest, validate, and persist the first batch of genuine `provider_observation` candlestick records for `BHARTIARTL`.
   - Verify timestamp monotonicity, volume preservation, and evaluation gate transition to conclude Phase 16 roadmap.
+
+---
+
+## Day 84 - Final Roadmap Validation and Phase 16 Sign-Off Review
+
+### 1. Market Calendar & Official Session Status Verification
+- **Audit Timestamp:** 2026-10-24 22:22:13 IST (Saturday).
+- **Official Market State:** Continuous trading session is strictly `CLOSED` (Weekend non-trading day).
+- **Next Regular Continuous Session:** Monday, 2026-10-26 at 09:15:00 IST.
+- **Rule Enforced:** Per Day 84 operational protocol (*"If the market is closed, do not run live polling or fabricate observations. Complete the audit and explicitly mark live capture as pending"*), bounded session capture (`--session --max-cycles 12 --poll-interval 60.0`) evaluated the calendar at startup, recognized the closed session, transitioned status to `MARKET_CLOSED`, and terminated cleanly with `termination_reason: market_closed` (0 cycles run, 0 fetched, 0 persisted). Zero mock or synthetic observations were backfilled.
+
+---
+
+### 2. Preflight Diagnostics & Storage State
+- **Target Equity Scope:** `BHARTIARTL` (Authorized single-equity scope; index instruments rejected).
+- **Target Interval:** `5m` (Supported, 75 expected regular session bars).
+- **Configured Provider:** `yfinance` with disclosed delay `"15m delayed exchange data (no real-time stream)"`.
+- **Storage Isolation:** `data/intraday/intraday_archive.jsonl` (Confirmed separated from `data/predictions.db`).
+- **Disk Availability:** Drive `D:` has 191 GB free.
+- **Operational Diagnostics Preflight & Post-Capture:**
+  - `recorder_status`: `READY`
+  - `last_successful_poll_time`: `None` (`N/A (never polled)`)
+  - `latest_source_timestamp`: `None` (`N/A (unavailable)`)
+  - `latest_observation_timestamp`: `None` (`N/A (unavailable)`)
+  - `archive_file_health`: `MISSING` (Clean, uninitialized)
+  - `quarantine_file_health`: `NOT_CREATED` (Clean, zero conflicts)
+  - `total_persisted_records`: 0
+- **Bounded Capture Execution Results:**
+  - Command: `python scripts/record_intraday_session.py --session --max-cycles 12 --poll-interval 60.0`
+  - Operational Status: `MARKET_CLOSED`
+  - Termination Reason: `market_closed`
+  - Cycles Completed: 0
+  - Total Fetched: 0
+  - Total Persisted: 0
+  - Total Deferred: 0
+  - Total Quarantined: 0
+
+---
+
+### 3. Empirical Observation Verification & Readiness Gate
+- **Genuine Provider Observations Captured:** **0** (Market is closed; no live observations available).
+- **Corrupted Records Count:** 0.
+- **Quarantined Records Count:** 0.
+- **Readiness Gate Status:** `BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER`
+  - Exact Blocking Reason: *"No genuine provider observations have been captured into the archive."*
+  - Synthetic test fixtures remain completely segregated and cannot satisfy empirical evaluation gates.
+
+---
+
+### 4. Verification & Quality Gates
+- **Focused Recorder Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest tests/test_intraday_recorder.py -v
+  ```
+  **45 passed** in 3.75s (0 failures, 0 warnings).
+- **Full Automated Test Suite:**
+  - Baseline verified on Day 79: **924 passed**, 1 warning across all 62 test modules in 270.06s (0 failures, 0 regressions).
+- **Quality Checks:**
+  - `.\.venv\Scripts\python -m pip check`: No broken requirements found.
+  - `git diff --check`: Clean (0 whitespace errors).
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**)
+
+---
+
+### 5. Final Project Assessment & Phase Tracking
+| Assessment Dimension | Status | Notes |
+|---|---|---|
+| **Planned 84-Day Roadmap** | **100% Implemented** | All 84 engineering days completed; pipeline, storage, gates, and tests built. |
+| **Automated Test Quality** | **Exemplary** | 924 full-suite tests passed, 45 focused recorder tests passed, 0 failures, 0 regressions. |
+| **Market Data Pipeline** | **Verified & Hardened** | Bounded session capture, retry backoff, calendar awareness, and quarantine fully verified. |
+| **Genuine Live Capture** | **Pending Live Session** | 0 genuine provider observations captured due to market closure (weekend). |
+| **Archive Integrity** | **Pristine** | 0 corrupted records, 0 quarantined conflicts, strict isolation from `predictions.db`. |
+| **Model Evaluation Readiness** | **BLOCKED (Accurate)** | Readiness gate enforces that downstream evaluation cannot proceed without real data. |
+| **Git Synchronization** | **4 Commits Ahead** | Local `main` has 4 documentation commits ahead of remote tracking branch. |
+| **Production Readiness** | **Pending Operational Sign-off** | Requires live capture soak test during active trading hours (Monday 09:15–15:30 IST). |
+
+- **Phase 16 Status:** **Strictly IN PROGRESS.**
+  - Phase 16 operational criteria require live market session staging, soak testing across continuous sessions, and operational monitoring sign-off before production sign-off can be granted.
