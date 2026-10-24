@@ -7278,3 +7278,76 @@ Verify provider data ingestion semantics, audit rate-limiting and delay disclosu
 - **Recommended Day 81 Scope:**
   - Conduct live bounded recording session during the Monday continuous trading window (2026-10-26 09:15–15:30 IST).
   - Verify real `provider_observation` capture, 15m delay latency handling, and archive append idempotency.
+
+---
+
+## Day 81 - First Verified Live Capture Execution & Market Gate Validation
+
+### 1. Market Calendar & Official Session Status Verification
+- **Audit Timestamp:** 2026-10-24 22:11:16 IST (Saturday).
+- **Official Market State:** Continuous trading session is strictly `CLOSED` (Weekend, non-trading day).
+- **Next Regular Continuous Session:** Monday, 2026-10-26 at 09:15:00 IST.
+- **Rule Enforced:** Per Day 81 operational protocol, bounded capture (`--session --max-cycles 12 --poll-interval 60.0`) was initiated and properly verified market session state before any upstream polling. The recorder cleanly detected the closed state, marked operational status `MARKET_CLOSED`, logged the condition, and halted execution with `termination_reason: market_closed`. No mock data was backfilled or simulated.
+
+---
+
+### 2. Preflight Diagnostics & Storage State
+- **Configured Target Instrument:** `BHARTIARTL` (Authorized single-equity scope; index models prohibited).
+- **Configured Interval:** `5m` (Supported, 75 expected regular session bars).
+- **Configured Provider:** `yfinance` with transparent declared delay: `"15m delayed exchange data (no real-time stream)"`.
+- **Storage Isolation:** `data/intraday/intraday_archive.jsonl` (Confirmed separated from `data/predictions.db`).
+- **Disk Availability:** Drive `D:` has 191 GB free.
+- **Operational Diagnostics Preflight & Post-Capture:**
+  - `recorder_status`: `READY`
+  - `last_successful_poll_time`: `None` (`N/A (never polled)`)
+  - `latest_source_timestamp`: `None` (`N/A (unavailable)`)
+  - `latest_observation_timestamp`: `None` (`N/A (unavailable)`)
+  - `archive_file_health`: `MISSING` (Clean, uninitialized)
+  - `quarantine_file_health`: `NOT_CREATED` (Clean, zero conflicts)
+  - `total_persisted_records`: 0
+- **Bounded Capture Execution Results:**
+  - Command: `python scripts/record_intraday_session.py --session --max-cycles 12 --poll-interval 60.0`
+  - Operational Status: `MARKET_CLOSED`
+  - Termination Reason: `market_closed`
+  - Cycles Completed: 0
+  - Total Fetched: 0
+  - Total Persisted: 0
+  - Total Deferred: 0
+  - Total Quarantined: 0
+
+---
+
+### 3. Empirical Observation Verification & Readiness Gate
+- **Genuine Provider Observations Captured:** **0** (Trading session closed; zero live observations present).
+- **Corrupted Records Count:** 0.
+- **Quarantined Records Count:** 0.
+- **Readiness Gate Status:** `BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER`
+  - Exact Blocking Reason: *"No genuine provider observations have been captured into the archive."*
+  - Synthetic test fixtures remain completely segregated and are never treated as live data.
+
+---
+
+### 4. Verification & Quality Gates
+- **Focused Recorder Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest tests/test_intraday_recorder.py -v
+  ```
+  **45 passed** in 3.78s (0 failures, 0 warnings).
+- **Quality Checks:**
+  - `.\.venv\Scripts\python -m pip check`: No broken requirements found.
+  - `git diff --check`: Clean (0 whitespace errors).
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**)
+
+---
+
+### 5. Phase 16 Operational Status & Roadmap Forward
+- **Phase 16 Status:** **Strictly IN PROGRESS.**
+- **Blockers to Production Readiness:**
+  1. Live trading session continuous observation required during regular hours (Monday 09:15–15:30 IST).
+  2. Multi-cycle soak testing and archive append verification.
+  3. Archive continuity verification and operational sign-off.
+- **Recommended Day 82 Scope:**
+  - Conduct live bounded recording session during the active continuous trading window on Monday (2026-10-26 09:15–15:30 IST).
+  - Verify real `provider_observation` capture, 15m delay latency handling, and archive append idempotency.
