@@ -245,6 +245,8 @@ class OperationalDiagnostics:
     quarantine_records_count: int
     readiness_status: str
     readiness_blocking_reasons: List[str]
+    archive_file_health: str = "HEALTHY"
+    quarantine_file_health: str = "CLEAN"
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize diagnostics report to dictionary."""
@@ -332,6 +334,8 @@ class IntradayArchiveStore:
                             try:
                                 data = json.loads(line)
                                 record = RecordedCandleRecord.from_dict(data)
+                                # Validate canonical candle physical integrity
+                                _ = record.to_intraday_candle()
                                 key = (
                                     record.symbol,
                                     record.interval.value,
@@ -763,6 +767,19 @@ class IntradaySessionRecorder:
             symbol=self.symbol,
             interval=self.interval,
         )
+
+        archive_health = "HEALTHY"
+        if not self.store.archive_path.exists():
+            archive_health = "MISSING"
+        elif stats.corrupted_records_count > 0:
+            archive_health = f"CORRUPTED ({stats.corrupted_records_count} bad records)"
+
+        quarantine_health = "CLEAN"
+        if not self.store.quarantine_path.exists():
+            quarantine_health = "NOT_CREATED"
+        elif stats.quarantined_count > 0:
+            quarantine_health = f"ACTIVE_QUARANTINE ({stats.quarantined_count} records)"
+
         return OperationalDiagnostics(
             recorder_status=self._status.value,
             last_successful_poll_time=(
@@ -791,6 +808,8 @@ class IntradaySessionRecorder:
             quarantine_records_count=stats.quarantined_count,
             readiness_status=readiness.status.value,
             readiness_blocking_reasons=readiness.issues,
+            archive_file_health=archive_health,
+            quarantine_file_health=quarantine_health,
         )
 
     def run_bounded_session(
@@ -814,6 +833,13 @@ class IntradaySessionRecorder:
         Returns:
             SessionCaptureSummary containing aggregated metrics across all cycles.
         """
+        if max_cycles is not None and max_cycles <= 0:
+            raise ValidationError(f"max_cycles must be a positive integer, got {max_cycles}")
+        if max_runtime_seconds is not None and max_runtime_seconds <= 0:
+            raise ValidationError(f"max_runtime_seconds must be positive, got {max_runtime_seconds}")
+        if poll_interval_seconds < 0:
+            raise ValidationError(f"poll_interval_seconds cannot be negative, got {poll_interval_seconds}")
+
         get_now = clock_fn if clock_fn is not None else (lambda: datetime.now(IST))
         do_sleep = sleep_fn if sleep_fn is not None else time.sleep
 
@@ -930,6 +956,7 @@ def check_evaluation_readiness(
     symbol: str = "BHARTIARTL",
     interval: IntradayInterval = IntradayInterval.M5,
     min_required_candles: Optional[int] = None,
+    supported_symbols: Optional[Set[str]] = None,
 ) -> EvaluationReadinessReport:
     """Verify whether the isolated intraday archive is ready for empirical backtest evaluation.
 
@@ -948,7 +975,28 @@ def check_evaluation_readiness(
     8. Interval continuity and zero gaps: sessions must have zero missing candle gaps.
     9. Clean OHLCV: zero rejected candles during cleaning verification.
     """
+    if not symbol or not isinstance(symbol, str) or not symbol.strip():
+        raise ValidationError("symbol cannot be empty")
     clean_sym = symbol.strip().upper()
+
+    allowed_symbols = (
+        {s.upper() for s in supported_symbols}
+        if supported_symbols is not None
+        else {"BHARTIARTL"}
+    )
+    if clean_sym not in allowed_symbols:
+        return EvaluationReadinessReport(
+            status=EvaluationReadinessStatus.BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER,
+            is_ready_for_evaluation=False,
+            reason=f"Unsupported symbol '{clean_sym}'. Intraday evaluation is restricted to authorized instruments.",
+            total_candles=0,
+            provenance_counts={},
+            symbol=clean_sym,
+            interval=interval.value,
+            gaps_count=0,
+            issues=[f"Symbol '{clean_sym}' is not authorized for intraday evaluation. Supported: {sorted(list(allowed_symbols))}"],
+        )
+
     records = store.get_records(symbol=clean_sym, interval=interval)
 
     # Dynamic minimum required candles based on interval session expectation
@@ -1102,7 +1150,23 @@ def check_evaluation_readiness(
             )
 
     # Check 8: Session cleaning, out-of-session checks, and gap auditing
-    intraday_candles = [r.to_intraday_candle() for r in records]
+    intraday_candles = []
+    for r in records:
+        try:
+            intraday_candles.append(r.to_intraday_candle())
+        except Exception as exc:
+            issues.append(f"Corrupted or invalid candle record at {r.timestamp}: {exc}")
+            return EvaluationReadinessReport(
+                status=EvaluationReadinessStatus.PENDING_VALIDATION,
+                is_ready_for_evaluation=False,
+                reason="Archive contains corrupted or physically invalid candle records.",
+                total_candles=len(records),
+                provenance_counts=prov_counts,
+                symbol=clean_sym,
+                interval=interval.value,
+                gaps_count=0,
+                issues=issues,
+            )
     cleaning_res = clean_intraday_candles(
         intraday_candles,
         expected_interval=interval,

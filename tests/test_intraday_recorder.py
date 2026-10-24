@@ -1165,3 +1165,186 @@ class TestRecorderReliabilityAndOperationalDiagnostics:
 
         assert "15m delayed" in yfinance_prov.declared_delay
         assert "0s delay" in test_prov.declared_delay
+
+
+class TestOperationalReadinessAndEdgeHardening:
+    """Operational readiness, configuration validation, error recovery, and hardening tests."""
+
+    def test_archive_recovery_with_physically_invalid_ohlc_in_jsonl(self, temp_archive_paths):
+        archive_path, quarantine_path = temp_archive_paths
+        valid_candle = _create_sample_candle(session_date=date(2026, 6, 1), bar_time=time(9, 15))
+        valid_rec = RecordedCandleRecord(
+            symbol=valid_candle.symbol,
+            timestamp=valid_candle.timestamp,
+            interval=valid_candle.interval,
+            open=valid_candle.open,
+            high=valid_candle.high,
+            low=valid_candle.low,
+            close=valid_candle.close,
+            volume=valid_candle.volume,
+            volume_reported=True,
+            source="test_provider",
+            provenance=CandleProvenance.PROVIDER_OBSERVATION,
+            capture_timestamp=datetime(2026, 6, 1, 9, 21, tzinfo=IST),
+            is_completed=True,
+        )
+
+        invalid_data = {
+            "symbol": "BHARTIARTL",
+            "timestamp": "2026-06-01T09:20:00+05:30",
+            "interval": "5m",
+            "open": 1650.0,
+            "high": 1640.0,  # Physically impossible: high < low!
+            "low": 1660.0,
+            "close": 1645.0,
+            "volume": 1000,
+            "volume_reported": True,
+            "source": "corrupt_provider",
+            "provenance": "provider_observation",
+            "capture_timestamp": "2026-06-01T09:26:00+05:30",
+            "is_completed": True,
+        }
+
+        with open(archive_path, "w", encoding="utf-8") as f:
+            f.write(json.dumps(valid_rec.to_dict()) + "\n")
+            f.write(json.dumps(invalid_data) + "\n")
+
+        store = IntradayArchiveStore(archive_path=archive_path, quarantine_path=quarantine_path)
+        assert store.corrupted_records_count == 1
+        assert len(store.get_records()) == 1
+
+        report = check_evaluation_readiness(store=store, symbol="BHARTIARTL", interval=IntradayInterval.M5)
+        assert report.is_ready_for_evaluation is False
+        assert report.status == EvaluationReadinessStatus.PENDING_VALIDATION
+        assert "Archive contains 1 malformed or corrupted JSONL records" in report.issues[0]
+
+    def test_operational_diagnostics_health_strings_and_missing_files(self, temp_archive_paths):
+        archive_path, quarantine_path = temp_archive_paths
+        store = IntradayArchiveStore(archive_path=archive_path, quarantine_path=quarantine_path)
+        adapter = TestIntradayRecorderAdapter()
+        recorder = IntradaySessionRecorder(
+            symbol="BHARTIARTL",
+            interval=IntradayInterval.M5,
+            provider=adapter,
+            store=store,
+        )
+
+        # Before any files exist on disk
+        diag = recorder.get_operational_diagnostics()
+        assert diag.archive_file_exists is False
+        assert diag.archive_file_health == "MISSING"
+        assert diag.quarantine_file_health == "NOT_CREATED"
+        assert diag.last_successful_poll_time is None
+        assert diag.latest_source_timestamp is None
+        assert diag.latest_observation_timestamp is None
+
+        # After a successful cycle persisting 1 candle
+        candle = _create_sample_candle(session_date=date(2026, 6, 1), bar_time=time(9, 15))
+        adapter.queue_candles([candle])
+        poll_time = datetime(2026, 6, 1, 9, 21, tzinfo=IST)
+        recorder.record_cycle(as_of=poll_time)
+
+        diag_after = recorder.get_operational_diagnostics()
+        assert diag_after.archive_file_exists is True
+        assert diag_after.archive_file_health == "HEALTHY"
+        assert diag_after.quarantine_file_health == "NOT_CREATED"
+        assert diag_after.total_persisted_records == 1
+
+    def test_recorder_poll_recovery_after_failure(self, temp_archive_paths):
+        archive_path, quarantine_path = temp_archive_paths
+        store = IntradayArchiveStore(archive_path=archive_path, quarantine_path=quarantine_path)
+
+        adapter = MagicMock()
+        adapter.name = "recovering_provider"
+        adapter.declared_delay = "test mock delay"
+
+        # First cycle fails with transient connection failure
+        adapter.fetch_intraday_candles.side_effect = ConnectionError("Transient network drop")
+
+        recorder = IntradaySessionRecorder(
+            symbol="BHARTIARTL",
+            interval=IntradayInterval.M5,
+            provider=adapter,
+            store=store,
+            max_retries=2,
+            retry_backoff_seconds=0.01,
+        )
+
+        poll_time_1 = datetime(2026, 6, 1, 9, 25, tzinfo=IST)
+        res_1 = recorder.record_cycle(as_of=poll_time_1)
+        assert res_1["status"] == RecorderStatus.DEGRADED.value
+        assert recorder.status == RecorderStatus.DEGRADED
+
+        diag_degraded = recorder.get_operational_diagnostics()
+        assert diag_degraded.recorder_status == RecorderStatus.DEGRADED.value
+        assert "Transient network drop" in str(diag_degraded.latest_capture_error)
+        assert diag_degraded.last_error_retry_count == 2
+        assert diag_degraded.last_successful_poll_time is None
+
+        # Second cycle succeeds
+        candle = _create_sample_candle(session_date=date(2026, 6, 1), bar_time=time(9, 15))
+        adapter.fetch_intraday_candles.side_effect = None
+        adapter.fetch_intraday_candles.return_value = [candle]
+
+        poll_time_2 = datetime(2026, 6, 1, 9, 30, tzinfo=IST)
+        res_2 = recorder.record_cycle(as_of=poll_time_2)
+        assert res_2["status"] == RecorderStatus.RECORDING.value
+        assert res_2["persisted_count"] == 1
+        assert recorder.status == RecorderStatus.RECORDING
+
+        diag_recovered = recorder.get_operational_diagnostics()
+        assert diag_recovered.recorder_status == RecorderStatus.RECORDING.value
+        assert diag_recovered.latest_capture_error is None
+        assert diag_recovered.last_error_retry_count == 0
+        assert diag_recovered.last_successful_poll_time == poll_time_2.isoformat()
+        assert diag_recovered.latest_source_timestamp == candle.timestamp.isoformat()
+        assert diag_recovered.latest_observation_timestamp == poll_time_2.isoformat()
+
+    def test_bounded_session_parameter_validation(self, temp_archive_paths):
+        archive_path, quarantine_path = temp_archive_paths
+        store = IntradayArchiveStore(archive_path=archive_path, quarantine_path=quarantine_path)
+        adapter = TestIntradayRecorderAdapter()
+        recorder = IntradaySessionRecorder(
+            symbol="BHARTIARTL",
+            interval=IntradayInterval.M5,
+            provider=adapter,
+            store=store,
+        )
+
+        with pytest.raises(ValidationError, match="max_cycles must be a positive integer"):
+            recorder.run_bounded_session(max_cycles=0)
+
+        with pytest.raises(ValidationError, match="max_runtime_seconds must be positive"):
+            recorder.run_bounded_session(max_runtime_seconds=-1.0)
+
+        with pytest.raises(ValidationError, match="poll_interval_seconds cannot be negative"):
+            recorder.run_bounded_session(poll_interval_seconds=-10.0)
+
+    def test_evaluation_readiness_rejects_unauthorized_symbol(self, temp_archive_paths):
+        archive_path, quarantine_path = temp_archive_paths
+        store = IntradayArchiveStore(archive_path=archive_path, quarantine_path=quarantine_path)
+
+        # Empty symbol raises ValidationError
+        with pytest.raises(ValidationError, match="symbol cannot be empty"):
+            check_evaluation_readiness(store=store, symbol="")
+
+        # Unauthorized symbol returns BLOCKED
+        report = check_evaluation_readiness(store=store, symbol="NIFTY")
+        assert report.is_ready_for_evaluation is False
+        assert report.status == EvaluationReadinessStatus.BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER
+        assert "not authorized" in report.issues[0]
+
+    def test_cli_startup_configuration_validation(self, monkeypatch):
+        from scripts.record_intraday_session import main
+
+        # Test invalid interval fails safely with exit code 1
+        monkeypatch.setattr("sys.argv", ["record_intraday_session.py", "--interval", "7m"])
+        assert main() == 1
+
+        # Test unsupported symbol fails safely with exit code 1
+        monkeypatch.setattr("sys.argv", ["record_intraday_session.py", "--symbol", "INFY"])
+        assert main() == 1
+
+        # Test invalid max-cycles fails safely with exit code 1
+        monkeypatch.setattr("sys.argv", ["record_intraday_session.py", "--max-cycles", "-1"])
+        assert main() == 1

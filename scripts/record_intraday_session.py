@@ -172,10 +172,12 @@ def display_operational_diagnostics(recorder: IntradaySessionRecorder) -> None:
     print("-" * 65)
     print("ARCHIVE & FILE HEALTH:")
     print(f"Archive File Exists:     {diag.archive_file_exists}")
+    print(f"Archive File Health:     {diag.archive_file_health}")
     print(f"Total Persisted Records: {diag.total_persisted_records}")
     print(f"Provenance Breakdown:    {json.dumps(diag.provenance_counts)}")
     print(f"Corrupted Records:       {diag.archive_corrupted_records_count}")
     print(f"Quarantined Records:     {diag.quarantine_records_count}")
+    print(f"Quarantine File Health:  {diag.quarantine_file_health}")
     print("-" * 65)
     print("READINESS STATUS:")
     print(f"Readiness Status:        {diag.readiness_status}")
@@ -224,7 +226,34 @@ def run_readiness_audit(
 
 def main() -> int:
     args = parse_args()
-    parsed_interval = IntradayInterval.from_string(args.interval)
+
+    # Validate interval safely
+    try:
+        parsed_interval = IntradayInterval.from_string(args.interval)
+    except Exception as exc:
+        print(f"Configuration error: Invalid interval '{args.interval}': {exc}", file=sys.stderr)
+        return 1
+
+    # Validate authorized symbol policy
+    supported_symbols = {"BHARTIARTL"}
+    clean_symbol = args.symbol.strip().upper() if args.symbol else ""
+    if not clean_symbol or clean_symbol not in supported_symbols:
+        print(
+            f"Configuration error: Unsupported or unauthorized symbol '{args.symbol}'. Supported: {sorted(list(supported_symbols))}",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Validate bounded session configuration parameters
+    if args.max_cycles <= 0:
+        print(f"Configuration error: --max-cycles must be positive (got {args.max_cycles}).", file=sys.stderr)
+        return 1
+    if args.poll_interval < 0:
+        print(f"Configuration error: --poll-interval cannot be negative (got {args.poll_interval}).", file=sys.stderr)
+        return 1
+    if args.max_runtime <= 0:
+        print(f"Configuration error: --max-runtime must be positive (got {args.max_runtime}).", file=sys.stderr)
+        return 1
 
     # Initialize isolated archive store
     store = IntradayArchiveStore(
