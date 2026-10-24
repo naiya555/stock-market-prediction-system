@@ -7130,3 +7130,79 @@ Verify provider data ingestion semantics, audit rate-limiting and delay disclosu
 - **Next Regular Session:** Monday, 2026-10-26 at 09:15:00 IST.
 - **Evaluation Readiness:** `BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER` (Truthful; zero genuine live candles captured yet).
 - **Phase 16 Status:** **Strictly IN PROGRESS.**
+
+---
+
+## Day 79 - Deployment Readiness & End-to-End Operational Validation
+
+### 1. Git Preflight & Integrity Verification
+- **Starting Commit:** `97e5320` (Day 78 base commit).
+- **Git Divergence Status:** Branch `main` tracked cleanly with `origin/main`.
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**)
+
+---
+
+### 2. Configuration & Startup Hardening
+- **Configuration Validation:**
+  - Upfront CLI validation in `scripts/record_intraday_session.py`:
+    - Validates `--interval` against supported intervals (`1m, 5m, 15m, 30m, 60m`). Rejects unsupported intervals (`2m`, `7m`) with clear configuration error exit code 1.
+    - Validates `--symbol` against authorized equity policy (`BHARTIARTL`). Rejects unauthorized symbols (`NIFTY`, `^NSEI`, `INFY`) with clear configuration error exit code 1 across all CLI flags (`--status`, `--readiness-check`, `--diagnostics`, `--once`, `--session`).
+    - Validates session configuration parameters: `--max-cycles > 0`, `--max-runtime > 0`, `--poll-interval >= 0`. Non-positive limits fail safely with descriptive errors.
+  - Runtime validation in `IntradaySessionRecorder.run_bounded_session`:
+    - Enforces `max_cycles > 0`, `max_runtime_seconds > 0`, `poll_interval_seconds >= 0` with `ValidationError`.
+  - Gate validation in `check_evaluation_readiness`:
+    - Rejects empty symbol with `ValidationError`.
+    - Rejects unauthorized instruments and index symbols with `BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER` and specific, actionable blocking issues.
+
+---
+
+### 3. Error Recovery, Archive Integrity & Operational Diagnostics
+- **Archive Structural Integrity & Physical Bounds:**
+  - Added canonical candle physical integrity verification during archive recovery (`_recover_index`). Records with physically invalid OHLC (e.g. `high < low` or `close > high` or negative prices) are trapped as corrupted records, incrementing `corrupted_records_count`, preserving valid records alongside them, and safely blocking evaluation readiness (`PENDING_VALIDATION`).
+  - Added try/except guard in `check_evaluation_readiness` Check 8 during candle conversion to guarantee unhandled exceptions never crash the evaluation gate.
+- **Operational Diagnostics Hardening:**
+  - Extended `OperationalDiagnostics` with explicit `archive_file_health` and `quarantine_file_health` status strings:
+    - `archive_file_health`: `"MISSING"`, `"HEALTHY"`, or `"CORRUPTED (N bad records)"`.
+    - `quarantine_file_health`: `"NOT_CREATED"`, `"CLEAN"`, or `"ACTIVE_QUARANTINE (N records)"`.
+  - Verified truthfulness of diagnostics:
+    - Missing timestamps (`last_successful_poll_time`, `latest_source_timestamp`, `latest_observation_timestamp`) are strictly `None` when unpolled, preventing fabricated synthetic timestamps.
+    - Provider delay is explicitly disclosed: `"15m delayed exchange data (no real-time stream)"`.
+- **Transient Error Recovery:**
+  - Verified that a transient provider fetch error sets `status = DEGRADED` and logs error message and retry count; subsequent successful poll cycle cleanly restores `status = RECORDING`, clears `latest_capture_error` to `None`, resets retry count to 0, and updates `last_successful_poll_time`.
+
+---
+
+### 4. Verification & Quality Gates
+- **Focused Recorder Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest tests/test_intraday_recorder.py -v
+  ```
+  **45 passed** in 4.04s (6 new regression & operational readiness tests added, 0 failures, 0 warnings):
+  - `test_archive_recovery_with_physically_invalid_ohlc_in_jsonl`: Verifies index recovery flags physically invalid OHLC in JSONL as corrupted and blocks readiness gate.
+  - `test_operational_diagnostics_health_strings_and_missing_files`: Verifies file health reporting across absent and initialized archive/quarantine files.
+  - `test_recorder_poll_recovery_after_failure`: Verifies transition to DEGRADED on network failure and subsequent recovery to RECORDING.
+  - `test_bounded_session_parameter_validation`: Verifies strict validation of max_cycles, max_runtime, and poll_interval.
+  - `test_evaluation_readiness_rejects_unauthorized_symbol`: Verifies evaluation gate rejects empty and unauthorized instruments.
+  - `test_cli_startup_configuration_validation`: Verifies CLI entry point rejects invalid interval, unsupported symbol, and negative cycle limits with exit code 1.
+- **Full Repository Test Suite:**
+  ```powershell
+  .\.venv\Scripts\python -m pytest -q
+  ```
+  **924 passed**, 1 warning across all 62 test modules in 270.06s (0 failures, 0 regressions).
+- **Environment & Lint Checks:**
+  - `.\.venv\Scripts\python -m pip check`: No broken requirements found.
+  - `git diff --check`: Clean (0 whitespace errors).
+- **Protected File SHA-256 Hashes:**
+  - `data/predictions.db`: `d0cce57f5ca61f2732e233e89667a29dc4fa0da4bffda29438e3ffd7eabd473e` (**100% UNCHANGED**)
+  - `models/.gitkeep`: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (**100% UNCHANGED**)
+
+---
+
+### 5. Operational Status & Phase Tracking
+- **Market State:** Continuous trading session remains `CLOSED` (Saturday evening, 21:40 IST).
+- **Next Regular Session:** Monday, 2026-10-26 at 09:15:00 IST.
+- **Evaluation Readiness:** `BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER` (Honest, accurate state; zero genuine live market observations captured yet).
+- **Genuine Provider Observations Captured:** 0 (Market is closed; zero mock or synthetic data presented as live data).
+- **Phase 16 Status:** **Strictly IN PROGRESS.** Production deployment readiness cannot be claimed until live market capture, soak testing across continuous sessions, and monitoring sign-off are verified.

@@ -2006,7 +2006,7 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
   - **Quarantine Isolation:** Conflicting records (differing OHLCV for identical timestamp) are automatically diverted to `quarantined_candles.jsonl`, isolating data anomalies from clean historical archives.
 - **Operational Diagnostics Specification (`OperationalDiagnostics`):**
   - Schema exposed in `app/market/recorder.py` and exported via `app/market`:
-    - `recorder_status`: Current lifecycle state (`IDLE`, `RECORDING`, `DEGRADED`, `STOPPED`, `MARKET_CLOSED`).
+    - `recorder_status`: Current lifecycle state (`READY`, `RECORDING`, `DEGRADED`, `STOPPED`, `MARKET_CLOSED`).
     - `last_successful_poll_time`: UTC ISO-8601 string of last successful poll cycle, or `None` if unpolled.
     - `provider_name`: Name of active data provider (e.g., `yfinance`, `synthetic_test_provider`).
     - `provider_declared_delay`: Explicit disclosure of upstream feed latency (e.g., `"15m delayed exchange data (no real-time stream)"`).
@@ -2016,18 +2016,25 @@ Phase 13 culminates in an interactive, responsive single-page web interface cons
     - `provenance_counts`: Mapping of provider names to persisted bar counts (e.g., `{"yfinance": 75}`).
     - `latest_capture_error`: Last caught exception message or `None`.
     - `last_error_retry_count`: Retries attempted during most recent error state.
-    - `archive_file_health`: File existence, size in bytes, and corruption status.
-    - `quarantine_file_health`: File existence, size in bytes, and quarantined count.
-    - `readiness_status`: Current evaluation readiness (`BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER`, `READY`, etc.).
-    - `blocking_reasons`: Detailed list of blocking reasons preventing evaluation readiness.
+    - `archive_file_exists`: Boolean existence check for the archive JSONL file.
+    - `archive_corrupted_records_count`: Integer count of corrupted or malformed lines encountered.
+    - `quarantine_records_count`: Integer count of conflicting duplicate candles quarantined.
+    - `archive_file_health`: Explicit status string (`"MISSING"`, `"HEALTHY"`, or `"CORRUPTED (N bad records)"`).
+    - `quarantine_file_health`: Explicit status string (`"NOT_CREATED"`, `"CLEAN"`, or `"ACTIVE_QUARANTINE (N records)"`).
+    - `readiness_status`: Current evaluation readiness (`BLOCKED_NO_VERIFIED_INTRADAY_PROVIDER`, `PENDING_VALIDATION`, `READY`, etc.).
+    - `blocking_reasons`: Detailed list of specific, actionable blocking reasons preventing evaluation readiness.
   - CLI Integration: `--diagnostics` flag on `scripts/record_intraday_session.py` renders an ASCII operational dashboard without launching network polling or fabricating missing timestamps.
 - **Provider Latency Truthfulness:**
   - `BaseIntradayDataProvider` enforces abstract property `declared_delay: str`.
   - `YFinanceIntradayProvider` explicitly declares `"15m delayed exchange data (no real-time stream)"`.
   - Zero fabricated market observations or zero-valued synthetic timestamps are used when values are unavailable.
+- **Operational Hardening & Startup Validation (Day 79):**
+  - Upfront CLI and runtime validation: invalid intervals (`2m`, `7m`), unsupported/index instruments (`NIFTY`, `^NSEI`, `INFY`), and non-positive session limits (`max_cycles <= 0`, `max_runtime <= 0`, `poll_interval < 0`) fail safely with clear configuration error messages.
+  - Archive recovery physical OHLC boundary verification: records with invalid physical relationships (`high < low`, `close > high`, negative prices) are quarantined/flagged during index recovery rather than crashing downstream pipelines.
+  - Transient error recovery: verified state recovery from `DEGRADED` to `RECORDING` on subsequent poll success.
 - **Test Evidence & Protected Hashes:**
-  - Focused Suite: 39 passed in `tests/test_intraday_recorder.py` (6 new deterministic tests added).
-  - Full Pytest Suite: 918 passed, 1 warning across all 62 test modules in 48.93s (0 regressions).
+  - Focused Suite: 45 passed in `tests/test_intraday_recorder.py` (6 new regression and operational hardening tests added).
+  - Full Pytest Suite: 924 passed, 1 warning across all 62 test modules in 270.06s (0 failures, 0 regressions).
   - Pip Check: No broken requirements found.
   - Git Diff Check: 0 whitespace errors.
   - SHA-256 `data/predictions.db`: `D0CCE57F5CA61F2732E233E89667A29DC4FA0DA4BFFDA29438E3FFD7EABD473E` (Pristine).
