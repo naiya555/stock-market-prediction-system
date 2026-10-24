@@ -67,6 +67,8 @@ class InstrumentItemResponse(BaseModel):
     instrument_type: str = Field(..., description="'EQUITY' or 'INDEX'")
     exchange: str = Field(default="NSE", description="Exchange code")
     status: str = Field(..., description="'SUPPORTED' or 'BLOCKED'")
+    capability_status: Optional[str] = Field(default=None, description="Detailed capability status")
+    actionable_prerequisite: Optional[str] = Field(default=None, description="Prerequisite required to enable this instrument")
     compatible_models: List[str] = Field(default_factory=list, description="List of compatible model names")
     reason: str = Field(..., description="Availability status rationale or blocking constraint")
 
@@ -94,10 +96,10 @@ class PredictRequest(BaseModel):
         description="NSE/BSE stock or index ticker symbol (e.g. 'BHARTIARTL' or 'NIFTY_TELECOMMUNICATIONS')",
         examples=["BHARTIARTL"],
     )
-    model_name: str = Field(
-        default="xgboost",
-        pattern=r"^(xgboost|lightgbm|ensemble)$",
-        description="Model architecture: 'xgboost', 'lightgbm', or 'ensemble'",
+    model_name: Optional[str] = Field(
+        default="auto",
+        pattern=r"^(auto|xgboost|lightgbm|ensemble)$",
+        description="Model architecture: 'auto' (automatic routing), 'xgboost', 'lightgbm', or 'ensemble'",
     )
     as_of_date: Optional[datetime] = Field(
         default=None,
@@ -166,6 +168,10 @@ class DataQualityResponse(BaseModel):
     missing_feature_count: int
     is_stale: bool
     stale_days: Optional[int] = None
+
+
+# Alias for compatibility
+PredictionDataQualityResponse = DataQualityResponse
 
 
 class TargetRangeResponse(BaseModel):
@@ -255,6 +261,9 @@ class PredictionResponse(BaseModel):
     ensemble: Optional[EnsembleDetailsResponse] = None
     explanation: Optional[LLMExplanationResponse] = None
     quote_context: Optional[QuoteContextResponse] = None
+    capability_status: Optional[str] = None
+    actionable_prerequisite: Optional[str] = None
+    routing_metadata: Optional[Dict[str, Any]] = None
     error_message: Optional[str] = None
     disclaimer: str
 
@@ -295,6 +304,8 @@ class HistoryItemResponse(BaseModel):
     probability_calibration: str = "uncalibrated"
     created_at: str
     actual: Optional[ActualOutcomeResponse] = None
+    raw_result: Optional[Dict[str, Any]] = None
+    why_prediction: Optional[Dict[str, Any]] = None
 
 
 class HistoryResponse(BaseModel):
@@ -431,3 +442,34 @@ class ModelComparisonResponse(BaseModel):
     ensemble_lift_over_ml: Optional[float] = None
     ensemble_lift_over_llm: Optional[float] = None
     disclaimer: str
+
+
+# ---------------------------------------------------------------------------
+# Chat Assistant Schemas
+# ---------------------------------------------------------------------------
+
+
+class ChatMessage(BaseModel):
+    """Single turn in a chat assistant dialogue."""
+
+    role: str = Field(..., pattern=r"^(user|assistant|system)$")
+    content: str
+
+
+class ChatRequest(BaseModel):
+    """User prompt to the market chat assistant with optional analysis context."""
+
+    message: str = Field(..., min_length=1, max_length=2000, description="User question or inquiry")
+    symbol: Optional[str] = Field(None, max_length=30, description="Currently viewed instrument ticker")
+    prediction_context: Optional[Dict[str, Any]] = Field(None, description="Active prediction result context")
+    conversation_history: Optional[List[ChatMessage]] = Field(default_factory=list, description="Prior conversation turns")
+
+
+class ChatResponse(BaseModel):
+    """Structured response from the market chat assistant."""
+
+    reply: str
+    model: str
+    sources: List[str] = Field(default_factory=list)
+    limitations: List[str] = Field(default_factory=list)
+    timestamp: str

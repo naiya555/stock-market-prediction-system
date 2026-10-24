@@ -303,6 +303,8 @@ def get_instruments(
             instrument_type=inst["instrument_type"],
             exchange=inst.get("exchange", "NSE"),
             status=inst["status"],
+            capability_status=inst.get("capability_status"),
+            actionable_prerequisite=inst.get("actionable_prerequisite"),
             compatible_models=inst.get("compatible_models", []),
             reason=inst["reason"],
         )
@@ -344,8 +346,57 @@ def predict(
             detail="Stock symbol cannot be empty or whitespace.",
         )
 
+    # Centralized Model Routing
+    from app.prediction.router import model_router
+    routing = model_router.route_prediction(
+        symbol_or_alias=clean_symbol,
+        requested_model=payload.model_name if payload.model_name != "auto" else None,
+    )
+
+    if not routing.is_supported:
+        from app.api.schemas import PredictionDataQualityResponse
+        now_iso = datetime.now(timezone.utc).isoformat()
+        return PredictionResponse(
+            prediction_id=None,
+            symbol=clean_symbol,
+            prediction_timestamp=now_iso,
+            latest_input_timestamp=None,
+            status="MODEL_UNAVAILABLE",
+            predicted_direction=None,
+            predicted_label=None,
+            probability_up=None,
+            probability_down=None,
+            model_name=payload.model_name or "auto",
+            model_version="unavailable",
+            is_probability_calibrated=False,
+            probability_calibration="uncalibrated",
+            data_quality=PredictionDataQualityResponse(
+                total_bars_fetched=0,
+                cleaned_bars=0,
+                warmup_bars_required=34,
+                warmup_complete=False,
+                latest_bar_timestamp=None,
+                missing_feature_count=0,
+                is_stale=False,
+                stale_days=None,
+            ),
+            ensemble=None,
+            explanation=None,
+            quote_context=None,
+            capability_status=routing.capability_status.value,
+            actionable_prerequisite=routing.actionable_prerequisite,
+            routing_metadata=routing.components_selected,
+            error_message=_sanitize_public_error_message(routing.reason, payload.model_name or "auto", clean_symbol),
+            disclaimer=(
+                f"Instrument '{clean_symbol}' is currently unavailable for forecasting: {routing.reason} "
+                f"Prerequisite: {routing.actionable_prerequisite or 'None'}"
+            ),
+        )
+
+    selected_model = routing.routed_model if payload.model_name in ("auto", None) else payload.model_name
+
     # 1. Handle Multi-Agent Ensemble Synthesis
-    if payload.model_name == "ensemble":
+    if selected_model == "ensemble":
         custom_weights = None
         if payload.ml_weight is not None or payload.llm_weight is not None:
             w_ml = payload.ml_weight if payload.ml_weight is not None else round(1.0 - (payload.llm_weight or 0.0), 6)
@@ -453,7 +504,7 @@ def predict(
                 articles=articles,
                 events=events,
                 weights=custom_weights,
-                persist=payload.persist,
+                persist=False,  # Single-point persistence handled below to prevent duplicate inserts
             )
         except Exception as exc:
             logger.error("Ensemble prediction service error: %s", exc)
@@ -497,6 +548,9 @@ def predict(
             ensemble=_map_ensemble_details(ensemble_res),
             explanation=_map_llm_explanation(ensemble_res.explanation),
             quote_context=_map_quote_context(ens_quote_ctx),
+            capability_status=routing.capability_status.value,
+            actionable_prerequisite=routing.actionable_prerequisite,
+            routing_metadata=routing.components_selected,
             error_message=_sanitize_public_error_message(ensemble_res.error_message, "ensemble", clean_symbol),
             disclaimer=ensemble_res.disclaimer,
         )
@@ -504,7 +558,7 @@ def predict(
     # 2. Handle Standalone Quantitative ML Prediction (XGBoost / LightGBM)
     domain_req = DomainPredictionRequest(
         symbol=clean_symbol,
-        model_name=payload.model_name,
+        model_name=selected_model,
         as_of_date=payload.as_of_date,
         lookback_days=payload.lookback_days,
         max_stale_days=payload.max_stale_days,
@@ -545,6 +599,9 @@ def predict(
         data_quality=_map_data_quality(ml_res.data_quality),
         ensemble=None,
         quote_context=_map_quote_context(ml_res.quote_context),
-        error_message=_sanitize_public_error_message(ml_res.error_message, payload.model_name, clean_symbol),
+        capability_status=routing.capability_status.value,
+        actionable_prerequisite=routing.actionable_prerequisite,
+        routing_metadata=routing.components_selected,
+        error_message=_sanitize_public_error_message(ml_res.error_message, selected_model, clean_symbol),
         disclaimer=ml_res.disclaimer,
     )

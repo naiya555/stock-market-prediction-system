@@ -104,7 +104,10 @@ class PredictionService:
           because equity models cannot be cross-applied to indices.
         """
         catalog = []
+        from app.prediction.router import model_router
+
         for symbol, inst in INSTRUMENT_REGISTRY.items():
+            canon, cap_status, reason, prereq = model_router.inspect_instrument(symbol)
             if is_index(symbol):
                 catalog.append({
                     "symbol": symbol,
@@ -112,8 +115,10 @@ class PredictionService:
                     "instrument_type": inst.instrument_type.value,
                     "exchange": inst.exchange,
                     "status": "BLOCKED",
+                    "capability_status": cap_status.value,
+                    "actionable_prerequisite": prereq,
                     "compatible_models": [],
-                    "reason": "Index forecasting model unavailable. Equity models are strictly prohibited from being applied to indices.",
+                    "reason": reason,
                 })
             elif symbol == "BHARTIARTL":
                 xgb_path = self._get_default_artifact_path("xgboost")
@@ -131,8 +136,10 @@ class PredictionService:
                     "instrument_type": inst.instrument_type.value,
                     "exchange": inst.exchange,
                     "status": "SUPPORTED" if compat else "BLOCKED",
+                    "capability_status": cap_status.value if compat else "TEMPORARILY_UNAVAILABLE",
+                    "actionable_prerequisite": prereq,
                     "compatible_models": compat,
-                    "reason": "Validated production models available on disk." if compat else "Model artifacts not found.",
+                    "reason": reason if compat else "Model artifacts not found on disk.",
                 })
             else:
                 catalog.append({
@@ -141,8 +148,10 @@ class PredictionService:
                     "instrument_type": inst.instrument_type.value,
                     "exchange": inst.exchange,
                     "status": "BLOCKED",
+                    "capability_status": cap_status.value,
+                    "actionable_prerequisite": prereq,
                     "compatible_models": [],
-                    "reason": f"No trained model artifact found for '{symbol}'. Equity models are symbol-specific and cannot be cross-applied.",
+                    "reason": reason,
                 })
         return catalog
 

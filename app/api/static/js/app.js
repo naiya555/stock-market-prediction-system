@@ -245,6 +245,27 @@
       }
       return await res.json();
     },
+
+    async sendChatMessage(payload) {
+      const res = await fetch(`${API_BASE}/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        let msg = `Chat service error (${res.status})`;
+        if (data && data.detail) {
+          msg = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
+        }
+        throw new Error(msg);
+      }
+      return data;
+    },
   };
 
   // -------------------------------------------------------------------------
@@ -271,7 +292,9 @@
         if (activePanel) activePanel.classList.add('active');
 
         // Trigger on-demand data loads
-        if (targetId === 'tab-panel-history') {
+        if (targetId === 'tab-panel-dashboard') {
+          loadDashboard();
+        } else if (targetId === 'tab-panel-history') {
           loadHistory();
         } else if (targetId === 'tab-panel-events') {
           loadEvents();
@@ -307,6 +330,308 @@
       if (breakdownGrid) breakdownGrid.style.display = 'none';
       if (resultsContainer) resultsContainer.style.display = 'none';
       if (emptyState) emptyState.style.display = 'block';
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Dashboard Controller
+  // -------------------------------------------------------------------------
+  function initDashboard() {
+    const btnAnalyze = document.getElementById('dash-btn-analyze');
+    if (btnAnalyze) {
+      btnAnalyze.addEventListener('click', () => {
+        const tabPredict = document.getElementById('tab-btn-predict');
+        if (tabPredict) tabPredict.click();
+        const input = document.getElementById('symbol-input');
+        if (input) {
+          input.value = 'BHARTIARTL';
+          input.focus();
+        }
+      });
+    }
+
+    const btnAskAi = document.getElementById('dash-btn-ask-ai');
+    if (btnAskAi) {
+      btnAskAi.addEventListener('click', () => {
+        openChatDrawer('What is the current technical momentum and fundamental outlook for BHARTIARTL?');
+      });
+    }
+
+    const btnWhyFactors = document.getElementById('btn-dash-why-factors');
+    if (btnWhyFactors) {
+      btnWhyFactors.addEventListener('click', () => {
+        const tabPredict = document.getElementById('tab-btn-predict');
+        if (tabPredict) tabPredict.click();
+        const whyCard = document.getElementById('res-why-prediction-card');
+        if (whyCard) {
+          whyCard.scrollIntoView({ behavior: 'smooth' });
+        }
+      });
+    }
+  }
+
+  async function loadDashboard() {
+    renderDashboardCatalog();
+
+    try {
+      const hist = await ApiService.fetchHistory({ symbol: 'BHARTIARTL', limit: 1 });
+      if (hist && hist.items && hist.items.length > 0) {
+        updateDashboardSnapshot(hist.items[0]);
+      }
+    } catch (e) {
+      console.warn('Could not fetch latest history snapshot for dashboard:', e);
+    }
+  }
+
+  function renderDashboardCatalog() {
+    const grid = document.getElementById('dash-catalog-grid');
+    if (!grid) return;
+    if (!AppState.catalog || AppState.catalog.length === 0) {
+      grid.innerHTML = '<div class="text-muted py-4">Loading instrument catalog...</div>';
+      return;
+    }
+
+    grid.innerHTML = AppState.catalog.map((inst) => {
+      const isReady = inst.capability_status === 'SUPPORTED_AND_READY' || inst.status === 'SUPPORTED';
+      let statusBadge = '<span class="badge badge-success">Supported & Ready</span>';
+      if (inst.capability_status === 'UNSUPPORTED_BY_CURRENT_MODEL') {
+        statusBadge = '<span class="badge badge-warning">No Equity Model</span>';
+      } else if (inst.capability_status === 'REQUIRES_SEPARATE_INDEX_PIPELINE' || inst.instrument_type === 'INDEX') {
+        statusBadge = '<span class="badge badge-purple">Index Pipeline Required</span>';
+      } else if (!isReady) {
+        statusBadge = `<span class="badge badge-danger">${escapeHtml(inst.capability_status || inst.status)}</span>`;
+      }
+
+      const reasonText = escapeHtml(inst.reason || '');
+      const prereqText = inst.actionable_prerequisite ? `<div class="catalog-prereq" style="font-size:0.75rem; color:#94a3b8; margin: 0.5rem 0;"><strong>Prerequisite:</strong> ${escapeHtml(inst.actionable_prerequisite)}</div>` : '';
+
+      return `
+        <div class="catalog-card ${isReady ? 'catalog-card-ready' : 'catalog-card-blocked'}">
+          <div class="catalog-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+            <div>
+              <strong style="color:#f8fafc; font-size:1rem;">${escapeHtml(inst.symbol)}</strong>
+              <span class="font-mono text-muted" style="font-size:0.75rem;">(${escapeHtml(inst.instrument_type)})</span>
+            </div>
+            ${statusBadge}
+          </div>
+          <div style="font-size:0.85rem; color:#e2e8f0; font-weight:500; margin-bottom:0.25rem;">${escapeHtml(inst.name)}</div>
+          <div style="font-size:0.75rem; color:#94a3b8; line-height:1.4;">${reasonText}</div>
+          ${prereqText}
+          <div style="margin-top:0.75rem;">
+            <button type="button" class="btn btn-outline btn-sm btn-select-catalog" data-symbol="${escapeHtml(inst.symbol)}" style="width:100%;">
+              ${isReady ? 'Analyze Instrument →' : 'View Capabilities →'}
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    grid.querySelectorAll('.btn-select-catalog').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const sym = btn.getAttribute('data-symbol');
+        if (!sym) return;
+        const tabPredict = document.getElementById('tab-btn-predict');
+        if (tabPredict) tabPredict.click();
+        const input = document.getElementById('symbol-input');
+        if (input) {
+          clearStalePredictionIfSymbolChanged(sym);
+          input.value = sym;
+          input.focus();
+        }
+      });
+    });
+  }
+
+  function updateDashboardSnapshot(pred) {
+    if (!pred) return;
+    const priceEl = document.getElementById('dash-latest-price');
+    const freshEl = document.getElementById('dash-freshness-status');
+    const dirIndicator = document.getElementById('dash-dir-indicator');
+    const dirIcon = document.getElementById('dash-dir-icon');
+    const dirText = document.getElementById('dash-dir-text');
+    const probDownVal = document.getElementById('dash-prob-down-val');
+    const probUpVal = document.getElementById('dash-prob-up-val');
+    const rangeBand = document.getElementById('dash-range-band');
+    const modelBadge = document.getElementById('dash-model-badge');
+
+    if (modelBadge && pred.model_name) {
+      modelBadge.textContent = pred.model_name.toUpperCase();
+    }
+
+    if (pred.raw_result && pred.raw_result.quote_context) {
+      const qc = pred.raw_result.quote_context;
+      if (priceEl && typeof qc.last_price === 'number') {
+        priceEl.textContent = formatPriceINR(qc.last_price);
+      }
+    }
+
+    if (pred.predicted_direction) {
+      const isUp = pred.predicted_direction === 'UP';
+      if (dirText) {
+        dirText.textContent = pred.predicted_direction;
+        dirText.className = isUp ? 'dir-text text-emerald' : 'dir-text text-rose';
+      }
+      if (dirIcon) {
+        dirIcon.textContent = isUp ? '📈' : '📉';
+      }
+      if (dirIndicator) {
+        dirIndicator.className = isUp ? 'direction-indicator-badge up' : 'direction-indicator-badge down';
+      }
+    }
+
+    const pUp = pred.probability_up;
+    if (typeof pUp === 'number') {
+      const pDown = 1.0 - pUp;
+      if (probUpVal) probUpVal.textContent = `${(pUp * 100).toFixed(1)}%`;
+      if (probDownVal) probDownVal.textContent = `${(pDown * 100).toFixed(1)}%`;
+    }
+
+    if (pred.raw_result && pred.raw_result.ensemble && pred.raw_result.ensemble.target_range) {
+      const tr = pred.raw_result.ensemble.target_range;
+      if (rangeBand && typeof tr.lower_bound === 'number' && typeof tr.upper_bound === 'number') {
+        rangeBand.textContent = `${formatPriceINR(tr.lower_bound)} — ${formatPriceINR(tr.upper_bound)}`;
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Chat Assistant Controller
+  // -------------------------------------------------------------------------
+  function openChatDrawer(prefilledMessage) {
+    const drawer = document.getElementById('chat-drawer');
+    if (!drawer) return;
+    drawer.classList.add('open');
+    drawer.setAttribute('aria-hidden', 'false');
+    const input = document.getElementById('chat-input-text');
+    if (input) {
+      if (prefilledMessage) {
+        input.value = prefilledMessage;
+        const form = document.getElementById('chat-input-form');
+        if (form) form.requestSubmit();
+      } else {
+        input.focus();
+      }
+    }
+  }
+
+  function closeChatDrawer() {
+    const drawer = document.getElementById('chat-drawer');
+    if (!drawer) return;
+    drawer.classList.remove('open');
+    drawer.setAttribute('aria-hidden', 'true');
+  }
+
+  function appendChatMessage(sender, text) {
+    const container = document.getElementById('chat-messages-container');
+    if (!container) return;
+
+    const msgEl = document.createElement('div');
+    msgEl.className = `chat-message ${sender}`;
+
+    const bubble = document.createElement('div');
+    bubble.className = 'message-bubble';
+
+    const paragraphs = String(text).split('\n\n');
+    paragraphs.forEach((pText) => {
+      const p = document.createElement('p');
+      p.textContent = pText.trim();
+      bubble.appendChild(p);
+    });
+
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'message-time';
+    const now = new Date();
+    timeSpan.textContent = sender === 'user' ? 'You' : `AI Assistant • ${now.toLocaleTimeString('en-IN', { hour12: false, hour: '2-digit', minute: '2-digit' })}`;
+
+    msgEl.appendChild(bubble);
+    msgEl.appendChild(timeSpan);
+    container.appendChild(msgEl);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function initChatModule() {
+    const btnOpen = document.getElementById('btn-open-chat');
+    const btnClose = document.getElementById('btn-close-chat');
+    const btnBlockedAsk = document.getElementById('btn-ask-chat-about-blocked');
+    const form = document.getElementById('chat-input-form');
+    const input = document.getElementById('chat-input-text');
+
+    if (btnOpen) {
+      btnOpen.addEventListener('click', () => openChatDrawer());
+    }
+
+    if (btnClose) {
+      btnClose.addEventListener('click', () => closeChatDrawer());
+    }
+
+    if (btnBlockedAsk) {
+      btnBlockedAsk.addEventListener('click', () => {
+        const symInput = document.getElementById('symbol-input');
+        const sym = (symInput && symInput.value.trim().toUpperCase()) || 'TCS';
+        openChatDrawer(`Why is ${sym} blocked and what is required to enable forecasting for it?`);
+      });
+    }
+
+    document.querySelectorAll('.chat-prompt-pill').forEach((pill) => {
+      pill.addEventListener('click', () => {
+        const promptText = pill.getAttribute('data-prompt');
+        if (promptText) {
+          openChatDrawer(promptText);
+        }
+      });
+    });
+
+    if (form) {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const text = input ? input.value.trim() : '';
+        if (!text) return;
+
+        appendChatMessage('user', text);
+        if (input) input.value = '';
+
+        const container = document.getElementById('chat-messages-container');
+        const typingEl = document.createElement('div');
+        typingEl.className = 'chat-message assistant typing';
+        typingEl.id = 'chat-typing-indicator';
+        typingEl.innerHTML = '<div class="message-bubble"><span class="typing-dots">Evaluating evidence...</span></div>';
+        if (container) {
+          container.appendChild(typingEl);
+          container.scrollTop = container.scrollHeight;
+        }
+
+        try {
+          const activeSymbol = (AppState.prediction && AppState.prediction.symbol)
+            || (document.getElementById('symbol-input') && document.getElementById('symbol-input').value.trim().toUpperCase())
+            || 'BHARTIARTL';
+
+          const res = await ApiService.sendChatMessage({
+            message: text,
+            instrument: activeSymbol,
+            prediction_context: AppState.prediction ? {
+              symbol: AppState.prediction.symbol,
+              predicted_direction: AppState.prediction.predicted_direction,
+              model_name: AppState.prediction.model_name,
+              probability_up: AppState.prediction.probability_up,
+              capability_status: AppState.prediction.capability_status,
+              actionable_prerequisite: AppState.prediction.actionable_prerequisite,
+              reason: AppState.prediction.error_message,
+              why_prediction: AppState.prediction.why_prediction,
+            } : null,
+          });
+
+          if (typingEl && typingEl.parentNode) {
+            typingEl.parentNode.removeChild(typingEl);
+          }
+
+          appendChatMessage('assistant', res.reply || 'No response returned.');
+        } catch (err) {
+          if (typingEl && typingEl.parentNode) {
+            typingEl.parentNode.removeChild(typingEl);
+          }
+          appendChatMessage('assistant', `⚠️ ${err.message || 'Error communicating with Chat Assistant. Please check if backend is running.'}`);
+        }
+      });
     }
   }
 
@@ -558,33 +883,48 @@
     if (!isSuccess) {
       if (heroCard) heroCard.style.display = 'none';
       if (breakdownGrid) breakdownGrid.style.display = 'none';
+      const whyCard = document.getElementById('res-why-prediction-card');
+      if (whyCard) whyCard.style.display = 'none';
+
       if (blockedCard) {
         blockedCard.style.display = 'block';
         const titleEl = document.getElementById('blocked-card-title');
         const badgeEl = document.getElementById('blocked-card-badge');
-        const msgEl = document.getElementById('blocked-card-message');
+        const descEl = document.getElementById('blocked-card-desc');
+        const detailsEl = document.getElementById('blocked-card-details');
+
         const inst = AppState.catalog ? AppState.catalog.find((i) => i.symbol === res.symbol) : null;
-        const isIndex = (inst && inst.instrument_type === 'INDEX') || (res.symbol && (res.symbol.includes('NIFTY') || res.symbol.includes('INDEX')));
+        const capStatus = res.capability_status || (inst ? inst.capability_status : (res.status || 'BLOCKED'));
+        const prereq = res.actionable_prerequisite || (inst ? inst.actionable_prerequisite : 'Train dedicated model before enabling.');
+        const reason = res.error_message || (inst ? inst.reason : `Inference could not be completed. Status: ${res.status || 'UNKNOWN'}`);
+
         if (titleEl) {
-          if (isIndex) {
-            titleEl.textContent = `Sectoral Index Blocked: ${res.symbol || 'INDEX'}`;
-          } else if (res.status === 'MODEL_UNAVAILABLE') {
-            titleEl.textContent = `Model Unavailable: ${res.symbol || 'Instrument'}`;
-          } else {
-            titleEl.textContent = `Prediction Blocked / Unavailable: ${res.symbol || 'Instrument'}`;
-          }
+          titleEl.textContent = `${res.symbol || 'Instrument'}: ${capStatus.replace(/_/g, ' ')}`;
         }
         if (badgeEl) {
-          if (isIndex) {
-            badgeEl.textContent = 'BLOCKED - SECTORAL INDEX';
-          } else if (res.status === 'MODEL_UNAVAILABLE') {
-            badgeEl.textContent = 'BLOCKED - MODEL UNAVAILABLE';
-          } else {
-            badgeEl.textContent = `STATUS - ${res.status || 'UNAVAILABLE'}`;
-          }
+          badgeEl.textContent = capStatus;
+          badgeEl.className = 'badge ' + (capStatus.includes('INDEX') ? 'badge-purple' : 'badge-warning');
         }
-        if (msgEl) {
-          msgEl.textContent = res.error_message || (res.status === 'SUCCESS' && !res.predicted_direction ? 'Inference completed without predicted direction. Check server logs.' : `Inference could not be completed. Status: ${res.status || 'UNKNOWN'}`);
+        if (descEl) {
+          descEl.textContent = reason;
+        }
+        if (detailsEl) {
+          detailsEl.innerHTML = `
+            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 0.85rem; margin-top: 0.75rem;">
+              <div style="margin-bottom: 0.5rem;">
+                <span style="font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; font-weight: 700;">Capability Status:</span>
+                <span class="font-mono text-bold" style="color: #f59e0b; margin-left: 0.5rem;">${escapeHtml(capStatus)}</span>
+              </div>
+              <div style="margin-bottom: 0.5rem;">
+                <span style="font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; font-weight: 700;">Actionable Prerequisite:</span>
+                <span style="color: #e2e8f0; margin-left: 0.5rem;">${escapeHtml(prereq)}</span>
+              </div>
+              <div>
+                <span style="font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; font-weight: 700;">Verified Reason:</span>
+                <span style="color: #cbd5e1; margin-left: 0.5rem;">${escapeHtml(reason)}</span>
+              </div>
+            </div>
+          `;
         }
       }
       return;
@@ -622,6 +962,14 @@
       const modelVer = res.model_version ? ` (${res.model_version})` : '';
       modelBadge.textContent = `${modelName}${modelVer}`;
       modelBadge.className = 'badge ' + (res.model_name === 'ensemble' ? 'badge-purple' : 'badge-info');
+    }
+    const routingBadge = document.getElementById('res-routing-badge');
+    if (routingBadge) {
+      if (res.routing_metadata) {
+        routingBadge.textContent = `Auto-Routed: ${res.routing_metadata.pipeline_type || 'Ensemble'}`;
+      } else {
+        routingBadge.textContent = `Auto-Routed: ${(res.model_name || 'Ensemble').toUpperCase()}`;
+      }
     }
     if (tsEl) tsEl.textContent = formatDateTimeIST(res.prediction_timestamp);
 
@@ -902,6 +1250,40 @@
     // Column 3: Audit Card
     document.getElementById('audit-id-val').textContent = res.prediction_id || 'Not Persisted';
     document.getElementById('audit-disclaimer-text').textContent = res.disclaimer || 'Standard research disclaimer.';
+
+    // Section 4: Why This Prediction? Evidence Breakdown
+    const whyCard = document.getElementById('res-why-prediction-card');
+    const whyInputTs = document.getElementById('why-input-timestamp');
+    const whyTechnical = document.getElementById('why-technical-content');
+    const whyQualitative = document.getElementById('why-qualitative-content');
+    const whySources = document.getElementById('why-sources-content');
+
+    if (whyCard) {
+      whyCard.style.display = 'block';
+      if (whyInputTs) {
+        const inputTs = (res.data_quality && res.data_quality.latest_bar_timestamp) || res.prediction_timestamp;
+        whyInputTs.textContent = formatDateTimeIST(inputTs);
+      }
+      if (whyTechnical) {
+        const pUpPct = hasProbUp ? `${(probUp * 100).toFixed(1)}%` : '--%';
+        whyTechnical.textContent = `Signal direction: ${dir} with estimated P(UP)=${pUpPct}. Evaluated across 37 technical momentum, volatility, and trend indicators.`;
+      }
+      if (whyQualitative) {
+        if (res.ensemble && res.ensemble.llm_reasoning_summary) {
+          whyQualitative.textContent = `${res.ensemble.llm_reasoning_summary} (Model: ${res.ensemble.llm_model_name || 'Gemma 3 12B'})`;
+        } else {
+          whyQualitative.textContent = 'Qualitative contextual reasoning was not requested or not generated for this model run.';
+        }
+      }
+      if (whySources) {
+        const sources = (res.ensemble && res.ensemble.source_references) || [];
+        if (sources.length > 0) {
+          whySources.innerHTML = sources.map((s) => `<span class="source-tag">${escapeHtml(s)}</span>`).join(' ');
+        } else {
+          whySources.textContent = 'No external news citations attached.';
+        }
+      }
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -1094,11 +1476,11 @@
     if (!tbody) return;
 
     if (items.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-muted">No prediction audit records found matching criteria.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-muted">No prediction audit records found matching criteria.</td></tr>';
       return;
     }
 
-    tbody.innerHTML = items.map((it) => {
+    tbody.innerHTML = items.map((it, idx) => {
       // Direction Pill
       let dirPill = '<span class="badge badge-warning">N/A</span>';
       if (it.predicted_direction === 'UP') {
@@ -1131,8 +1513,16 @@
         `;
       }
 
+      // Structured why_prediction evidence
+      const why = it.why_prediction || {};
+      const horizonText = escapeHtml(why.horizon || '1 Session');
+      const techText = escapeHtml(why.technical_evidence || 'Technical indicators evaluated.');
+      const llmText = escapeHtml(why.qualitative_reasoning || 'No qualitative summary recorded.');
+      const sourcesText = escapeHtml((why.cited_sources && why.cited_sources.length > 0) ? why.cited_sources.join(', ') : 'None');
+      const provText = escapeHtml(why.provenance || it.model_name);
+
       return `
-        <tr>
+        <tr class="history-main-row">
           <td><code class="font-mono text-muted" title="${escapeHtml(it.prediction_id)}">${escapeHtml(it.prediction_id.substring(0, 8))}...</code></td>
           <td><strong>${escapeHtml(it.symbol)}</strong></td>
           <td><span class="badge badge-info">${escapeHtml(it.model_name)}</span></td>
@@ -1140,9 +1530,51 @@
           <td>${dirPill}</td>
           <td class="font-mono">${probText}</td>
           <td>${outcomeHtml}</td>
+          <td>
+            <button type="button" class="btn-evidence-toggle" data-target="evidence-row-${idx}" aria-label="Toggle prediction evidence details">
+              Evidence 🔍
+            </button>
+          </td>
+        </tr>
+        <tr id="evidence-row-${idx}" class="history-evidence-row" style="display: none;">
+          <td colspan="8">
+            <div class="history-evidence-box">
+              <div class="history-evidence-grid">
+                <div class="hist-evidence-col">
+                  <span class="hist-evidence-label">Horizon & Provenance</span>
+                  <div><strong>Horizon:</strong> ${horizonText}</div>
+                  <div><strong>Provenance:</strong> ${provText}</div>
+                </div>
+                <div class="hist-evidence-col">
+                  <span class="hist-evidence-label">Technical Evidence</span>
+                  <div>${techText}</div>
+                </div>
+                <div class="hist-evidence-col">
+                  <span class="hist-evidence-label">Qualitative Reasoning</span>
+                  <div>${llmText}</div>
+                </div>
+                <div class="hist-evidence-col">
+                  <span class="hist-evidence-label">Sources Cited</span>
+                  <div>${sourcesText}</div>
+                </div>
+              </div>
+            </div>
+          </td>
         </tr>
       `;
     }).join('');
+
+    tbody.querySelectorAll('.btn-evidence-toggle').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const targetId = btn.getAttribute('data-target');
+        const row = document.getElementById(targetId);
+        if (row) {
+          const isHidden = row.style.display === 'none';
+          row.style.display = isHidden ? 'table-row' : 'none';
+          btn.textContent = isHidden ? 'Evidence ▲' : 'Evidence 🔍';
+        }
+      });
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -1163,6 +1595,25 @@
         loadEvents();
       });
     });
+
+    const searchInput = document.getElementById('events-search-input');
+    if (searchInput) {
+      searchInput.addEventListener('input', () => {
+        const query = searchInput.value.trim().toLowerCase();
+        if (!query) {
+          renderEventsGrid(AppState.events.items || []);
+          return;
+        }
+        const filtered = (AppState.events.items || []).filter((ev) => {
+          const t = (ev.title || '').toLowerCase();
+          const s = (ev.source_org || '').toLowerCase();
+          const p = (ev.provider || '').toLowerCase();
+          const c = (ev.category || '').toLowerCase();
+          return t.includes(query) || s.includes(query) || p.includes(query) || c.includes(query);
+        });
+        renderEventsGrid(filtered);
+      });
+    }
   }
 
   async function loadEvents() {
@@ -1368,6 +1819,7 @@
       const data = await ApiService.fetchInstruments();
       if (!data || !data.instruments) return;
       AppState.catalog = data.instruments;
+      renderDashboardCatalog();
       const chipsGroup = document.getElementById('quick-ticker-chips');
       if (!chipsGroup) return;
 
@@ -1423,14 +1875,17 @@
   document.addEventListener('DOMContentLoaded', () => {
     startMarketClock();
     initNavigationTabs();
+    initDashboard();
     initPredictionEngine();
     initHistoryModule();
     initEventsModule();
     initHealthModule();
+    initChatModule();
 
-    // Initial background health check and instrument catalog load
+    // Initial background health check, instrument catalog load, and dashboard snapshot
     loadHealth();
     loadInstrumentCatalog();
+    loadDashboard();
   });
 
 })();

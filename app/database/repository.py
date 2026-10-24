@@ -239,8 +239,11 @@ class PredictionRepository:
         params: List[Any] = []
 
         if symbol:
-            query += " AND symbol = ?"
-            params.append(symbol.strip().upper())
+            from app.market.instruments import resolve_canonical_symbol
+            clean_s = symbol.strip()
+            canon_s = resolve_canonical_symbol(clean_s)
+            query += " AND (symbol = ? OR symbol = ?)"
+            params.extend([canon_s, clean_s.upper()])
         if model_name:
             query += " AND model_name = ?"
             params.append(model_name.strip().lower())
@@ -270,8 +273,11 @@ class PredictionRepository:
         params: List[Any] = []
 
         if symbol:
-            query += " AND symbol = ?"
-            params.append(symbol.strip().upper())
+            from app.market.instruments import resolve_canonical_symbol
+            clean_s = symbol.strip()
+            canon_s = resolve_canonical_symbol(clean_s)
+            query += " AND (symbol = ? OR symbol = ?)"
+            params.extend([canon_s, clean_s.upper()])
         if model_name:
             query += " AND model_name = ?"
             params.append(model_name.strip().lower())

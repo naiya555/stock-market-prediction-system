@@ -39,8 +39,8 @@ def get_history(
     symbol: Optional[str] = Query(
         None,
         min_length=1,
-        max_length=20,
-        description="Filter by stock ticker symbol (e.g. 'RELIANCE')",
+        max_length=50,
+        description="Filter by stock ticker symbol (e.g. 'BHARTIARTL', 'BHARTIARTL.NS')",
     ),
     model_name: Optional[str] = Query(
         None,
@@ -60,7 +60,10 @@ def get_history(
     repository: PredictionRepository = Depends(get_prediction_repository),
 ) -> HistoryResponse:
     """Query persisted predictions and map each record to HistoryItemResponse."""
-    clean_sym = symbol.strip().upper() if symbol else None
+    clean_sym = None
+    if symbol and symbol.strip():
+        from app.market.instruments import resolve_canonical_symbol
+        clean_sym = resolve_canonical_symbol(symbol.strip())
     clean_model = model_name.strip().lower() if model_name else None
 
     # Retrieve raw records and total matching count from repository
@@ -97,6 +100,43 @@ def get_history(
         except Exception as exc:
             logger.warning("Could not fetch actual outcome for prediction %s: %s", pid, exc)
 
+        # Build Why This Prediction evidence object
+        raw_res = rec.get("raw_result") or {}
+        pos_factors = raw_res.get("integrated_positive_factors") or []
+        neg_factors = raw_res.get("integrated_negative_factors") or []
+        downside_risks = raw_res.get("downside_risks") or []
+        quote_ctx = raw_res.get("quote_context") or {}
+        model_meta = raw_res.get("model_metadata") or {}
+
+        why_pred = {
+            "forecast_direction": rec.get("predicted_direction"),
+            "forecast_horizon": "Next trading session (1-day forward close-to-close return)",
+            "input_timestamp": rec.get("latest_input_timestamp"),
+            "data_freshness": "Point-in-time exchange close",
+            "probability_up": rec.get("probability_up"),
+            "probability_down": rec.get("probability_down"),
+            "model_provenance": f"{rec['model_name']} ({rec['model_version']})",
+            "weights_used": model_meta.get("weights_used"),
+            "fallback_reason": model_meta.get("fallback_reason"),
+            "positive_factors": pos_factors,
+            "negative_factors": neg_factors,
+            "downside_risks": downside_risks,
+            "observed_price": quote_ctx.get("last_price"),
+            "price_timestamp": quote_ctx.get("price_timestamp"),
+            "explanation_summary": raw_res.get("explanation", {}).get("summary") if isinstance(raw_res.get("explanation"), dict) else None,
+            "verified_outcome": {
+                "actual_direction": actual_model.actual_direction if actual_model else None,
+                "actual_return_pct": round(actual_model.actual_return * 100, 2) if actual_model else None,
+                "actual_close": actual_model.actual_close if actual_model else None,
+                "is_correct": (actual_model.actual_direction == rec.get("predicted_direction")) if actual_model else None,
+            } if actual_model else None,
+            "limitations": [
+                "Binary directional sign only; opening/closing exact targets unsupported",
+                "Uncalibrated weighted tree/heuristic probability blend",
+                "Equity model calibrated specifically for BHARTIARTL feature matrix",
+            ],
+        }
+
         items.append(
             HistoryItemResponse(
                 prediction_id=pid,
@@ -114,6 +154,8 @@ def get_history(
                 probability_calibration=rec.get("probability_calibration", "uncalibrated"),
                 created_at=rec.get("created_at", rec["prediction_timestamp"]),
                 actual=actual_model,
+                raw_result=raw_res if raw_res else None,
+                why_prediction=why_pred,
             )
         )
 

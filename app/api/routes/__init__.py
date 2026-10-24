@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 
+from app.api.routes.chat import router as chat_router
 from app.api.routes.events import router as events_router
 from app.api.routes.feedback import router as feedback_router
 from app.api.routes.health import router as health_router
@@ -15,5 +16,6 @@ api_router.include_router(predict_router, prefix="/predict", tags=["prediction"]
 api_router.include_router(history_router, prefix="/history", tags=["history"])
 api_router.include_router(feedback_router, prefix="/feedback", tags=["feedback"])
 api_router.include_router(events_router, prefix="/events", tags=["events"])
+api_router.include_router(chat_router, prefix="/chat", tags=["chat"])
 
 __all__ = ["api_router"]
