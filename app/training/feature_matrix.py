@@ -122,6 +122,36 @@ FEATURE_COLUMNS: List[str] = [
     "trend_regime_encoded",
 ]
 
+# Canonical ordered list of numeric index feature column names (close-only indicators)
+INDEX_FEATURE_COLUMNS: List[str] = [
+    # 1. Close Price (level)
+    "close",
+    # 2. Returns & Volatility
+    "daily_return",
+    "rolling_return_3d",
+    "rolling_return_5d",
+    "rolling_volatility_5d",
+    "annualized_volatility_5d",
+    # 3. Moving Averages
+    "sma_5",
+    "sma_10",
+    "ema_5",
+    "ema_10",
+    # 4. Momentum & Oscillators
+    "rsi_14",
+    "macd",
+    "macd_signal",
+    "macd_histogram",
+    # 5. Volatility Bands (Bollinger)
+    "bb_middle",
+    "bb_upper",
+    "bb_lower",
+    "bb_bandwidth",
+    "bb_percent_b",
+    # 6. Relative Velocity
+    "roc_10",
+]
+
 
 def encode_candle_direction(direction: Optional[str]) -> float:
     """Encode categorical candle direction to numerical value (+1.0, -1.0, 0.0, or NaN)."""
@@ -290,6 +320,7 @@ def assemble_feature_matrix(
     swing_window: int = 2,
     min_swings: int = 2,
     only_latest: bool = False,
+    feature_columns: Optional[Sequence[str]] = None,
 ) -> FeatureMatrixDataset:
     """Assemble an aligned, leakage-safe technical feature matrix joined with Day 15 targets.
 
@@ -299,6 +330,9 @@ def assemble_feature_matrix(
         min_swings: Minimum confirmed swings required for trend classification (default 2).
         only_latest: If True, evaluates features and trend classification only for the final
             bar (t = N - 1), bypassing full rolling trend history for fast inference.
+        feature_columns: Optional explicit list of feature column names to extract into X.
+            If None, automatically selects INDEX_FEATURE_COLUMNS for close-only sectoral indices
+            and FEATURE_COLUMNS for standard OHLCV instruments.
 
     Returns:
         FeatureMatrixDataset container with cleanly separated X, y, metadata, and full df.
@@ -321,6 +355,16 @@ def assemble_feature_matrix(
         else:
             symbol = input_records[0].symbol
 
+    # Determine chosen feature columns
+    if feature_columns is not None:
+        chosen_features = list(feature_columns)
+    elif symbol in ("NIFTY_TELECOMMUNICATIONS", "NIFTY_TELECOM") or (
+        len(input_records) > 0 and (input_records[0].open is None or np.isnan(input_records[0].open or np.nan))
+    ):
+        chosen_features = list(INDEX_FEATURE_COLUMNS)
+    else:
+        chosen_features = list(FEATURE_COLUMNS)
+
     # Validate duplicate timestamps
     seen_timestamps: Dict[str, Set[datetime]] = {}
     for r in input_records:
@@ -342,14 +386,14 @@ def assemble_feature_matrix(
 
     n_records = len(cleaned_records)
     if n_records == 0:
-        empty_df = pd.DataFrame(columns=METADATA_COLUMNS + FEATURE_COLUMNS + TARGET_COLUMNS)
+        empty_df = pd.DataFrame(columns=METADATA_COLUMNS + chosen_features + TARGET_COLUMNS)
         return FeatureMatrixDataset(
             symbol=symbol,
             df=empty_df,
-            X=pd.DataFrame(columns=FEATURE_COLUMNS),
+            X=pd.DataFrame(columns=chosen_features),
             y=pd.Series(name="target_binary", dtype=float),
             metadata=pd.DataFrame(columns=METADATA_COLUMNS),
-            feature_names=FEATURE_COLUMNS,
+            feature_names=chosen_features,
             total_rows=0,
             labeled_rows=0,
             unlabeled_rows=0,
@@ -460,7 +504,7 @@ def assemble_feature_matrix(
     full_df = pd.DataFrame(rows)
 
     # Explicitly separate feature matrix X, target y, and metadata
-    X = full_df[FEATURE_COLUMNS].copy()
+    X = full_df[chosen_features].copy()
     y = full_df["target_binary"].copy()
     metadata = full_df[METADATA_COLUMNS].copy()
 
@@ -476,7 +520,7 @@ def assemble_feature_matrix(
         len(full_df),
         labeled_count,
         unlabeled_count,
-        len(FEATURE_COLUMNS),
+        len(chosen_features),
     )
 
     return FeatureMatrixDataset(
@@ -485,7 +529,7 @@ def assemble_feature_matrix(
         X=X,
         y=y,
         metadata=metadata,
-        feature_names=FEATURE_COLUMNS,
+        feature_names=chosen_features,
         total_rows=len(full_df),
         labeled_rows=labeled_count,
         unlabeled_rows=unlabeled_count,

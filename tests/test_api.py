@@ -94,7 +94,7 @@ def dummy_prediction_result() -> PredictionResult:
         stale_days=1,
     )
     return PredictionResult(
-        symbol="RELIANCE",
+        symbol="BHARTIARTL",
         prediction_timestamp="2026-10-17T09:00:00Z",
         latest_input_timestamp="2026-10-16T15:30:00+05:30",
         status=PredictionStatus.SUCCESS,
@@ -119,7 +119,7 @@ def dummy_prediction_result() -> PredictionResult:
 def dummy_ensemble_result(dummy_prediction_result: PredictionResult) -> EnsemblePredictionResult:
     """Create a realistic sample EnsemblePredictionResult."""
     llm_res = LLMReasoningResult(
-        symbol="RELIANCE",
+        symbol="BHARTIARTL",
         direction=LLMDirection.UP,
         reasoning_summary="Solid refining margins and positive regulatory tailwinds.",
         positive_factors=["Strong quarterly performance", "Regulatory clarity"],
@@ -130,7 +130,7 @@ def dummy_ensemble_result(dummy_prediction_result: PredictionResult) -> Ensemble
         model_version="gemma3:12b",
     )
     return EnsemblePredictionResult(
-        symbol="RELIANCE",
+        symbol="BHARTIARTL",
         prediction_timestamp="2026-10-17T09:00:00Z",
         latest_input_timestamp="2026-10-16T15:30:00+05:30",
         status=PredictionStatus.SUCCESS,
@@ -331,7 +331,7 @@ def test_predict_standalone_ml_success(
     mock_prediction_service.predict.return_value = dummy_prediction_result
 
     payload = {
-        "symbol": "RELIANCE",
+        "symbol": "BHARTIARTL",
         "model_name": "xgboost",
         "persist": True,
     }
@@ -339,7 +339,7 @@ def test_predict_standalone_ml_success(
     assert res.status_code == 200
     data = res.json()
 
-    assert data["symbol"] == "RELIANCE"
+    assert data["symbol"] == "BHARTIARTL"
     assert data["status"] == "SUCCESS"
     assert data["predicted_direction"] == "UP"
     assert data["probability_up"] == 0.68
@@ -351,7 +351,7 @@ def test_predict_standalone_ml_success(
     # Verify persisted in database
     persisted = test_repo.get_prediction(data["prediction_id"])
     assert persisted is not None
-    assert persisted["symbol"] == "RELIANCE"
+    assert persisted["symbol"] == "BHARTIARTL"
 
 
 def test_predict_standalone_ml_failure_status(
@@ -360,7 +360,7 @@ def test_predict_standalone_ml_failure_status(
 ):
     """Verify failed prediction status returns diagnostic without fabricating fake direction."""
     failed_result = PredictionResult(
-        symbol="INSUFFICIENT_BARS",
+        symbol="BHARTIARTL",
         prediction_timestamp="2026-10-17T09:00:00Z",
         latest_input_timestamp=None,
         status=PredictionStatus.INSUFFICIENT_DATA,
@@ -381,7 +381,7 @@ def test_predict_standalone_ml_failure_status(
     )
     mock_prediction_service.predict.return_value = failed_result
 
-    res = client.post("/api/predict", json={"symbol": "INSUFFICIENT_BARS"})
+    res = client.post("/api/predict", json={"symbol": "BHARTIARTL", "model_name": "xgboost"})
     assert res.status_code == 200
     data = res.json()
 
@@ -398,7 +398,7 @@ def test_predict_standalone_ml_service_exception(
     """Verify unexpected service exception returns sanitized 500 without leaking stack trace."""
     mock_prediction_service.predict.side_effect = RuntimeError("Internal CUDA memory fault")
 
-    res = client.post("/api/predict", json={"symbol": "RELIANCE"})
+    res = client.post("/api/predict", json={"symbol": "BHARTIARTL", "model_name": "xgboost"})
     assert res.status_code == 500
     data = res.json()
     assert "error" in data
@@ -417,7 +417,7 @@ def test_predict_error_sanitization_no_path_disclosure(
     """
     sensitive_path = "D:\\Share_market_predictor\\models\\checkpoints\\xgboost_v1.bin"
     path_result = PredictionResult(
-        symbol="RELIANCE",
+        symbol="BHARTIARTL",
         prediction_timestamp="2026-10-17T10:00:00+00:00",
         latest_input_timestamp=None,
         status=PredictionStatus.MODEL_UNAVAILABLE,
@@ -434,7 +434,7 @@ def test_predict_error_sanitization_no_path_disclosure(
     )
     mock_prediction_service.predict.return_value = path_result
 
-    res = client.post("/api/predict", json={"symbol": "RELIANCE"})
+    res = client.post("/api/predict", json={"symbol": "BHARTIARTL", "model_name": "xgboost"})
     assert res.status_code == 200
     data = res.json()
 
@@ -453,7 +453,7 @@ def test_predict_ensemble_service_exception_sanitized(
         "Missing config at /etc/secrets/config.json"
     )
 
-    payload = {"symbol": "RELIANCE", "model_name": "ensemble"}
+    payload = {"symbol": "BHARTIARTL", "model_name": "ensemble"}
     res = client.post("/api/predict", json=payload)
     assert res.status_code == 500
     data = res.json()
@@ -470,7 +470,7 @@ def test_predict_ensemble_success(
     mock_ensemble_service.predict_ensemble.return_value = dummy_ensemble_result
 
     payload = {
-        "symbol": "RELIANCE",
+        "symbol": "BHARTIARTL",
         "model_name": "ensemble",
         "persist": True,
     }
@@ -478,7 +478,7 @@ def test_predict_ensemble_success(
     assert res.status_code == 200
     data = res.json()
 
-    assert data["symbol"] == "RELIANCE"
+    assert data["symbol"] == "BHARTIARTL"
     assert data["model_name"] == "ensemble"
     assert data["status"] == "SUCCESS"
     assert data["predicted_direction"] == "UP"
@@ -499,7 +499,7 @@ def test_predict_ensemble_custom_weights(
     mock_ensemble_service.predict_ensemble.return_value = dummy_ensemble_result
 
     payload = {
-        "symbol": "RELIANCE",
+        "symbol": "BHARTIARTL",
         "model_name": "ensemble",
         "ml_weight": 0.85,
         "llm_weight": 0.15,
@@ -524,7 +524,8 @@ def test_predict_no_persist_option(
     mock_prediction_service.predict.return_value = dummy_prediction_result
 
     payload = {
-        "symbol": "RELIANCE",
+        "symbol": "BHARTIARTL",
+        "model_name": "xgboost",
         "persist": False,
     }
     res = client.post("/api/predict", json=payload)
@@ -553,7 +554,27 @@ def test_history_populated_and_filtering(
 ):
     """Verify history queries, filtering by symbol/model, and pagination bounds."""
     # Insert 3 records into in-memory database
-    test_repo.save_prediction(dummy_prediction_result)  # RELIANCE, xgboost
+    pred1 = PredictionResult(
+        symbol="RELIANCE",
+        prediction_timestamp="2026-10-17T09:00:00Z",
+        latest_input_timestamp="2026-10-16T15:30:00+05:30",
+        status=PredictionStatus.SUCCESS,
+        predicted_direction="UP",
+        predicted_label=1,
+        probability_up=0.68,
+        probability_down=0.32,
+        model_name="xgboost",
+        model_version="xgb_v1",
+        model_metadata={},
+        data_quality=None,
+        is_probability_calibrated=False,
+        probability_calibration="uncalibrated",
+        expected_movement=None,
+        expected_movement_status="UNSUPPORTED",
+        error_message=None,
+        disclaimer="Standard disclaimer.",
+    )
+    test_repo.save_prediction(pred1)  # RELIANCE, xgboost
 
     pred2 = PredictionResult(
         symbol="RELIANCE",
@@ -640,7 +661,7 @@ def test_history_with_verified_outcome(
     # Save actual outcome for this prediction
     actual_data = {
         "prediction_id": pid,
-        "symbol": "RELIANCE",
+        "symbol": "BHARTIARTL",
         "target_date": "2026-10-19",
         "actual_direction": "UP",
         "actual_label": 1,
@@ -651,7 +672,7 @@ def test_history_with_verified_outcome(
     }
     test_repo.save_actual(actual_data)
 
-    res = client.get(f"/api/history?symbol=RELIANCE")
+    res = client.get("/api/history?symbol=BHARTIARTL")
     assert res.status_code == 200
     data = res.json()
     assert len(data["items"]) == 1
@@ -847,7 +868,7 @@ def test_ensemble_prediction_receives_pit_news_and_events(
 
     with TestClient(app) as test_client:
         payload = {
-            "symbol": "RELIANCE",
+            "symbol": "BHARTIARTL",
             "model_name": "ensemble",
             "as_of_date": cutoff.isoformat(),
             "lookback_days": 100,
@@ -892,15 +913,15 @@ def test_ensemble_prediction_lookback_window_exclusion(
         source="Economic Times",
         published_at=cutoff - timedelta(days=20),
         ingested_at=cutoff - timedelta(days=20),
-        symbols=("TCS",),
+        symbols=("BHARTIARTL",),
     )
     # Recent article (within 14 days)
     recent_art = NewsArticle(
-        headline="TCS Signs Mega Cloud Deal",
+        headline="BHARTIARTL Signs Mega Cloud Deal",
         source="LiveMint",
         published_at=cutoff - timedelta(days=2),
         ingested_at=cutoff - timedelta(days=2),
-        symbols=("TCS",),
+        symbols=("BHARTIARTL",),
     )
 
     # Event from 45 days ago (event lookback is capped at 30 days)
@@ -938,7 +959,7 @@ def test_ensemble_prediction_lookback_window_exclusion(
 
     with TestClient(app) as test_client:
         res = test_client.post("/api/predict", json={
-            "symbol": "TCS",
+            "symbol": "BHARTIARTL",
             "model_name": "ensemble",
             "as_of_date": cutoff.isoformat(),
             "lookback_days": 100,
@@ -976,15 +997,15 @@ def test_ensemble_symbol_and_market_event_relevance_filtering(
         published_at=cutoff - timedelta(days=1),
         affected_symbols=(),
     )
-    # Event specifically affecting RELIANCE
+    # Event specifically affecting BHARTIARTL
     sym_event = MacroEvent(
-        title="Ministry of Petroleum Tariff Update",
+        title="Telecom Tariff Revision Notification",
         category=EventCategory.REGULATORY,
         event_type="policy",
-        source_org="MoPNG",
+        source_org="TRAI",
         ingested_at=cutoff - timedelta(days=2),
         published_at=cutoff - timedelta(days=2),
-        affected_symbols=("RELIANCE",),
+        affected_symbols=("BHARTIARTL",),
     )
     # Event specifically affecting a different company (INFY)
     other_event = MacroEvent(
@@ -1011,7 +1032,7 @@ def test_ensemble_symbol_and_market_event_relevance_filtering(
 
     with TestClient(app) as test_client:
         res = test_client.post("/api/predict", json={
-            "symbol": "RELIANCE",
+            "symbol": "BHARTIARTL",
             "model_name": "ensemble",
             "as_of_date": cutoff.isoformat(),
             "persist": False,
@@ -1021,7 +1042,7 @@ def test_ensemble_symbol_and_market_event_relevance_filtering(
         call_kwargs = mock_ensemble.predict_ensemble.call_args.kwargs
         passed_events = call_kwargs["events"]
 
-        # Broad event and RELIANCE event should be included; INFY event excluded
+        # Broad event and BHARTIARTL event should be included; INFY event excluded
         assert len(passed_events) == 2
         titles = {e.title for e in passed_events}
         assert broad_event.title in titles
@@ -1038,7 +1059,7 @@ def test_ensemble_empty_news_and_events_fallback(
     """Verify that when news and events are empty, the ensemble safely returns ML_ONLY fallback."""
     # Build ML_ONLY ensemble result
     ml_only_ensemble = EnsemblePredictionResult(
-        symbol="RELIANCE",
+        symbol="BHARTIARTL",
         prediction_timestamp="2026-10-17T09:00:00Z",
         latest_input_timestamp="2026-10-16T15:30:00+05:30",
         status=PredictionStatus.SUCCESS,
@@ -1069,7 +1090,7 @@ def test_ensemble_empty_news_and_events_fallback(
 
     with TestClient(app) as test_client:
         res = test_client.post("/api/predict", json={
-            "symbol": "RELIANCE",
+            "symbol": "BHARTIARTL",
             "model_name": "ensemble",
             "persist": False,
         })
@@ -1116,7 +1137,7 @@ def test_ensemble_provider_failure_resilience(
 
     with TestClient(app) as test_client:
         res = test_client.post("/api/predict", json={
-            "symbol": "RELIANCE",
+            "symbol": "BHARTIARTL",
             "model_name": "ensemble",
             "persist": False,
         })
@@ -1138,7 +1159,7 @@ def test_ensemble_ollama_failure_or_timeout_fallback(
     """Verify controlled fallback when Ollama is unreachable or times out during qualitative synthesis."""
     # When Ollama is offline or times out, EnsembleService returns ML_ONLY fallback
     fallback_result = EnsemblePredictionResult(
-        symbol="INFY",
+        symbol="BHARTIARTL",
         prediction_timestamp="2026-10-17T09:00:00Z",
         latest_input_timestamp="2026-10-16T15:30:00+05:30",
         status=PredictionStatus.SUCCESS,
@@ -1173,7 +1194,7 @@ def test_ensemble_ollama_failure_or_timeout_fallback(
 
     with TestClient(app) as test_client:
         res = test_client.post("/api/predict", json={
-            "symbol": "INFY",
+            "symbol": "BHARTIARTL",
             "model_name": "ensemble",
             "persist": False,
         })
@@ -1205,7 +1226,7 @@ def test_ensemble_response_accurately_reports_llm_contribution(
 
     with TestClient(app) as test_client:
         res = test_client.post("/api/predict", json={
-            "symbol": "RELIANCE",
+            "symbol": "BHARTIARTL",
             "model_name": "ensemble",
             "persist": False,
         })
@@ -1239,7 +1260,7 @@ def test_ensemble_history_persistence_single_entry(
 
     with TestClient(app) as test_client:
         res = test_client.post("/api/predict", json={
-            "symbol": "RELIANCE",
+            "symbol": "BHARTIARTL",
             "model_name": "ensemble",
             "persist": True,
         })
@@ -1249,7 +1270,7 @@ def test_ensemble_history_persistence_single_entry(
         assert pred_id is not None
 
         # Verify exactly one entry is in database
-        history = test_repo.list_predictions(symbol="RELIANCE")
+        history = test_repo.list_predictions(symbol="BHARTIARTL")
         assert len(history) == 1
         assert history[0]["model_name"] == "ensemble"
         assert history[0]["predicted_direction"] == "UP"

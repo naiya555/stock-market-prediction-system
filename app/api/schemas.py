@@ -196,6 +196,10 @@ class QuoteContextResponse(BaseModel):
     is_delayed: bool = True
     delay_minutes: int = 15
     price_type: str = "LAST_TRADED_PRICE"
+    open_price: Optional[float] = None
+    previous_close: Optional[float] = None
+    change: Optional[float] = None
+    change_percent: Optional[float] = None
     note: str = (
         "Last traded price reflects observed exchange/provider market data and is NOT a predicted "
         "opening or closing price. The directional model forecasts return direction (UP/DOWN), "
@@ -260,6 +264,10 @@ class PredictionResponse(BaseModel):
     data_quality: Optional[DataQualityResponse] = None
     ensemble: Optional[EnsembleDetailsResponse] = None
     explanation: Optional[LLMExplanationResponse] = None
+    reason: Optional[str] = Field(
+        None,
+        description="One or two concise sentences grounded in actual model features, recent price behaviour and verified events.",
+    )
     quote_context: Optional[QuoteContextResponse] = None
     capability_status: Optional[str] = None
     actionable_prerequisite: Optional[str] = None
@@ -461,6 +469,7 @@ class ChatRequest(BaseModel):
 
     message: str = Field(..., min_length=1, max_length=2000, description="User question or inquiry")
     symbol: Optional[str] = Field(None, max_length=30, description="Currently viewed instrument ticker")
+    instrument: Optional[str] = Field(None, max_length=30, description="Alias for symbol passed by client")
     prediction_context: Optional[Dict[str, Any]] = Field(None, description="Active prediction result context")
     conversation_history: Optional[List[ChatMessage]] = Field(default_factory=list, description="Prior conversation turns")
 

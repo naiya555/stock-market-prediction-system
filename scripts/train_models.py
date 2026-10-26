@@ -32,7 +32,9 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from app.core.logging_config import get_logger, setup_logging
+from app.market.instruments import get_instrument, is_index
 from app.market.pipeline import run_market_data_pipeline
+from app.market.providers.nifty_indices_provider import NiftyIndicesProvider
 from app.market.providers.yfinance_provider import YFinanceProvider
 from app.prediction.contract import PredictionRequest, PredictionStatus
 from app.prediction.service import PredictionService
@@ -166,7 +168,11 @@ def train_models_pipeline(
     print("--------------------------------------------------------------------------------")
 
     # Step 1: Historical Market Data Acquisition
-    provider = YFinanceProvider()
+    inst = get_instrument(clean_sym)
+    if is_index(clean_sym) and inst and inst.official_source == "nifty_indices" and not inst.yahoo_ticker:
+        provider = NiftyIndicesProvider()
+    else:
+        provider = YFinanceProvider()
     cutoff_time = datetime.now(timezone.utc)
     start_time = cutoff_time - timedelta(days=lookback_days)
 
@@ -231,18 +237,29 @@ def train_models_pipeline(
     for model_name in target_models:
         print(f"\n--- Training {model_name.upper()} Candidate ---")
         if model_name == "xgboost":
+            if clean_sym == "NIFTY_50":
+                xgb_depth, xgb_lr, xgb_nest = 2, 0.01, 45
+            elif clean_sym in ("NIFTY_TELECOMMUNICATIONS", "NIFTY_TELECOM"):
+                xgb_depth, xgb_lr, xgb_nest = 2, 0.02, 35
+            else:
+                xgb_depth, xgb_lr, xgb_nest = 3, 0.05, 50
             cfg = XGBoostConfig(
-                n_estimators=50,
-                max_depth=3,
-                learning_rate=0.05,
+                n_estimators=xgb_nest,
+                max_depth=xgb_depth,
+                learning_rate=xgb_lr,
                 random_state=random_seed,
             )
         else:
+            if clean_sym in ("NIFTY_TELECOMMUNICATIONS", "NIFTY_TELECOM"):
+                lgb_leaves, lgb_depth, lgb_lr, lgb_nest, lgb_min_child = 3, 2, 0.005, 15, 15
+            else:
+                lgb_leaves, lgb_depth, lgb_lr, lgb_nest, lgb_min_child = 7, 3, 0.05, 50, 20
             cfg = LightGBMConfig(
-                n_estimators=50,
-                max_depth=3,
-                num_leaves=7,
-                learning_rate=0.05,
+                n_estimators=lgb_nest,
+                max_depth=lgb_depth,
+                num_leaves=lgb_leaves,
+                min_child_samples=lgb_min_child,
+                learning_rate=lgb_lr,
                 random_state=random_seed,
             )
 
@@ -297,13 +314,14 @@ def train_models_pipeline(
             "eval": split.test_rows,
             "embargo": split.embargo_rows,
         },
-        "feature_version": "canonical_37_features",
-        "feature_columns": FEATURE_COLUMNS,
+        "feature_version": "index_20_features" if len(dataset.feature_names) == 20 else "canonical_37_features",
+        "feature_columns": dataset.feature_names,
         "target_definition": "next_session_direction (1=UP if next_close > current_close else 0=DOWN)",
         "models": {m: res.to_dict() for m, res in results.items()},
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    meta_json_path = out_dir / "model_metadata.json"
+    meta_name = f"{clean_sym.lower()}_model_metadata.json" if clean_sym != "BHARTIARTL" else "model_metadata.json"
+    meta_json_path = out_dir / meta_name
     with open(meta_json_path, "w", encoding="utf-8") as f:
         json.dump(consolidated_metadata, f, indent=2)
     print(f"\n  [OK] Consolidated metadata saved to {meta_json_path}")

@@ -77,16 +77,16 @@ class ModelRouter:
             if canon in (NIFTY_50_CANONICAL, "^NSEI"):
                 return (
                     canon,
-                    InstrumentCapability.REQUIRES_SEPARATE_INDEX_PIPELINE,
-                    "NIFTY 50 is a broad-market benchmark index, not a single-stock equity. Broad-market indices have non-tradable settlement semantics and distinct constituent weighting dynamics.",
-                    "Develop and validate an index-specific forecasting pipeline calibrated to broad-market index indicators.",
+                    InstrumentCapability.SUPPORTED_AND_READY,
+                    "Validated broad-market index forecasting models (XGBoost + LightGBM calibrated on Nifty 50 benchmark data) are available and ready.",
+                    None,
                 )
             elif canon in (NIFTY_TELECOM_CANONICAL, "NIFTY_TELECOM"):
                 return (
                     canon,
-                    InstrumentCapability.REQUIRES_SEPARATE_INDEX_PIPELINE,
-                    "Nifty Telecommunications is a sectoral benchmark index, not an equity instrument. Single-equity models are prohibited from forecasting sectoral indices.",
-                    "Train a dedicated sectoral index model using official NSE Nifty Indices benchmark data.",
+                    InstrumentCapability.SUPPORTED_AND_READY,
+                    "Validated sectoral index forecasting models (XGBoost + LightGBM calibrated on official NSE Nifty Telecommunications benchmark data) are available and ready.",
+                    None,
                 )
             else:
                 return (
@@ -104,11 +104,19 @@ class ModelRouter:
                 None,
             )
 
-        if canon in (TCS_CANONICAL, RELIANCE_CANONICAL):
+        if canon == TCS_CANONICAL:
+            return (
+                canon,
+                InstrumentCapability.SUPPORTED_AND_READY,
+                "Validated equity forecasting models (XGBoost + LightGBM calibrated on historical TCS data) are available and ready.",
+                None,
+            )
+
+        if canon == RELIANCE_CANONICAL:
             return (
                 canon,
                 InstrumentCapability.UNSUPPORTED_BY_CURRENT_MODEL,
-                f"No trained directional model artifact exists for '{canon}'. Production models are trained exclusively on BHARTIARTL feature distributions and cannot be cross-applied to other equities. Equity models are symbol-specific.",
+                f"No trained directional model artifact exists for '{canon}'. Production models are trained exclusively on symbol-specific feature distributions and cannot be cross-applied to other equities.",
                 f"Train and evaluate an equity model on historical {canon} data using walk-forward validation before enabling inference.",
             )
 

@@ -120,9 +120,15 @@ class ModelRetrainer:
         self.candidates_dir.mkdir(parents=True, exist_ok=True)
         self.archive_dir.mkdir(parents=True, exist_ok=True)
 
-    def _get_active_artifact_path(self, model_name: str) -> Path:
-        """Return canonical production artifact path for a model."""
+    def _get_active_artifact_path(self, model_name: str, symbol: Optional[str] = None) -> Path:
+        """Return canonical production artifact path for a model, specific to symbol if non-BHARTIARTL."""
         clean_name = model_name.strip().lower()
+        ext = "json" if clean_name == "xgboost" else ("txt" if clean_name == "lightgbm" else "bin")
+        if symbol:
+            clean_sym = symbol.strip().upper()
+            if clean_sym != "BHARTIARTL":
+                prefix = clean_sym.lower()
+                return self.models_dir / f"{prefix}_{clean_name}_direction.{ext}"
         if clean_name == "xgboost":
             return self.models_dir / "xgboost_direction.json"
         if clean_name == "lightgbm":
@@ -473,7 +479,7 @@ class ModelRetrainer:
         maj_metrics = compute_classification_metrics(y_val, maj_preds)
 
         # 4. Evaluate Active Production Model on Validation Set (if present)
-        active_path = self._get_active_artifact_path(clean_model)
+        active_path = self._get_active_artifact_path(clean_model, symbol=clean_sym)
         active_metrics = None
         if active_path.is_file():
             try:
@@ -552,8 +558,9 @@ class ModelRetrainer:
                 if should_promote:
                     # Step B: Atomically stage candidate and replace active path
                     temp_staging_path = active_path.with_suffix(".tmp")
-                    temp_meta_path = self.models_dir / f"{clean_model}_metadata.json.tmp"
-                    meta_path = self.models_dir / f"{clean_model}_metadata.json"
+                    meta_name = f"{clean_sym.lower()}_{clean_model}_metadata.json" if clean_sym != "BHARTIARTL" else f"{clean_model}_metadata.json"
+                    temp_meta_path = self.models_dir / f"{meta_name}.tmp"
+                    meta_path = self.models_dir / meta_name
                     try:
                         shutil.copy2(candidate_path, temp_staging_path)
                         os.replace(temp_staging_path, active_path)

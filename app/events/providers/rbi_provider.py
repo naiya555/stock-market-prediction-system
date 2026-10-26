@@ -215,9 +215,11 @@ class RBIEventProvider(BaseEventProvider):
 
             # Filter by date range if specified
             if published_at is not None:
-                if start_date is not None and published_at < start_date:
+                norm_start = start_date.replace(tzinfo=published_at.tzinfo) if start_date and start_date.tzinfo is None else start_date
+                norm_end = end_date.replace(tzinfo=published_at.tzinfo) if end_date and end_date.tzinfo is None else end_date
+                if norm_start is not None and published_at < norm_start:
                     continue
-                if end_date is not None and published_at > end_date:
+                if norm_end is not None and published_at > norm_end:
                     continue
 
             # Classify event with word-boundary checks for abbreviations

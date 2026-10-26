@@ -33,6 +33,7 @@ from app.prediction.contract import (
 )
 from app.training.feature_matrix import (
     FEATURE_COLUMNS,
+    INDEX_FEATURE_COLUMNS,
     assemble_feature_matrix,
     validate_feature_matrix_isolation,
 )
@@ -108,51 +109,35 @@ class PredictionService:
 
         for symbol, inst in INSTRUMENT_REGISTRY.items():
             canon, cap_status, reason, prereq = model_router.inspect_instrument(symbol)
-            if is_index(symbol):
-                catalog.append({
-                    "symbol": symbol,
-                    "name": inst.name,
-                    "instrument_type": inst.instrument_type.value,
-                    "exchange": inst.exchange,
-                    "status": "BLOCKED",
-                    "capability_status": cap_status.value,
-                    "actionable_prerequisite": prereq,
-                    "compatible_models": [],
-                    "reason": reason,
-                })
-            elif symbol == "BHARTIARTL":
-                xgb_path = self._get_default_artifact_path("xgboost")
-                lgb_path = self._get_default_artifact_path("lightgbm")
-                compat = []
-                if xgb_path.is_file():
-                    compat.append("xgboost")
-                if lgb_path.is_file():
-                    compat.append("lightgbm")
+            is_ready = (cap_status == model_router.inspect_instrument("BHARTIARTL")[1])
+            compat = []
+            if is_ready:
+                if symbol == "BHARTIARTL":
+                    if self._get_default_artifact_path("xgboost").is_file():
+                        compat.append("xgboost")
+                    if self._get_default_artifact_path("lightgbm").is_file():
+                        compat.append("lightgbm")
+                else:
+                    xgb_file = self.models_dir / f"{symbol.lower()}_xgboost_direction.json"
+                    lgb_file = self.models_dir / f"{symbol.lower()}_lightgbm_direction.txt"
+                    if xgb_file.is_file():
+                        compat.append("xgboost")
+                    if lgb_file.is_file():
+                        compat.append("lightgbm")
                 if compat:
                     compat.append("ensemble")
-                catalog.append({
-                    "symbol": symbol,
-                    "name": inst.name,
-                    "instrument_type": inst.instrument_type.value,
-                    "exchange": inst.exchange,
-                    "status": "SUPPORTED" if compat else "BLOCKED",
-                    "capability_status": cap_status.value if compat else "TEMPORARILY_UNAVAILABLE",
-                    "actionable_prerequisite": prereq,
-                    "compatible_models": compat,
-                    "reason": reason if compat else "Model artifacts not found on disk.",
-                })
-            else:
-                catalog.append({
-                    "symbol": symbol,
-                    "name": inst.name,
-                    "instrument_type": inst.instrument_type.value,
-                    "exchange": inst.exchange,
-                    "status": "BLOCKED",
-                    "capability_status": cap_status.value,
-                    "actionable_prerequisite": prereq,
-                    "compatible_models": [],
-                    "reason": reason,
-                })
+
+            catalog.append({
+                "symbol": symbol,
+                "name": inst.name,
+                "instrument_type": inst.instrument_type.value,
+                "exchange": inst.exchange,
+                "status": "SUPPORTED" if is_ready else "BLOCKED",
+                "capability_status": cap_status.value,
+                "actionable_prerequisite": prereq,
+                "compatible_models": compat,
+                "reason": reason,
+            })
         return catalog
 
     def _resolve_model(
@@ -238,7 +223,8 @@ class PredictionService:
         # 3. Persistent filesystem artifact
         if canon_sym and is_index(canon_sym) and not explicit_artifact_path:
             clean_sym = canon_sym.strip().lower()
-            idx_artifact = self.models_dir / f"{clean_sym}_{model_name}_direction.json"
+            ext = ".json" if model_name == "xgboost" else ".txt"
+            idx_artifact = self.models_dir / f"{clean_sym}_{model_name}_direction{ext}"
             if not idx_artifact.is_file():
                 return None, (
                     f"Index-specific forecasting model for '{symbol}' not found at '{idx_artifact}'. "
@@ -275,10 +261,18 @@ class PredictionService:
 
         # Check metadata file if present to prevent cross-symbol artifact application
         if canon_sym:
-            meta_path = artifact_path.parent / f"{model_name}_metadata.json"
-            if not meta_path.is_file():
-                meta_path = artifact_path.parent / "model_metadata.json"
-            if meta_path.is_file():
+            clean_s = canon_sym.lower()
+            cand_metas = [
+                artifact_path.parent / f"{clean_s}_{model_name}_metadata.json",
+                artifact_path.parent / f"{clean_s}_model_metadata.json",
+            ]
+            if canon_sym == "BHARTIARTL":
+                cand_metas.extend([
+                    artifact_path.parent / f"{model_name}_metadata.json",
+                    artifact_path.parent / "model_metadata.json",
+                ])
+            meta_path = next((p for p in cand_metas if p.is_file()), None)
+            if meta_path and meta_path.is_file():
                 try:
                     with open(meta_path, "r", encoding="utf-8") as f:
                         meta_data = json.load(f)
@@ -554,10 +548,11 @@ class PredictionService:
         validate_feature_matrix_isolation(X_latest)
 
         # Enforce canonical column order
-        X_latest = X_latest[FEATURE_COLUMNS]
+        expected_features = dataset.feature_names
+        X_latest = X_latest[expected_features]
 
         # Check for missing values in latest observation
-        nan_cols = [c for c in FEATURE_COLUMNS if pd.isna(X_latest[c].iloc[0])]
+        nan_cols = [c for c in expected_features if pd.isna(X_latest[c].iloc[0])]
         quality = PredictionDataQuality(
             total_bars_fetched=raw_count,
             cleaned_bars=n_cleaned,
@@ -605,8 +600,8 @@ class PredictionService:
 
         # Step 5: Feature Schema Parity Check
         model_feats = getattr(model, "feature_names", [])
-        if model_feats and list(model_feats) != FEATURE_COLUMNS:
-            if set(model_feats) == set(FEATURE_COLUMNS):
+        if model_feats and list(model_feats) != expected_features:
+            if set(model_feats) == set(expected_features):
                 X_latest = X_latest[model_feats]
             else:
                 return self._build_error_result(
@@ -615,7 +610,7 @@ class PredictionService:
                     status=PredictionStatus.FEATURE_ERROR,
                     error_message=(
                         f"Model feature mismatch: model expects {len(model_feats)} features, "
-                        f"feature matrix produced {len(FEATURE_COLUMNS)}."
+                        f"feature matrix produced {len(expected_features)}."
                     ),
                     model_name=request.model_name,
                     data_quality=quality,

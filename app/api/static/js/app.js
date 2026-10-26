@@ -902,10 +902,13 @@
           titleEl.textContent = `${res.symbol || 'Instrument'}: ${capStatus.replace(/_/g, ' ')}`;
         }
         if (badgeEl) {
-          badgeEl.textContent = capStatus;
+          badgeEl.textContent = `STATUS - ${res.status || 'UNAVAILABLE'}`;
           badgeEl.className = 'badge ' + (capStatus.includes('INDEX') ? 'badge-purple' : 'badge-warning');
         }
-        if (descEl) {
+        const msgEl = document.getElementById('blocked-card-message');
+        if (msgEl) {
+          msgEl.textContent = reason;
+        } else if (descEl) {
           descEl.textContent = reason;
         }
         if (detailsEl) {
@@ -1476,7 +1479,8 @@
     if (!tbody) return;
 
     if (items.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-muted">No prediction audit records found matching criteria.</td></tr>';
+      const sym = AppState.history.symbolFilter ? ` for symbol '${escapeHtml(AppState.history.symbolFilter)}'` : '';
+      tbody.innerHTML = `<tr><td colspan="8" class="text-center py-8 text-muted">No prediction audit records found${sym}. Persisted predictions appear here after execution with audit logging enabled.</td></tr>`;
       return;
     }
 

@@ -80,6 +80,10 @@ class QuoteContext:
     is_delayed: bool = True
     delay_minutes: int = 15
     price_type: str = "LAST_TRADED_PRICE"
+    open_price: Optional[float] = None
+    previous_close: Optional[float] = None
+    change: Optional[float] = None
+    change_percent: Optional[float] = None
     note: str = (
         "Last traded price reflects observed exchange/provider market data and is NOT a predicted "
         "opening or closing price. The directional model forecasts return direction (UP/DOWN), "
@@ -121,6 +125,10 @@ class QuoteContext:
             is_delayed=getattr(quote, "is_delayed", True),
             delay_minutes=getattr(quote, "delay_minutes", 15),
             price_type="LAST_TRADED_PRICE",
+            open_price=getattr(quote, "open_price", None),
+            previous_close=getattr(quote, "previous_close", None),
+            change=getattr(quote, "change", None),
+            change_percent=getattr(quote, "change_percent", None),
             error_message=None,
         )
 

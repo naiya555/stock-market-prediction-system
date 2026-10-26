@@ -487,7 +487,7 @@ def test_api_predict_route_quote_context_serialization() -> None:
     app.dependency_overrides[get_prediction_repository] = lambda: mock_repo
 
     with TestClient(app) as client:
-        res = client.post("/api/predict", json={"symbol": "RELIANCE", "model_name": "xgboost"})
+        res = client.post("/api/predict", json={"symbol": "BHARTIARTL", "model_name": "xgboost"})
         assert res.status_code == 200
         data = res.json()
         assert "quote_context" in data
@@ -547,7 +547,7 @@ def test_quote_context_error_message_sanitizes_internal_paths() -> None:
     app.dependency_overrides[get_prediction_repository] = lambda: mock_repo
 
     with TestClient(app) as client:
-        res = client.post("/api/predict", json={"symbol": "RELIANCE", "model_name": "xgboost"})
+        res = client.post("/api/predict", json={"symbol": "BHARTIARTL", "model_name": "xgboost"})
         assert res.status_code == 200
         data = res.json()
         qc = data["quote_context"]

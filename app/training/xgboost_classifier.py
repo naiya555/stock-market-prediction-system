@@ -324,7 +324,10 @@ def split_chronological_holdout(
             )
 
     # Separate X and y
-    feature_cols = [c for c in FEATURE_COLUMNS if c in sub_df.columns]
+    if isinstance(data, FeatureMatrixDataset):
+        feature_cols = [c for c in data.feature_names if c in sub_df.columns]
+    else:
+        feature_cols = [c for c in FEATURE_COLUMNS if c in sub_df.columns]
     if not feature_cols:
         # Fallback to all non-metadata and non-target columns
         ignore_cols = set(

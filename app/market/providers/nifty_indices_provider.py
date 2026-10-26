@@ -202,6 +202,10 @@ class NiftyIndicesProvider(BaseMarketDataProvider):
         end_date: Optional[datetime] = None,
     ) -> List[MarketOHLCV]:
         """Normalize raw Nifty Indices JSON rows into canonical MarketOHLCV records."""
+        # Normalize start_date and end_date to UTC/IST if naive to prevent comparison errors
+        norm_start = start_date.replace(tzinfo=ZoneInfo("Asia/Kolkata")) if start_date and start_date.tzinfo is None else start_date
+        norm_end = end_date.replace(tzinfo=ZoneInfo("Asia/Kolkata")) if end_date and end_date.tzinfo is None else end_date
+
         records: List[MarketOHLCV] = []
         seen_timestamps = set()
 
@@ -217,9 +221,9 @@ class NiftyIndicesProvider(BaseMarketDataProvider):
                 continue
 
             # Point-in-time boundary filter
-            if start_date and ts < start_date:
+            if norm_start and ts < norm_start:
                 continue
-            if end_date and ts > end_date:
+            if norm_end and ts > norm_end:
                 continue
 
             if ts in seen_timestamps:

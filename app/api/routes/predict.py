@@ -259,7 +259,7 @@ def _sanitize_public_error_message(msg: Optional[str], model_name: str, symbol: 
         return None
     logger.warning("Internal prediction diagnostic for '%s' (model=%s): %s", symbol or "unknown", model_name, msg)
     lower = msg.lower()
-    if "index-specific forecasting model" in lower or "cannot be reused for sectoral index" in lower or "sectoral" in lower:
+    if "index-specific forecasting model" in lower or "cannot be reused for sectoral index" in lower or "sectoral" in lower or "index" in lower or "broad-market" in lower:
         sym_part = f" for '{symbol}'" if symbol else ""
         return f"Index-specific forecasting model unavailable{sym_part}. BHARTIARTL equity models cannot be reused for sectoral indices."
     if "no trained model artifact found" in lower or "cannot be cross-applied to" in lower or "trained specifically for 'bhartiartl'" in lower:

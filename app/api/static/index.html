@@ -333,25 +333,25 @@
                   <span class="chip-symbol">BHARTIARTL</span>
                   <span class="chip-badge badge-supported">Ready</span>
                 </button>
-                <button type="button" class="chip chip-blocked" data-symbol="TCS" title="Unsupported by Current Model: Dedicated training required">
-                  <span class="chip-status-dot blocked"></span>
+                <button type="button" class="chip chip-supported" data-symbol="TCS" title="Supported & Ready: Validated production models available">
+                  <span class="chip-status-dot supported"></span>
                   <span class="chip-symbol">TCS</span>
-                  <span class="chip-badge badge-blocked">No Model</span>
+                  <span class="chip-badge badge-supported">Ready</span>
                 </button>
                 <button type="button" class="chip chip-blocked" data-symbol="RELIANCE" title="Unsupported by Current Model: Dedicated training required">
                   <span class="chip-status-dot blocked"></span>
                   <span class="chip-symbol">RELIANCE</span>
                   <span class="chip-badge badge-blocked">No Model</span>
                 </button>
-                <button type="button" class="chip chip-blocked" data-symbol="NIFTY_TELECOMMUNICATIONS" title="Requires Separate Index Pipeline: Sectoral index benchmark">
-                  <span class="chip-status-dot blocked"></span>
+                <button type="button" class="chip chip-supported" data-symbol="NIFTY_TELECOMMUNICATIONS" title="Supported & Ready: Validated sectoral index model available">
+                  <span class="chip-status-dot supported"></span>
                   <span class="chip-symbol">NIFTY_TELECOM</span>
-                  <span class="chip-badge badge-blocked">Index Pipeline</span>
+                  <span class="chip-badge badge-supported">Ready</span>
                 </button>
-                <button type="button" class="chip chip-blocked" data-symbol="NIFTY_50" title="Requires Separate Index Pipeline: Broad-market index benchmark">
-                  <span class="chip-status-dot blocked"></span>
+                <button type="button" class="chip chip-supported" data-symbol="NIFTY_50" title="Supported & Ready: Validated broad-market index model available">
+                  <span class="chip-status-dot supported"></span>
                   <span class="chip-symbol">NIFTY 50</span>
-                  <span class="chip-badge badge-blocked">Index Pipeline</span>
+                  <span class="chip-badge badge-supported">Ready</span>
                 </button>
               </div>
             </div>
@@ -365,14 +365,13 @@
               <div class="accordion-content">
                 <div class="form-row-grid">
                   <div class="form-group">
-                    <label for="model-select" class="form-label">Model Pipeline Routing</label>
-                    <select id="model-select" name="model_name" class="form-select">
-                      <option value="auto" selected>Auto-Route (Recommended: Multi-Agent Ensemble)</option>
-                      <option value="ensemble">Force Multi-Agent Ensemble (ML + Gemma 3 12B)</option>
-                      <option value="xgboost">Force XGBoost Classifier (Quantitative Only)</option>
-                      <option value="lightgbm">Force LightGBM Classifier (Quantitative Only)</option>
-                    </select>
-                    <span class="form-hint">The system automatically selects the evaluated production pipeline. Manual override is intended for diagnostics only.</span>
+                    <label for="model-select" class="form-label">Automated Model Pipeline</label>
+                    <div style="padding: 0.65rem 0.85rem; background: var(--bg-card-secondary, #1e293b); border: 1px solid var(--border-subtle, #334155); border-radius: 6px; font-size: 0.875rem;">
+                      <span class="badge badge-purple" id="automated-routing-badge" style="margin-right: 0.5rem;">Automated Routing</span>
+                      <span>Evaluated Multi-Agent Ensemble (Quantitative ML + Gemma 3 12B)</span>
+                    </div>
+                    <input type="hidden" id="model-select" name="model_name" value="auto">
+                    <span class="form-hint">The system automatically routes requests to the evaluated production pipeline. Manual override dropdowns are disabled to ensure model governance.</span>
                   </div>
                   <!-- Ensemble Custom Weights -->
                   <div class="form-group" id="ensemble-weights-group">
@@ -442,7 +441,7 @@
                   <h3 class="blocked-title" id="blocked-card-title">Instrument Blocked by Compatibility Gate</h3>
                   <span class="badge badge-blocked" id="blocked-card-badge">BLOCKED</span>
                 </div>
-                <p class="blocked-desc" id="blocked-card-desc">--</p>
+                <p class="blocked-desc" id="blocked-card-desc"><span id="blocked-card-message">--</span></p>
               </div>
             </div>
             <div class="blocked-details" id="blocked-card-details">
@@ -479,6 +478,34 @@
               <div class="result-timestamp-group">
                 <span class="timestamp-label">Prediction Timestamp:</span>
                 <span class="timestamp-value font-mono" id="res-timestamp">--</span>
+              </div>
+            </div>
+
+            <!-- Calibration Status & Audit Warning Banner -->
+            <div class="uncalibrated-warning-banner" id="res-uncalibrated-banner">
+              <span class="warning-icon" aria-hidden="true">⚠️</span>
+              <div class="warning-content">
+                <span class="warning-badge">UNCALIBRATED RAW MODEL SCORE</span>
+                <p class="warning-text" id="res-uncalibrated-text">
+                  Reported holdout comparisons did not establish a statistically significant improvement. Raw model probabilities are uncalibrated and performed worse than the constant 0.50 probability baseline on the reported holdout Brier-score comparison (models scored Brier 0.2556–0.2562 vs. reference Brier 0.2500).
+                </p>
+              </div>
+            </div>
+
+            <!-- Historical Actuals vs. Forward Forecast Distinction Bar -->
+            <div class="distinction-bar" id="res-distinction-bar">
+              <div class="distinction-item observed-fact">
+                <span class="distinction-tag">HISTORICAL OBSERVED FACT</span>
+                <span class="distinction-val" id="res-observed-price">Last Observed Price: ₹--</span>
+                <span class="distinction-time" id="res-observed-time">As of: --</span>
+                <span class="distinction-meta" id="res-observed-meta-detail">Price Type: LAST_TRADED_PRICE • Not a forecast</span>
+              </div>
+              <div class="distinction-arrow" aria-hidden="true">➔</div>
+              <div class="distinction-item model-forecast">
+                <span class="distinction-tag">FORWARD DIRECTIONAL FORECAST</span>
+                <span class="distinction-val" id="res-forecast-direction">Direction: --</span>
+                <span class="distinction-horizon">Horizon: Next Trading Session (Close-to-Close)</span>
+                <span class="distinction-meta" id="res-forecast-meta-detail">Target Price: Unsupported / Not Modeled</span>
               </div>
             </div>
 
