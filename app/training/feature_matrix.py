@@ -358,10 +358,6 @@ def assemble_feature_matrix(
     # Determine chosen feature columns
     if feature_columns is not None:
         chosen_features = list(feature_columns)
-    elif symbol in ("NIFTY_TELECOMMUNICATIONS", "NIFTY_TELECOM") or (
-        len(input_records) > 0 and (input_records[0].open is None or np.isnan(input_records[0].open or np.nan))
-    ):
-        chosen_features = list(INDEX_FEATURE_COLUMNS)
     else:
         chosen_features = list(FEATURE_COLUMNS)
 

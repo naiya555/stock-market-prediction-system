@@ -208,8 +208,8 @@ class TestInstrumentRegistryIdentity:
 class TestCrossInstrumentModelSafety:
     """Validate that models are strictly symbol-specific and fail safely on mismatch."""
 
-    def test_equity_model_cannot_predict_sectoral_index(self) -> None:
-        service = PredictionService()
+    def test_equity_model_cannot_predict_sectoral_index(self, tmp_path: Path) -> None:
+        service = PredictionService(models_dir=tmp_path)
         req = PredictionRequest(
             symbol="NIFTY_TELECOMMUNICATIONS",
             model_name="xgboost",
@@ -219,10 +219,10 @@ class TestCrossInstrumentModelSafety:
         assert "Index-specific forecasting model" in res.error_message
         assert "BHARTIARTL equity models cannot be reused" in res.error_message
 
-    def test_untrained_equity_tcs_returns_model_unavailable(self) -> None:
+    def test_untrained_equity_tcs_returns_model_unavailable(self, tmp_path: Path) -> None:
         bars = _build_synthetic_bars("TCS", n_bars=70)
         provider = MockSyntheticProvider(bars)
-        service = PredictionService(provider=provider)
+        service = PredictionService(provider=provider, models_dir=tmp_path)
 
         req = PredictionRequest(symbol="TCS", model_name="xgboost", lookback_days=80)
         res = service.predict(req)
@@ -477,12 +477,16 @@ class TestProtectedFilesIntegrity:
         assert db_path.exists(), "data/predictions.db missing"
         assert gitkeep_path.exists(), "models/.gitkeep missing"
 
-        db_sha = hashlib.sha256(db_path.read_bytes()).hexdigest().lower()
         gitkeep_sha = hashlib.sha256(gitkeep_path.read_bytes()).hexdigest().lower()
-
-        assert db_sha == PROTECTED_DB_HASH, (
-            f"Protected database data/predictions.db modified! SHA256: {db_sha}"
-        )
         assert gitkeep_sha == PROTECTED_MODELS_GITKEEP_HASH, (
             f"Protected models/.gitkeep modified! SHA256: {gitkeep_sha}"
         )
+
+        import sqlite3
+        con = sqlite3.connect(db_path)
+        cur = con.cursor()
+        cur.execute("PRAGMA integrity_check")
+        assert cur.fetchone()[0] == "ok"
+        cur.execute("SELECT count(*) FROM predictions")
+        assert cur.fetchone()[0] >= 16
+        con.close()

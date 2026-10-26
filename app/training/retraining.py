@@ -126,7 +126,7 @@ class ModelRetrainer:
         ext = "json" if clean_name == "xgboost" else ("txt" if clean_name == "lightgbm" else "bin")
         if symbol:
             clean_sym = symbol.strip().upper()
-            if clean_sym != "BHARTIARTL":
+            if clean_sym in {"TCS", "NIFTY_50", "NIFTY_TELECOMMUNICATIONS"}:
                 prefix = clean_sym.lower()
                 return self.models_dir / f"{prefix}_{clean_name}_direction.{ext}"
         if clean_name == "xgboost":
@@ -558,7 +558,11 @@ class ModelRetrainer:
                 if should_promote:
                     # Step B: Atomically stage candidate and replace active path
                     temp_staging_path = active_path.with_suffix(".tmp")
-                    meta_name = f"{clean_sym.lower()}_{clean_model}_metadata.json" if clean_sym != "BHARTIARTL" else f"{clean_model}_metadata.json"
+                    meta_name = (
+                        f"{clean_sym.lower()}_{clean_model}_metadata.json"
+                        if clean_sym in {"TCS", "NIFTY_50", "NIFTY_TELECOMMUNICATIONS"}
+                        else f"{clean_model}_metadata.json"
+                    )
                     temp_meta_path = self.models_dir / f"{meta_name}.tmp"
                     meta_path = self.models_dir / meta_name
                     try:

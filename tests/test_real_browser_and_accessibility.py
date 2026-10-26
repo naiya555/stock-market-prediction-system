@@ -146,7 +146,7 @@ class TestBrowserAndAccessibilityAudit:
         instruments = {i["symbol"]: i for i in data["instruments"]}
 
         assert instruments["BHARTIARTL"]["status"] == "SUPPORTED"
-        assert instruments["TCS"]["status"] == "BLOCKED"
+        assert instruments["TCS"]["status"] == "SUPPORTED"
         assert instruments["RELIANCE"]["status"] == "BLOCKED"
-        assert instruments["NIFTY_50"]["status"] == "BLOCKED"
-        assert instruments["NIFTY_TELECOMMUNICATIONS"]["status"] == "BLOCKED"
+        assert instruments["NIFTY_50"]["status"] == "SUPPORTED"
+        assert instruments["NIFTY_TELECOMMUNICATIONS"]["status"] == "SUPPORTED"

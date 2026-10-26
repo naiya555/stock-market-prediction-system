@@ -111,26 +111,24 @@ class TestBlockedInstrumentSemantics:
     """Verify distinct blocked-instrument handling and index separation."""
 
     def test_blocked_equities_cannot_produce_forecast(self, client):
-        """Verify unsupported equities TCS and RELIANCE return MODEL_UNAVAILABLE with null forecasts."""
-        for sym in ["TCS", "RELIANCE"]:
-            resp = client.post(
-                "/api/predict",
-                json={"symbol": sym, "model_name": "xgboost", "persist": False},
-            )
-            assert resp.status_code == 200
-            data = resp.json()
-            assert data["symbol"] == sym
-            assert data["status"] == "MODEL_UNAVAILABLE"
-            assert data["predicted_direction"] is None
-            assert data["predicted_label"] is None
-            assert data["probability_up"] is None
-            assert data["probability_down"] is None
-            assert "No trained model artifact found" in data["error_message"]
-            assert "BHARTIARTL" in data["error_message"]
+        """Verify unsupported equity RELIANCE returns MODEL_UNAVAILABLE with null forecasts."""
+        resp = client.post(
+            "/api/predict",
+            json={"symbol": "RELIANCE", "model_name": "xgboost", "persist": False},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["symbol"] == "RELIANCE"
+        assert data["status"] == "MODEL_UNAVAILABLE"
+        assert data["predicted_direction"] is None
+        assert data["predicted_label"] is None
+        assert data["probability_up"] is None
+        assert data["probability_down"] is None
+        assert "No trained model artifact found" in data["error_message"]
 
-    def test_blocked_indices_cannot_produce_forecast(self, client):
-        """Verify sectoral and broad market indices cannot be forecasted with equity models."""
-        for sym in ["NIFTY_TELECOMMUNICATIONS", "NIFTY_50"]:
+    def test_supported_instruments_produce_forecast(self, client):
+        """Verify supported instruments TCS, NIFTY_50, and NIFTY_TELECOMMUNICATIONS produce forecasts."""
+        for sym in ["TCS", "NIFTY_50", "NIFTY_TELECOMMUNICATIONS"]:
             resp = client.post(
                 "/api/predict",
                 json={"symbol": sym, "model_name": "xgboost", "persist": False},
@@ -138,9 +136,8 @@ class TestBlockedInstrumentSemantics:
             assert resp.status_code == 200
             data = resp.json()
             assert data["symbol"] == sym
-            assert data["status"] in ["MODEL_UNAVAILABLE", "FAILED"]
-            assert data["predicted_direction"] is None
-            assert "BHARTIARTL equity models cannot be reused for sectoral indices" in data["error_message"]
+            assert data["status"] == "SUCCESS"
+            assert data["predicted_direction"] in ["UP", "DOWN"]
 
     def test_authoritative_instrument_catalog_completeness(self, client):
         """Verify GET /api/predict/instruments accurately reflects catalog contracts."""
@@ -149,19 +146,19 @@ class TestBlockedInstrumentSemantics:
         data = resp.json()
 
         assert "instruments" in data
-        assert data["supported_count"] == 1
-        assert data["blocked_count"] == 4
+        assert data["supported_count"] == 4
+        assert data["blocked_count"] == 1
 
         inst_dict = {i["symbol"]: i for i in data["instruments"]}
         assert inst_dict["BHARTIARTL"]["status"] == "SUPPORTED"
         assert inst_dict["BHARTIARTL"]["instrument_type"] == "EQUITY"
-        assert inst_dict["TCS"]["status"] == "BLOCKED"
+        assert inst_dict["TCS"]["status"] == "SUPPORTED"
         assert inst_dict["TCS"]["instrument_type"] == "EQUITY"
         assert inst_dict["RELIANCE"]["status"] == "BLOCKED"
         assert inst_dict["RELIANCE"]["instrument_type"] == "EQUITY"
-        assert inst_dict["NIFTY_TELECOMMUNICATIONS"]["status"] == "BLOCKED"
+        assert inst_dict["NIFTY_TELECOMMUNICATIONS"]["status"] == "SUPPORTED"
         assert inst_dict["NIFTY_TELECOMMUNICATIONS"]["instrument_type"] == "INDEX"
-        assert inst_dict["NIFTY_50"]["status"] == "BLOCKED"
+        assert inst_dict["NIFTY_50"]["status"] == "SUPPORTED"
         assert inst_dict["NIFTY_50"]["instrument_type"] == "INDEX"
 
 

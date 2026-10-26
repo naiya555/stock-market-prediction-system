@@ -259,18 +259,19 @@ class PredictionService:
                 f"prior to inference. Automatic on-the-fly retraining during inference is prohibited."
             )
 
-        # Check metadata file if present to prevent cross-symbol artifact application
+        # Check metadata file corresponding to artifact_path to prevent cross-symbol artifact application
         if canon_sym:
-            clean_s = canon_sym.lower()
+            art_stem = artifact_path.stem
+            base_prefix = art_stem.replace("_direction", "")
             cand_metas = [
-                artifact_path.parent / f"{clean_s}_{model_name}_metadata.json",
-                artifact_path.parent / f"{clean_s}_model_metadata.json",
+                artifact_path.parent / f"{base_prefix}_metadata.json",
             ]
-            if canon_sym == "BHARTIARTL":
-                cand_metas.extend([
-                    artifact_path.parent / f"{model_name}_metadata.json",
-                    artifact_path.parent / "model_metadata.json",
-                ])
+            for known_sym in ["nifty_telecommunications", "nifty_50", "tcs"]:
+                if base_prefix.startswith(known_sym):
+                    cand_metas.append(artifact_path.parent / f"{known_sym}_model_metadata.json")
+                    break
+            else:
+                cand_metas.append(artifact_path.parent / "model_metadata.json")
             meta_path = next((p for p in cand_metas if p.is_file()), None)
             if meta_path and meta_path.is_file():
                 try:
@@ -528,7 +529,8 @@ class PredictionService:
 
         # Step 3: Feature Matrix Assembly & Isolation Guard
         try:
-            dataset = assemble_feature_matrix(pipeline_result, only_latest=True)
+            feat_cols = INDEX_FEATURE_COLUMNS if clean_symbol in ("NIFTY_TELECOMMUNICATIONS", "NIFTY_TELECOM") else None
+            dataset = assemble_feature_matrix(pipeline_result, only_latest=True, feature_columns=feat_cols)
         except Exception as exc:
             logger.error("Feature assembly failed for symbol '%s': %s", sanitize_log_field(clean_symbol), exc)
             return self._build_error_result(
@@ -750,7 +752,8 @@ def train_and_persist_baseline_model(
         provider=prov,
     )
 
-    dataset = assemble_feature_matrix(pipeline_result)
+    feat_cols = INDEX_FEATURE_COLUMNS if symbol in ("NIFTY_TELECOMMUNICATIONS", "NIFTY_TELECOM") else None
+    dataset = assemble_feature_matrix(pipeline_result, feature_columns=feat_cols)
     X_train, y_train, _ = dataset.get_labeled_dataset(drop_incomplete_warmup=True)
 
     if len(X_train) < 50:

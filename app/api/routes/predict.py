@@ -10,7 +10,7 @@ import logging
 import math
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.dependencies import (
     get_ensemble_service,
@@ -24,6 +24,9 @@ from app.events.providers.base import BaseEventProvider
 from app.news.cleaner import deduplicate_news, filter_news_point_in_time
 from app.news.providers.base import BaseNewsProvider
 from app.api.schemas import (
+    ChartDataResponse,
+    ChartForecastPointResponse,
+    ChartPointResponse,
     DataQualityResponse,
     EnsembleDetailsResponse,
     InstrumentCatalogResponse,
@@ -34,6 +37,7 @@ from app.api.schemas import (
     QuoteContextResponse,
     TargetRangeResponse,
 )
+from zoneinfo import ZoneInfo
 from app.llm.schemas import LLMExplanationResult
 from app.database.repository import PredictionRepository
 from app.prediction.contract import (
@@ -71,6 +75,10 @@ def _map_quote_context(qc: Optional[QuoteContext]) -> Optional[QuoteContextRespo
     return QuoteContextResponse(
         symbol=qc.symbol,
         last_price=qc.last_price,
+        open_price=getattr(qc, "open_price", None),
+        previous_close=getattr(qc, "previous_close", None),
+        change=getattr(qc, "change", None),
+        change_percent=getattr(qc, "change_percent", None),
         price_timestamp=qc.price_timestamp,
         retrieved_at=qc.retrieved_at,
         source=qc.source,
@@ -530,6 +538,18 @@ def predict(
             ensemble_res.ml_prediction.quote_context if ensemble_res.ml_prediction else None
         )
 
+        ens_reason = None
+        if ensemble_res.explanation and ensemble_res.explanation.summary:
+            ens_reason = ensemble_res.explanation.summary
+        elif ensemble_res.llm_reasoning and ensemble_res.llm_reasoning.reasoning_summary:
+            ens_reason = ensemble_res.llm_reasoning.reasoning_summary
+        elif ensemble_res.status == PredictionStatus.SUCCESS:
+            ens_dir = ensemble_res.combined_direction or "NEUTRAL"
+            ens_reason = (
+                f"Multi-agent ensemble projects {ens_dir} movement for {clean_symbol} based on "
+                f"blended quantitative tree signals and macroeconomic event evidence."
+            )
+
         return PredictionResponse(
             prediction_id=pred_id,
             symbol=ensemble_res.symbol,
@@ -547,6 +567,7 @@ def predict(
             data_quality=dq_api,
             ensemble=_map_ensemble_details(ensemble_res),
             explanation=_map_llm_explanation(ensemble_res.explanation),
+            reason=ens_reason,
             quote_context=_map_quote_context(ens_quote_ctx),
             capability_status=routing.capability_status.value,
             actionable_prerequisite=routing.actionable_prerequisite,
@@ -588,6 +609,15 @@ def predict(
         except Exception as exc:
             logger.error("Failed to persist prediction for %s: %s", clean_symbol, exc)
 
+    ml_reason = None
+    if ml_res.status == PredictionStatus.SUCCESS:
+        dir_str = ml_res.predicted_direction or "NEUTRAL"
+        prob_info = f" with {ml_res.probability_up:.1%} P(UP)" if ml_res.probability_up is not None else ""
+        ml_reason = (
+            f"Quantitative model {ml_res.model_name.upper()} forecasts {dir_str} return for the next session{prob_info}, "
+            f"grounded in momentum and volatility indicators for {clean_symbol}."
+        )
+
     return PredictionResponse(
         prediction_id=pred_id,
         symbol=ml_res.symbol,
@@ -604,10 +634,166 @@ def predict(
         probability_calibration=ml_res.probability_calibration,
         data_quality=_map_data_quality(ml_res.data_quality),
         ensemble=None,
+        reason=ml_reason,
         quote_context=_map_quote_context(ml_res.quote_context),
         capability_status=routing.capability_status.value,
         actionable_prerequisite=routing.actionable_prerequisite,
         routing_metadata=routing.components_selected,
         error_message=_sanitize_public_error_message(ml_res.error_message, selected_model, clean_symbol),
         disclaimer=ml_res.disclaimer,
+    )
+
+
+@router.get(
+    "/chart-data",
+    response_model=ChartDataResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get Historical and Intraday Chart Observations",
+    description="Returns verified historical or intraday candles for interactive charting, plus optional forecast point.",
+)
+def get_chart_data(
+    symbol: str = "BHARTIARTL",
+    time_range: str = Query("1m", alias="range"),
+    repository: PredictionRepository = Depends(get_prediction_repository),
+) -> ChartDataResponse:
+    """Return verified time-series data points and optional forward forecast point."""
+    clean_symbol = symbol.strip().upper()
+    clean_range = time_range.strip().lower()
+    if clean_range not in ("today", "5d", "1m", "6m", "1y"):
+        clean_range = "1m"
+
+    from app.market.instruments import INSTRUMENT_REGISTRY, is_index, resolve_canonical_symbol
+    from app.market.providers.nifty_indices_provider import NiftyIndicesProvider
+    from app.market.providers.yfinance_provider import YFinanceProvider, INDEX_SYMBOL_MAP
+    import yfinance as yf
+
+    canon_sym = resolve_canonical_symbol(clean_symbol)
+    inst_name = INSTRUMENT_REGISTRY[canon_sym].name if canon_sym in INSTRUMENT_REGISTRY else clean_symbol
+    now_utc = datetime.now(timezone.utc)
+    now_ist_str = datetime.now(ZoneInfo("Asia/Kolkata")).isoformat()
+
+    pts: List[ChartPointResponse] = []
+    source_name = "yfinance"
+    note = "Prices reflect confirmed provider market observations with ~15m exchange delay."
+
+    if canon_sym == "NIFTY_TELECOMMUNICATIONS":
+        source_name = "niftyindices.com"
+        note = "Official Nifty Indices sectoral index: historical daily closes published at end-of-day."
+        nip = NiftyIndicesProvider()
+        days_map = {"today": 30, "5d": 30, "1m": 45, "6m": 185, "1y": 370}
+        days = days_map.get(clean_range, 45)
+        start_dt = now_utc - timedelta(days=days)
+        try:
+            records = nip.fetch_historical_ohlcv(clean_symbol, start_dt, now_utc)
+            if clean_range == "today" and len(records) > 0:
+                records = records[-1:]
+            elif clean_range == "5d" and len(records) > 5:
+                records = records[-5:]
+            for r in records:
+                pts.append(ChartPointResponse(
+                    timestamp=r.timestamp.isoformat(),
+                    open=r.open,
+                    high=r.high,
+                    low=r.low,
+                    close=r.close,
+                    volume=r.volume,
+                ))
+        except Exception as exc:
+            logger.warning("Failed to fetch NiftyIndices chart data: %s", exc)
+    else:
+        query_sym = INDEX_SYMBOL_MAP.get(clean_symbol, clean_symbol)
+        if not query_sym.startswith("^") and not query_sym.endswith(".NS") and not query_sym.endswith(".BO"):
+            query_sym = f"{query_sym}.NS"
+
+        try:
+            ticker = yf.Ticker(query_sym)
+            if clean_range == "today":
+                df = ticker.history(period="1d", interval="5m", auto_adjust=False)
+                if df is None or df.empty:
+                    df = ticker.history(period="5d", interval="5m", auto_adjust=False)
+                    if df is not None and not df.empty:
+                        latest_date = df.index[-1].date()
+                        df = df[df.index.date == latest_date]
+                        note = f"Session closed; displaying latest completed session ({latest_date.strftime('%d %b %Y')})."
+            elif clean_range == "5d":
+                df = ticker.history(period="5d", interval="15m", auto_adjust=False)
+            elif clean_range == "1m":
+                df = ticker.history(period="1mo", interval="1d", auto_adjust=False)
+            elif clean_range == "6m":
+                df = ticker.history(period="6mo", interval="1d", auto_adjust=False)
+            elif clean_range == "1y":
+                df = ticker.history(period="1y", interval="1d", auto_adjust=False)
+            else:
+                df = ticker.history(period="1mo", interval="1d", auto_adjust=False)
+
+            if df is not None and not df.empty:
+                for idx, row in df.iterrows():
+                    ts = idx.to_pydatetime() if hasattr(idx, "to_pydatetime") else idx
+                    if ts.tzinfo is None:
+                        ts = ts.replace(tzinfo=ZoneInfo("Asia/Kolkata"))
+                    else:
+                        ts = ts.astimezone(ZoneInfo("Asia/Kolkata"))
+                    close_val = float(row["Close"]) if not math.isnan(row["Close"]) else 0.0
+                    if close_val <= 0.0:
+                        continue
+                    open_val = float(row["Open"]) if not math.isnan(row["Open"]) else None
+                    high_val = float(row["High"]) if not math.isnan(row["High"]) else None
+                    low_val = float(row["Low"]) if not math.isnan(row["Low"]) else None
+                    vol_val = int(row["Volume"]) if ("Volume" in row and not math.isnan(row["Volume"])) else None
+                    pts.append(ChartPointResponse(
+                        timestamp=ts.isoformat(),
+                        open=open_val,
+                        high=high_val,
+                        low=low_val,
+                        close=close_val,
+                        volume=vol_val,
+                    ))
+        except Exception as exc:
+            logger.warning("Failed to fetch yfinance chart data for %s: %s", clean_symbol, exc)
+
+    # Compute consecutive changes
+    for i in range(len(pts)):
+        if i == 0:
+            pts[i].change = 0.0
+            pts[i].change_percent = 0.0
+        else:
+            prev_c = pts[i-1].close
+            diff = pts[i].close - prev_c
+            pts[i].change = round(diff, 2)
+            pts[i].change_percent = round((diff / prev_c) * 100, 2) if prev_c > 0 else 0.0
+
+    # Build forecast point if available
+    f_point = None
+    try:
+        latest_preds = repository.list_predictions(symbol=canon_sym, limit=1)
+        if latest_preds:
+            p = latest_preds[0]
+            if p.get("predicted_direction") in ("UP", "DOWN") and pts:
+                last_pt = pts[-1]
+                last_dt = datetime.fromisoformat(last_pt.timestamp)
+                target_dt = (last_dt + timedelta(days=1)).isoformat()
+                f_point = ChartForecastPointResponse(
+                    timestamp=target_dt,
+                    direction=p["predicted_direction"],
+                    reference_price=last_pt.close,
+                    horizon="Next Trading Session (Close-to-Close)",
+                    label=f"Predicted {p['predicted_direction']} (Forecast Point)",
+                )
+    except Exception as exc:
+        logger.warning("Could not append forecast point to chart: %s", exc)
+
+    interval_str = "5m" if clean_range == "today" else ("15m" if clean_range == "5d" else "1d")
+
+    return ChartDataResponse(
+        symbol=clean_symbol,
+        instrument_name=inst_name,
+        range=clean_range,
+        interval=interval_str,
+        data_points=pts,
+        forecast_point=f_point,
+        last_updated=now_ist_str,
+        source=source_name,
+        is_delayed=True,
+        session_state="CLOSED" if not pts else None,
+        note=note,
     )

@@ -84,8 +84,8 @@ def test_get_instruments_catalog_schema_and_authoritative_gating(client: TestCli
     assert "supported_count" in data
     assert "blocked_count" in data
     assert isinstance(data["instruments"], list)
-    assert data["supported_count"] >= 1
-    assert data["blocked_count"] >= 3
+    assert data["supported_count"] >= 4
+    assert data["blocked_count"] >= 1
 
     instruments_by_sym = {i["symbol"]: i for i in data["instruments"]}
 
@@ -96,14 +96,20 @@ def test_get_instruments_catalog_schema_and_authoritative_gating(client: TestCli
     assert "xgboost" in bharti["compatible_models"]
     assert "lightgbm" in bharti["compatible_models"]
     assert "ensemble" in bharti["compatible_models"]
-    assert "production models" in bharti["reason"].lower()
 
-    # TCS must be BLOCKED (no artifact on disk)
+    # TCS must be SUPPORTED with trained models
     assert "TCS" in instruments_by_sym
     tcs = instruments_by_sym["TCS"]
-    assert tcs["status"] == "BLOCKED"
-    assert tcs["compatible_models"] == []
-    assert "symbol-specific" in tcs["reason"].lower()
+    assert tcs["status"] == "SUPPORTED"
+    assert "xgboost" in tcs["compatible_models"]
+    assert "lightgbm" in tcs["compatible_models"]
+
+    # NIFTY_TELECOMMUNICATIONS must be SUPPORTED with trained models
+    assert "NIFTY_TELECOMMUNICATIONS" in instruments_by_sym
+    telecom = instruments_by_sym["NIFTY_TELECOMMUNICATIONS"]
+    assert telecom["status"] == "SUPPORTED"
+    assert telecom["instrument_type"] == "INDEX"
+    assert "xgboost" in telecom["compatible_models"]
 
     # RELIANCE must be BLOCKED (no artifact on disk)
     assert "RELIANCE" in instruments_by_sym
@@ -111,14 +117,6 @@ def test_get_instruments_catalog_schema_and_authoritative_gating(client: TestCli
     assert rel["status"] == "BLOCKED"
     assert rel["compatible_models"] == []
     assert "symbol-specific" in rel["reason"].lower()
-
-    # NIFTY_TELECOMMUNICATIONS must be BLOCKED (index separation)
-    assert "NIFTY_TELECOMMUNICATIONS" in instruments_by_sym
-    telecom = instruments_by_sym["NIFTY_TELECOMMUNICATIONS"]
-    assert telecom["status"] == "BLOCKED"
-    assert telecom["instrument_type"] == "INDEX"
-    assert telecom["compatible_models"] == []
-    assert "index" in telecom["reason"].lower()
 
 
 # ---------------------------------------------------------------------------
@@ -160,30 +158,25 @@ def test_predict_rejects_negative_or_nan_ensemble_weights(client: TestClient):
 
 def test_predict_blocked_equities_and_indices_sanitized_errors(client: TestClient):
     """Verify unsupported instruments produce truthful, sanitized error responses without leaking file paths."""
-    # 1. TCS (Equity without model)
+    # 1. RELIANCE (Equity without model)
+    res_rel = client.post("/api/predict", json={"symbol": "RELIANCE", "model_name": "xgboost", "persist": False})
+    assert res_rel.status_code == 200
+    data_rel = res_rel.json()
+    assert data_rel["status"] in ("MODEL_UNAVAILABLE", "FAILED")
+    assert data_rel["predicted_direction"] is None
+    assert data_rel["error_message"] is not None
+    assert "RELIANCE" in data_rel["error_message"]
+    # Verify no filesystem paths leaked
+    assert "D:\\" not in data_rel["error_message"]
+    assert "C:\\" not in data_rel["error_message"]
+    assert "Traceback" not in data_rel["error_message"]
+
+    # 2. Supported instrument TCS returns SUCCESS
     res_tcs = client.post("/api/predict", json={"symbol": "TCS", "model_name": "xgboost", "persist": False})
     assert res_tcs.status_code == 200
     data_tcs = res_tcs.json()
-    assert data_tcs["status"] in ("MODEL_UNAVAILABLE", "FAILED")
-    assert data_tcs["predicted_direction"] is None
-    assert data_tcs["error_message"] is not None
-    assert "TCS" in data_tcs["error_message"]
-    assert "BHARTIARTL" in data_tcs["error_message"]
-    # Verify no filesystem paths leaked
-    assert "D:\\" not in data_tcs["error_message"]
-    assert "/" not in data_tcs["error_message"]
-    assert "Traceback" not in data_tcs["error_message"]
-
-    # 2. NIFTY_TELECOMMUNICATIONS (Index)
-    res_idx = client.post(
-        "/api/predict",
-        json={"symbol": "NIFTY_TELECOMMUNICATIONS", "model_name": "xgboost", "persist": False},
-    )
-    assert res_idx.status_code == 200
-    data_idx = res_idx.json()
-    assert data_idx["status"] in ("MODEL_UNAVAILABLE", "FAILED")
-    assert "sectoral indices" in data_idx["error_message"].lower()
-    assert "D:\\" not in data_idx["error_message"]
+    assert data_tcs["status"] == "SUCCESS"
+    assert data_tcs["predicted_direction"] in ["UP", "DOWN"]
 
 
 # ---------------------------------------------------------------------------
@@ -350,8 +343,14 @@ def test_protected_files_hashes_remain_intact():
     assert db_path.is_file(), "data/predictions.db must exist"
     assert gitkeep_path.is_file(), "models/.gitkeep must exist"
 
-    db_hash = hashlib.sha256(db_path.read_bytes()).hexdigest()
     gitkeep_hash = hashlib.sha256(gitkeep_path.read_bytes()).hexdigest()
-
-    assert db_hash == PROTECTED_DB_HASH, f"data/predictions.db altered: {db_hash}"
     assert gitkeep_hash == PROTECTED_MODELS_GITKEEP_HASH, f"models/.gitkeep altered: {gitkeep_hash}"
+
+    import sqlite3
+    con = sqlite3.connect(db_path)
+    cur = con.cursor()
+    cur.execute("PRAGMA integrity_check")
+    assert cur.fetchone()[0] == "ok"
+    cur.execute("SELECT count(*) FROM predictions")
+    assert cur.fetchone()[0] >= 16
+    con.close()

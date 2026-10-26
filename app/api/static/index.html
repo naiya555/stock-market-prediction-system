@@ -183,47 +183,62 @@
         <!-- Dashboard Charts & Major Drivers -->
         <div class="dashboard-grid-two">
           <!-- Price Trend & Forecast Alignment -->
-          <div class="card">
-            <div class="card-header">
+          <div class="card" id="dashboard-chart-card">
+            <div class="card-header chart-card-header">
               <div>
-                <h3 class="card-title">Historical Price Trend & Moving Averages</h3>
-                <p class="card-subtitle">Observed closing prices with 10-day and 50-day moving averages</p>
+                <h3 class="card-title" id="dash-chart-title">Interactive Market Chart & Live Forecast</h3>
+                <p class="card-subtitle" id="dash-chart-subtitle">Real market observations with ~15m delay • Hover for price & volume</p>
               </div>
-              <span class="badge badge-subtle">BHARTIARTL.NS</span>
+              <div class="chart-zoom-group">
+                <button type="button" class="btn-chart-control" id="btn-chart-zoom-in" title="Zoom in">+</button>
+                <button type="button" class="btn-chart-control" id="btn-chart-zoom-out" title="Zoom out">&minus;</button>
+                <button type="button" class="btn-chart-control" id="btn-chart-reset" title="Reset zoom">&#8635;</button>
+              </div>
             </div>
-            <div class="chart-container" id="dash-chart-container">
+
+            <!-- Chart Toolbar: Instrument selector & Time Range buttons -->
+            <div class="chart-controls-bar">
+              <div class="chart-instrument-pills" id="chart-instrument-pills">
+                <button type="button" class="chart-pill-btn active" data-symbol="BHARTIARTL">BHARTIARTL</button>
+                <button type="button" class="chart-pill-btn" data-symbol="TCS">TCS</button>
+                <button type="button" class="chart-pill-btn" data-symbol="NIFTY_50">NIFTY 50</button>
+                <button type="button" class="chart-pill-btn" data-symbol="NIFTY_TELECOMMUNICATIONS">NIFTY TELECOM</button>
+              </div>
+              <div class="chart-range-pills" id="chart-range-pills">
+                <button type="button" class="chart-pill-btn" data-range="today">Today</button>
+                <button type="button" class="chart-pill-btn" data-range="5d">5D</button>
+                <button type="button" class="chart-pill-btn active" data-range="1m">1M</button>
+                <button type="button" class="chart-pill-btn" data-range="6m">6M</button>
+                <button type="button" class="chart-pill-btn" data-range="1y">1Y</button>
+              </div>
+            </div>
+
+            <div class="interactive-chart-wrapper" id="dash-chart-container">
               <!-- Interactive SVG Trend Chart -->
-              <svg viewBox="0 0 700 240" class="trend-svg" id="dash-trend-svg" aria-label="BHARTIARTL Price Chart">
-                <defs>
-                  <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stop-color="#6366f1" stop-opacity="0.3"/>
-                    <stop offset="100%" stop-color="#6366f1" stop-opacity="0.0"/>
-                  </linearGradient>
-                </defs>
-                <!-- Grid Lines -->
-                <line x1="40" y1="40" x2="680" y2="40" stroke="rgba(255,255,255,0.06)" />
-                <line x1="40" y1="90" x2="680" y2="90" stroke="rgba(255,255,255,0.06)" />
-                <line x1="40" y1="140" x2="680" y2="140" stroke="rgba(255,255,255,0.06)" />
-                <line x1="40" y1="190" x2="680" y2="190" stroke="rgba(255,255,255,0.06)" />
-                <!-- Area Fill -->
-                <path d="M 60,180 L 140,165 L 220,170 L 300,150 L 380,130 L 460,110 L 540,80 L 620,70 L 660,65 L 660,200 L 60,200 Z" fill="url(#chartGradient)"/>
-                <!-- Price Line -->
-                <path d="M 60,180 L 140,165 L 220,170 L 300,150 L 380,130 L 460,110 L 540,80 L 620,70 L 660,65" fill="none" stroke="#6366f1" stroke-width="2.5" stroke-linecap="round"/>
-                <!-- Trend line SMA-50 -->
-                <path d="M 60,185 L 140,178 L 220,172 L 300,165 L 380,150 L 460,135 L 540,115 L 620,95 L 660,85" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="4,4"/>
-                <!-- Data Points -->
-                <circle cx="660" cy="65" r="4" fill="#10b981" stroke="#fff" stroke-width="1.5"/>
-                <!-- Labels -->
-                <text x="665" y="60" fill="#f8fafc" font-size="11" font-family="JetBrains Mono">₹1,892</text>
-                <text x="45" y="35" fill="#64748b" font-size="10">₹1,950</text>
-                <text x="45" y="85" fill="#64748b" font-size="10">₹1,850</text>
-                <text x="45" y="135" fill="#64748b" font-size="10">₹1,750</text>
-                <text x="45" y="185" fill="#64748b" font-size="10">₹1,650</text>
+              <svg viewBox="0 0 700 240" class="trend-svg" id="dash-trend-svg" aria-label="Interactive Market Chart" style="width:100%; height:240px; display:block;">
+                <!-- Populated dynamically by app.js renderInteractiveChart -->
               </svg>
-              <div class="chart-legend">
-                <span class="legend-item"><span class="legend-dot" style="background:#6366f1;"></span> Daily Close</span>
-                <span class="legend-item"><span class="legend-dot" style="background:#f59e0b;"></span> 50-Day Moving Average</span>
-                <span class="legend-item"><span class="legend-dot" style="background:#10b981;"></span> Latest Observed Session</span>
+
+              <!-- Floating Hover Tooltip -->
+              <div class="chart-tooltip-floating" id="chart-tooltip">
+                <div class="chart-tooltip-title" id="tooltip-instrument">BHARTIARTL</div>
+                <div class="chart-tooltip-row"><span>Time:</span> <strong id="tooltip-time" class="font-mono">--</strong></div>
+                <div class="chart-tooltip-row"><span>Price:</span> <strong id="tooltip-price" class="font-mono">--</strong></div>
+                <div class="chart-tooltip-row"><span>Change:</span> <strong id="tooltip-change" class="font-mono">--</strong></div>
+                <div class="chart-tooltip-row" id="tooltip-vol-row"><span>Volume:</span> <strong id="tooltip-volume" class="font-mono">--</strong></div>
+              </div>
+            </div>
+
+            <!-- Chart Footer Status & Legend -->
+            <div class="chart-status-footer">
+              <div class="chart-legend-row">
+                <span class="legend-item"><span class="legend-dot" style="background:#6366f1;"></span> Market Close</span>
+                <span class="legend-item"><span class="legend-dot" style="background:#f59e0b;"></span> Trend Moving Avg</span>
+                <span class="legend-item"><span class="legend-dot" style="background:#10b981;"></span> Latest Confirmed</span>
+                <span class="legend-item"><span class="legend-dot" style="background:#a855f7; border: 1px dashed #fff;"></span> Forward Forecast</span>
+              </div>
+              <div class="chart-connection-meta" id="chart-connection-status">
+                <span id="chart-last-updated-text">Last updated: Just now</span> &bull; <span id="chart-provider-note">yfinance (15m delayed)</span>
               </div>
             </div>
           </div>
@@ -457,7 +472,7 @@
             </div>
           </div>
 
-          <!-- Primary Hero Result Card -->
+          <!-- Primary Hero Result Card (Phase 4 Simplified Design) -->
           <div class="card result-card hero-card" id="result-hero-card">
             <div class="result-header">
               <div class="result-title-group">
@@ -467,67 +482,104 @@
                   <span class="badge badge-status-success" id="res-status-badge">SUCCESS</span>
                   <span class="badge badge-purple" id="res-routing-badge">Auto-Routed: Ensemble</span>
                 </div>
-                <div class="distinction-meta">
-                  <span class="meta-label">Observed Quote (Historical):</span>
-                  <span class="meta-value font-mono" id="res-observed-meta">--</span>
-                  <span class="meta-separator">&bull;</span>
-                  <span class="meta-label">Forecast Horizon:</span>
-                  <span class="meta-value" id="res-forecast-meta">Next Trading Session (Close-to-Close)</span>
-                </div>
               </div>
               <div class="result-timestamp-group">
-                <span class="timestamp-label">Prediction Timestamp:</span>
+                <span class="timestamp-label">Generated:</span>
                 <span class="timestamp-value font-mono" id="res-timestamp">--</span>
               </div>
             </div>
 
-            <!-- Calibration Status & Audit Warning Banner -->
-            <div class="uncalibrated-warning-banner" id="res-uncalibrated-banner">
-              <span class="warning-icon" aria-hidden="true">⚠️</span>
-              <div class="warning-content">
-                <span class="warning-badge">UNCALIBRATED RAW MODEL SCORE</span>
-                <p class="warning-text" id="res-uncalibrated-text">
-                  Reported holdout comparisons did not establish a statistically significant improvement. Raw model probabilities are uncalibrated and performed worse than the constant 0.50 probability baseline on the reported holdout Brier-score comparison (models scored Brier 0.2556–0.2562 vs. reference Brier 0.2500).
-                </p>
+            <!-- Primary Field 1: Direction & Stated Forecast Horizon -->
+            <div class="primary-forecast-banner">
+              <div class="direction-badge" id="res-direction-badge" aria-label="Forecast direction signal">
+                <span class="direction-icon" id="res-direction-icon">--</span>
+                <span class="direction-text" id="res-direction-text">--</span>
+              </div>
+              <div class="forecast-horizon-box">
+                <span class="horizon-title">Forecast Horizon</span>
+                <span class="horizon-val" id="res-forecast-horizon">Next Trading Session (Close-to-Close)</span>
+                <span class="distinction-meta" id="res-forecast-meta" style="display: none;">Target Price: Unsupported / Not Modeled</span>
               </div>
             </div>
 
-            <!-- Historical Actuals vs. Forward Forecast Distinction Bar -->
-            <div class="distinction-bar" id="res-distinction-bar">
-              <div class="distinction-item observed-fact">
-                <span class="distinction-tag">HISTORICAL OBSERVED FACT</span>
-                <span class="distinction-val" id="res-observed-price">Last Observed Price: ₹--</span>
-                <span class="distinction-time" id="res-observed-time">As of: --</span>
-                <span class="distinction-meta" id="res-observed-meta-detail">Price Type: LAST_TRADED_PRICE • Not a forecast</span>
+            <!-- Primary Field 2: Grounded Reason (1-2 Concise Sentences) -->
+            <div class="primary-reason-box" id="res-primary-reason-box">
+              <div class="reason-header">
+                <span class="reason-icon">💡</span>
+                <span class="reason-title">Forecast Rationale & Key Signals</span>
               </div>
-              <div class="distinction-arrow" aria-hidden="true">➔</div>
-              <div class="distinction-item model-forecast">
-                <span class="distinction-tag">FORWARD DIRECTIONAL FORECAST</span>
-                <span class="distinction-val" id="res-forecast-direction">Direction: --</span>
-                <span class="distinction-horizon">Horizon: Next Trading Session (Close-to-Close)</span>
-                <span class="distinction-meta" id="res-forecast-meta-detail">Target Price: Unsupported / Not Modeled</span>
+              <p class="reason-text" id="res-primary-reason-text">
+                Calculating rationale grounded in model feature matrix, momentum indicators, and verified regulatory updates...
+              </p>
+            </div>
+
+            <!-- Primary Fields 3, 4 & Compact Daily Price Summary Strip -->
+            <div class="primary-price-strip">
+              <!-- Field 4: Latest Price -->
+              <div class="price-strip-cell">
+                <span class="cell-label">Latest Observed Price</span>
+                <div class="cell-value font-mono" id="res-observed-price">₹--</div>
+                <span class="cell-sub" id="res-observed-meta">Delayed ~15m • As of --</span>
+              </div>
+
+              <!-- Field 3: Opening Price -->
+              <div class="price-strip-cell">
+                <span class="cell-label">Session Opening Price</span>
+                <div class="cell-value font-mono" id="res-opening-price">₹--</div>
+                <span class="cell-sub" id="res-opening-status">Regular Session Open</span>
+              </div>
+
+              <!-- Previous Session Close -->
+              <div class="price-strip-cell">
+                <span class="cell-label">Previous Close</span>
+                <div class="cell-value font-mono" id="res-prev-close">₹--</div>
+                <span class="cell-sub">Confirmed Official Close</span>
+              </div>
+
+              <!-- Compact Daily Change & % -->
+              <div class="price-strip-cell">
+                <span class="cell-label">Daily Price Change</span>
+                <div class="cell-value font-mono" id="res-daily-change">--</div>
+                <span class="cell-sub font-mono" id="res-daily-change-pct">--%</span>
               </div>
             </div>
 
-            <!-- Direction & Probability Metrics Display -->
-            <div class="metrics-grid">
-              
-              <!-- Direction Decision Card -->
-              <div class="metric-item direction-metric">
-                <span class="metric-label">Predicted Direction Signal</span>
-                <div class="direction-badge" id="res-direction-badge" aria-label="Forecast direction signal">
-                  <span class="direction-icon" id="res-direction-icon">--</span>
-                  <span class="direction-text" id="res-direction-text">--</span>
+            <!-- Optional Expandable Section for Probabilities & Detailed Diagnostics -->
+            <details class="diagnostics-details" id="res-diagnostics-details">
+              <summary class="diagnostics-summary">
+                <span>🔬 Advanced Model Probabilities, Volatility Band & Diagnostics</span>
+                <span class="diagnostics-toggle-icon">▼</span>
+              </summary>
+              <div class="diagnostics-content">
+                <!-- Calibration Status Warning -->
+                <div class="uncalibrated-warning-banner" id="res-uncalibrated-banner">
+                  <span class="warning-icon" aria-hidden="true">⚠️</span>
+                  <div class="warning-content">
+                    <span class="warning-badge">UNCALIBRATED RAW MODEL SCORE</span>
+                    <p class="warning-text" id="res-uncalibrated-text">
+                      Reported holdout comparisons did not establish a statistically significant improvement. Raw model probabilities are uncalibrated and performed worse than the constant 0.50 probability baseline on the reported holdout Brier-score comparison (candidate Brier 0.2556 vs. reference Brier 0.2500). Raw model probabilities are uncalibrated and reflect tree leaf frequency or ensemble heuristics. Do not interpret as calibrated confidence.
+                    </p>
+                  </div>
                 </div>
-                <span class="metric-caption" id="res-direction-caption">
-                  Binary direction indicates expected next-session return sign (UP: Close_{t+1} > Close_t).
-                </span>
-              </div>
 
-              <!-- Estimated Probability -->
-              <div class="metric-item probability-metric">
-                <span class="metric-label">Estimated Directional Probability</span>
-                <div class="prob-bars-container">
+                <!-- Historical Fact vs. Forward Prediction distinction bar -->
+                <div class="distinction-bar" id="res-distinction-bar" style="margin-top: 1rem;">
+                  <div class="distinction-item observed-fact">
+                    <span class="distinction-tag">HISTORICAL OBSERVED FACT</span>
+                    <span class="distinction-val">Last Observed Price</span>
+                    <span class="distinction-meta">Price Type: LAST_TRADED_PRICE • Not a forecast</span>
+                  </div>
+                  <div class="distinction-arrow" aria-hidden="true">➔</div>
+                  <div class="distinction-item model-forecast">
+                    <span class="distinction-tag">FORWARD DIRECTIONAL FORECAST</span>
+                    <span class="distinction-val" id="res-forecast-direction">Direction: --</span>
+                    <span class="distinction-horizon">Horizon: Next Trading Session (Close-to-Close)</span>
+                    <span class="distinction-meta">Target Price: Unsupported / Not Modeled</span>
+                  </div>
+                </div>
+
+                <!-- Estimated Probabilities -->
+                <div class="prob-bars-container" style="margin-top: 1rem;">
                   <div class="prob-bar-wrapper">
                     <div class="prob-bar-fill" id="res-prob-bar-fill" style="width: 50%;"></div>
                   </div>
@@ -536,15 +588,10 @@
                     <span class="prob-up-label" id="res-prob-up">P(UP): --</span>
                   </div>
                 </div>
-                <span class="metric-caption">
-                  ⚠️ Note: Uncalibrated tree/heuristic probability blend; does not represent calibrated Bayesian certainty.
-                </span>
-              </div>
 
-              <!-- Volatility-Anchored Expected Range (Target Range) -->
-              <div class="metric-item" id="target-range-metric-item" style="display: none;">
-                <span class="metric-label">Volatility-Anchored Expected Range (1-Session ATR-14)</span>
-                <div class="target-range-box">
+                <!-- Volatility-Anchored Expected Range (Target Range) -->
+                <div class="target-range-box" id="target-range-metric-item" style="display: none; margin-top: 1rem;">
+                  <span class="metric-label">Volatility-Anchored Expected Range (1-Session ATR-14)</span>
                   <div class="range-bounds-row">
                     <div class="range-bound lower">
                       <span class="bound-title">Lower Bound</span>
@@ -561,7 +608,7 @@
                   </div>
                 </div>
               </div>
-            </div>
+            </details>
 
             <!-- =========================================================== -->
             <!-- SECTION 4: WHY THIS PREDICTION? EVIDENCE BREAKDOWN         -->

@@ -217,28 +217,27 @@ class TestBlockedAndErrorStates:
     """Verify distinct blocked-instrument vs transient error handling."""
 
     def test_blocked_equity_response_semantics(self, client):
-        """Verify blocked equity TCS returns MODEL_UNAVAILABLE with equity-specific rationale."""
-        resp = client.post("/api/predict", json={"symbol": "TCS", "model_name": "xgboost", "persist": False})
+        """Verify blocked equity RELIANCE returns MODEL_UNAVAILABLE with equity-specific rationale."""
+        resp = client.post("/api/predict", json={"symbol": "RELIANCE", "model_name": "xgboost", "persist": False})
         assert resp.status_code == 200
         data = resp.json()
 
-        assert data["symbol"] == "TCS"
+        assert data["symbol"] == "RELIANCE"
         assert data["status"] == "MODEL_UNAVAILABLE"
-        assert "No trained model artifact found for equity instrument 'TCS'" in data["error_message"]
-        assert "BHARTIARTL" in data["error_message"]
+        assert "No trained model artifact found for equity instrument 'RELIANCE'" in data["error_message"]
 
-    def test_blocked_index_response_semantics(self, client):
-        """Verify blocked sectoral index returns MODEL_UNAVAILABLE with cross-asset rationale."""
-        resp = client.post(
-            "/api/predict",
-            json={"symbol": "NIFTY_TELECOMMUNICATIONS", "model_name": "xgboost", "persist": False},
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-
-        assert data["symbol"] == "NIFTY_TELECOMMUNICATIONS"
-        assert data["status"] in ["MODEL_UNAVAILABLE", "FAILED"]
-        assert "BHARTIARTL equity models cannot be reused for sectoral indices" in data["error_message"]
+    def test_supported_instruments_response_semantics(self, client):
+        """Verify supported instruments TCS and NIFTY_TELECOMMUNICATIONS return SUCCESS."""
+        for sym in ["TCS", "NIFTY_TELECOMMUNICATIONS"]:
+            resp = client.post(
+                "/api/predict",
+                json={"symbol": sym, "model_name": "xgboost", "persist": False},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["symbol"] == sym
+            assert data["status"] == "SUCCESS"
+            assert data["predicted_direction"] in ["UP", "DOWN"]
 
     def test_instrument_catalog_truthful_reasons(self, client):
         """Verify instrument catalog returns accurate status and reasons for all registered instruments."""
@@ -248,7 +247,7 @@ class TestBlockedAndErrorStates:
 
         inst_map = {item["symbol"]: item for item in data["instruments"]}
         assert inst_map["BHARTIARTL"]["status"] == "SUPPORTED"
-        assert inst_map["TCS"]["status"] == "BLOCKED"
+        assert inst_map["TCS"]["status"] == "SUPPORTED"
         assert inst_map["RELIANCE"]["status"] == "BLOCKED"
-        assert inst_map["NIFTY_TELECOMMUNICATIONS"]["status"] == "BLOCKED"
-        assert inst_map["NIFTY_50"]["status"] == "BLOCKED"
+        assert inst_map["NIFTY_TELECOMMUNICATIONS"]["status"] == "SUPPORTED"
+        assert inst_map["NIFTY_50"]["status"] == "SUPPORTED"

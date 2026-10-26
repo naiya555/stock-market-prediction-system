@@ -2505,3 +2505,333 @@ code, .font-mono {
   margin-bottom: 0.25rem;
   display: block;
 }
+
+/* ==========================================================================
+   Phase 4: Simplified Prediction Result Card
+   ========================================================================== */
+.primary-forecast-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1.25rem;
+  background: rgba(30, 41, 59, 0.4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin-top: 1rem;
+}
+
+.forecast-horizon-box {
+  display: flex;
+  flex-direction: column;
+  text-align: right;
+}
+
+.horizon-title {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.horizon-val {
+  font-size: 0.92rem;
+  color: var(--color-primary-light);
+  font-weight: 600;
+}
+
+.primary-reason-box {
+  margin-top: 1rem;
+  padding: 1rem 1.25rem;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.04) 100%);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: var(--radius-md);
+}
+
+.reason-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.reason-icon {
+  font-size: 1.1rem;
+}
+
+.reason-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-primary-light);
+}
+
+.reason-text {
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: #f1f5f9;
+  margin: 0;
+}
+
+.primary-price-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+
+.price-strip-cell {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.price-strip-cell:hover {
+  border-color: rgba(99, 102, 241, 0.4);
+  transform: translateY(-1px);
+}
+
+.cell-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.25rem;
+}
+
+.cell-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #f8fafc;
+  letter-spacing: -0.01em;
+}
+
+.cell-sub {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+}
+
+/* Expandable Diagnostics Details Accordion */
+.diagnostics-details {
+  margin-top: 1.25rem;
+  border-top: 1px dashed var(--border-subtle);
+  padding-top: 0.75rem;
+}
+
+.diagnostics-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.85rem;
+  background: rgba(30, 41, 59, 0.35);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  user-select: none;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.diagnostics-summary:hover {
+  color: var(--text-main);
+  background: rgba(30, 41, 59, 0.6);
+}
+
+.diagnostics-toggle-icon {
+  font-size: 0.75rem;
+  transition: transform 0.2s ease;
+}
+
+.diagnostics-details[open] .diagnostics-toggle-icon {
+  transform: rotate(180deg);
+}
+
+.diagnostics-content {
+  padding-top: 1rem;
+}
+
+/* ==========================================================================
+   Phase 5: Interactive Chart Styling
+   ========================================================================== */
+.chart-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.chart-controls-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.chart-instrument-pills, .chart-range-pills {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.chart-pill-btn {
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.3rem 0.65rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.chart-pill-btn:hover {
+  background: rgba(99, 102, 241, 0.2);
+  color: #fff;
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.chart-pill-btn.active {
+  background: linear-gradient(135deg, var(--color-primary) 0%, #4f46e5 100%);
+  color: #fff;
+  border-color: var(--color-primary);
+  box-shadow: 0 2px 8px var(--color-primary-glow);
+}
+
+.chart-zoom-group {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.btn-chart-control {
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  padding: 0.25rem 0.55rem;
+  font-size: 0.75rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.btn-chart-control:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-main);
+}
+
+.interactive-chart-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.chart-tooltip-floating {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid var(--color-primary);
+  border-radius: 6px;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.78rem;
+  color: #f8fafc;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  z-index: 50;
+  display: none;
+  white-space: nowrap;
+}
+
+.chart-tooltip-title {
+  font-weight: 700;
+  color: var(--color-primary-light);
+  margin-bottom: 0.25rem;
+}
+
+.chart-tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.15rem;
+}
+
+.chart-status-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.chart-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+/* ==========================================================================
+   Phase 7: Chat Assistant Markdown Rendering
+   ========================================================================== */
+.message-bubble h3, .message-bubble h4 {
+  color: #f8fafc;
+  margin: 0.4rem 0 0.25rem 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.message-bubble strong {
+  color: #f1f5f9;
+  font-weight: 600;
+}
+
+.message-bubble em {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.message-bubble code {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e2e8f0;
+  padding: 0.15rem 0.35rem;
+  border-radius: 3px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.82em;
+}
+
+.message-bubble blockquote {
+  border-left: 3px solid var(--color-primary);
+  padding-left: 0.65rem;
+  margin: 0.4rem 0;
+  color: #cbd5e1;
+  background: rgba(99, 102, 241, 0.05);
+  border-radius: 0 4px 4px 0;
+}
+
+.message-bubble ul {
+  margin: 0.35rem 0;
+  padding-left: 1.25rem;
+}
+
+.message-bubble li {
+  margin: 0.2rem 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}

@@ -33,37 +33,31 @@ def test_model_router_capabilities():
     """Verify router assigns explicit capability status and actionable prerequisites."""
     router = ModelRouter()
 
-    # Supported equity
-    canon, status, reason, prereq = router.inspect_instrument("BHARTIARTL")
-    assert canon == "BHARTIARTL"
-    assert status == CapabilityStatus.SUPPORTED_AND_READY
-    assert prereq is None
-
-    # Unsupported equities
-    for sym in ["TCS", "RELIANCE"]:
+    # Supported equities and indices
+    for sym in ["BHARTIARTL", "TCS", "NIFTY_50", "NIFTY_TELECOMMUNICATIONS"]:
         canon, status, reason, prereq = router.inspect_instrument(sym)
-        assert status == CapabilityStatus.UNSUPPORTED_BY_CURRENT_MODEL
-        assert "equity model" in prereq.lower() or "training" in prereq.lower()
-        assert "BHARTIARTL" in reason
+        assert status == CapabilityStatus.SUPPORTED_AND_READY
+        assert prereq is None
 
-    # Sectoral and Broad Indices
-    for idx_sym in ["NIFTY_50", "NIFTY_TELECOMMUNICATIONS", "NIFTY 50", "NIFTY50"]:
-        canon, status, reason, prereq = router.inspect_instrument(idx_sym)
-        assert status == CapabilityStatus.REQUIRES_SEPARATE_INDEX_PIPELINE
-        assert "index" in prereq.lower()
+    # Unsupported equity
+    canon, status, reason, prereq = router.inspect_instrument("RELIANCE")
+    assert status == CapabilityStatus.UNSUPPORTED_BY_CURRENT_MODEL
+    assert "equity model" in prereq.lower() or "training" in prereq.lower()
+    assert "RELIANCE" in reason or "BHARTIARTL" in reason
 
 
 def test_model_router_route_prediction():
     """Verify route_prediction auto-routes supported instruments to multi_agent_ensemble."""
     router = ModelRouter()
 
-    route = router.route_prediction("BHARTIARTL", requested_model="auto")
-    assert route.is_supported is True
-    assert route.routed_model == "ensemble"
-    assert route.capability_status == CapabilityStatus.SUPPORTED_AND_READY
+    for sym in ["BHARTIARTL", "TCS", "NIFTY_50", "NIFTY_TELECOMMUNICATIONS"]:
+        route = router.route_prediction(sym, requested_model="auto")
+        assert route.is_supported is True
+        assert route.routed_model == "ensemble"
+        assert route.capability_status == CapabilityStatus.SUPPORTED_AND_READY
 
     # Blocked instrument produces non-supported route with None routed_model
-    route_blocked = router.route_prediction("TCS", requested_model="auto")
+    route_blocked = router.route_prediction("RELIANCE", requested_model="auto")
     assert route_blocked.is_supported is False
     assert route_blocked.routed_model is None
     assert route_blocked.capability_status == CapabilityStatus.UNSUPPORTED_BY_CURRENT_MODEL
@@ -82,17 +76,17 @@ def test_instrument_catalog_has_capability_fields(client: TestClient):
     assert instruments["BHARTIARTL"]["capability_status"] == "SUPPORTED_AND_READY"
 
     assert "TCS" in instruments
-    assert instruments["TCS"]["capability_status"] == "UNSUPPORTED_BY_CURRENT_MODEL"
-    assert instruments["TCS"]["actionable_prerequisite"] is not None
+    assert instruments["TCS"]["capability_status"] == "SUPPORTED_AND_READY"
+
+    assert "NIFTY_50" in instruments
+    assert instruments["NIFTY_50"]["capability_status"] == "SUPPORTED_AND_READY"
+
+    assert "NIFTY_TELECOMMUNICATIONS" in instruments
+    assert instruments["NIFTY_TELECOMMUNICATIONS"]["capability_status"] == "SUPPORTED_AND_READY"
 
     assert "RELIANCE" in instruments
     assert instruments["RELIANCE"]["capability_status"] == "UNSUPPORTED_BY_CURRENT_MODEL"
-
-    assert "NIFTY_50" in instruments
-    assert instruments["NIFTY_50"]["capability_status"] == "REQUIRES_SEPARATE_INDEX_PIPELINE"
-
-    assert "NIFTY_TELECOMMUNICATIONS" in instruments
-    assert instruments["NIFTY_TELECOMMUNICATIONS"]["capability_status"] == "REQUIRES_SEPARATE_INDEX_PIPELINE"
+    assert instruments["RELIANCE"]["actionable_prerequisite"] is not None
 
 
 def test_history_search_canonical_symbol_normalization(client: TestClient):
@@ -143,7 +137,7 @@ def test_chat_endpoint_market_terminology(client: TestClient):
 
 def test_chat_endpoint_explains_blocked_instruments(client: TestClient):
     """Verify /api/chat accurately explains instrument blocking with prerequisites."""
-    res = client.post("/api/chat", json={"message": "Why is TCS blocked?", "instrument": "TCS"})
+    res = client.post("/api/chat", json={"message": "Why is RELIANCE blocked?", "instrument": "RELIANCE"})
     assert res.status_code == 200
     data = res.json()
     reply = data["reply"]
@@ -249,23 +243,14 @@ def test_predict_endpoint_rejects_invalid_model_names_with_422(client: TestClien
 
 def test_predict_endpoint_unsupported_instrument_does_not_500(client: TestClient):
     """Verify /api/predict returns structured MODEL_UNAVAILABLE (HTTP 200) for unrouted instruments."""
-    # TCS equity
-    res_tcs = client.post("/api/predict", json={"symbol": "TCS", "model_name": "auto", "persist": True})
-    assert res_tcs.status_code == 200
-    data_tcs = res_tcs.json()
-    assert data_tcs["status"] == "MODEL_UNAVAILABLE"
-    assert data_tcs["capability_status"] == "UNSUPPORTED_BY_CURRENT_MODEL"
-    assert "TCS" in data_tcs["actionable_prerequisite"]
-    assert data_tcs["prediction_id"] is None  # Must NOT persist a fake/partial audit record
-
-    # NIFTY_50 index
-    res_nifty = client.post("/api/predict", json={"symbol": "NIFTY_50", "model_name": "auto", "persist": True})
-    assert res_nifty.status_code == 200
-    data_nifty = res_nifty.json()
-    assert data_nifty["status"] == "MODEL_UNAVAILABLE"
-    assert data_nifty["capability_status"] == "REQUIRES_SEPARATE_INDEX_PIPELINE"
-    assert "index" in data_nifty["actionable_prerequisite"].lower()
-    assert data_nifty["prediction_id"] is None
+    # RELIANCE equity (unsupported)
+    res_rel = client.post("/api/predict", json={"symbol": "RELIANCE", "model_name": "auto", "persist": False})
+    assert res_rel.status_code == 200
+    data_rel = res_rel.json()
+    assert data_rel["status"] == "MODEL_UNAVAILABLE"
+    assert data_rel["capability_status"] == "UNSUPPORTED_BY_CURRENT_MODEL"
+    assert "RELIANCE" in data_rel["actionable_prerequisite"] or "training" in data_rel["actionable_prerequisite"].lower()
+    assert data_rel["prediction_id"] is None  # Must NOT persist a fake/partial audit record
 
 
 def test_predict_endpoint_supported_instrument_success(client: TestClient):

@@ -246,6 +246,19 @@
       return await res.json();
     },
 
+    async fetchChartData(symbol, range = '1m') {
+      const query = new URLSearchParams();
+      query.set('symbol', symbol);
+      query.set('range', range);
+      const res = await fetch(`${API_BASE}/predict/chart-data?${query.toString()}`, {
+        headers: { 'Accept': 'application/json' },
+      });
+      if (!res.ok) {
+        throw new Error(`Chart data API error: status ${res.status}`);
+      }
+      return await res.json();
+    },
+
     async sendChatMessage(payload) {
       const res = await fetch(`${API_BASE}/chat`, {
         method: 'POST',
@@ -336,7 +349,365 @@
   // -------------------------------------------------------------------------
   // Dashboard Controller
   // -------------------------------------------------------------------------
+  // Interactive Dashboard Chart Controller (Phase 5)
+  // -------------------------------------------------------------------------
+  const ChartState = {
+    activeSymbol: 'BHARTIARTL',
+    activeRange: '1m',
+    zoomLevel: 1.0,
+    data: null,
+    refreshIntervalId: null,
+  };
+
+  function initInteractiveChart() {
+    // Instrument selector pills
+    const instPills = document.querySelectorAll('#chart-instrument-pills .chart-pill-btn');
+    instPills.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const sym = btn.getAttribute('data-symbol');
+        if (!sym) return;
+        ChartState.activeSymbol = sym;
+        instPills.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        loadInteractiveChart();
+      });
+    });
+
+    // Time range selector pills
+    const rangePills = document.querySelectorAll('#chart-range-pills .chart-pill-btn');
+    rangePills.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const rng = btn.getAttribute('data-range');
+        if (!rng) return;
+        ChartState.activeRange = rng;
+        rangePills.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        loadInteractiveChart();
+      });
+    });
+
+    // Zoom and pan controls
+    const zoomInBtn = document.getElementById('btn-chart-zoom-in');
+    const zoomOutBtn = document.getElementById('btn-chart-zoom-out');
+    const resetBtn = document.getElementById('btn-chart-reset');
+
+    if (zoomInBtn) {
+      zoomInBtn.addEventListener('click', () => {
+        ChartState.zoomLevel = Math.min(3.0, ChartState.zoomLevel + 0.25);
+        renderInteractiveChart();
+      });
+    }
+    if (zoomOutBtn) {
+      zoomOutBtn.addEventListener('click', () => {
+        ChartState.zoomLevel = Math.max(0.6, ChartState.zoomLevel - 0.25);
+        renderInteractiveChart();
+      });
+    }
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        ChartState.zoomLevel = 1.0;
+        renderInteractiveChart();
+      });
+    }
+
+    // Set auto-refresh timer (60s)
+    if (ChartState.refreshIntervalId) {
+      clearInterval(ChartState.refreshIntervalId);
+    }
+    ChartState.refreshIntervalId = setInterval(() => {
+      if (AppState.activeTab === 'dashboard') {
+        loadInteractiveChart();
+      }
+    }, 60000);
+  }
+
+  async function loadInteractiveChart() {
+    try {
+      const chartData = await ApiService.fetchChartData(ChartState.activeSymbol, ChartState.activeRange);
+      ChartState.data = chartData;
+      renderInteractiveChart();
+    } catch (e) {
+      console.warn('Failed to load chart data:', e);
+    }
+  }
+
+  function renderInteractiveChart() {
+    const svg = document.getElementById('dash-trend-svg');
+    const tooltip = document.getElementById('chart-tooltip');
+    const updatedEl = document.getElementById('chart-last-updated-text');
+    const noteEl = document.getElementById('chart-provider-note');
+    if (!svg) return;
+
+    if (!ChartState.data || !ChartState.data.data_points || ChartState.data.data_points.length === 0) {
+      svg.innerHTML = `
+        <text x="350" y="120" fill="#94a3b8" font-size="14" text-anchor="middle" font-family="Inter, sans-serif">
+          No market observations available for ${escapeHtml(ChartState.activeSymbol)} in range ${escapeHtml(ChartState.activeRange)}
+        </text>
+      `;
+      return;
+    }
+
+    const data = ChartState.data;
+    const pts = data.data_points;
+    const count = pts.length;
+
+    if (updatedEl && data.last_updated) {
+      updatedEl.textContent = `Last updated: ${formatDateTimeIST(data.last_updated)}`;
+    }
+    if (noteEl && data.note) {
+      noteEl.textContent = data.note;
+    }
+
+    // Determine min and max price
+    let minPrice = Infinity;
+    let maxPrice = -Infinity;
+    for (let i = 0; i < count; i++) {
+      const p = pts[i].close;
+      if (p < minPrice) minPrice = p;
+      if (p > maxPrice) maxPrice = p;
+    }
+    if (minPrice === maxPrice) {
+      minPrice = minPrice * 0.98;
+      maxPrice = maxPrice * 1.02;
+    }
+
+    const pricePadding = (maxPrice - minPrice) * 0.08;
+    const yMin = Math.max(0, minPrice - pricePadding);
+    const yMax = maxPrice + pricePadding;
+    const priceSpan = yMax - yMin;
+
+    const W = 700;
+    const H = 240;
+    const mLeft = 60;
+    const mRight = 95;
+    const mTop = 25;
+    const mBottom = 35;
+    const plotW = W - mLeft - mRight;
+    const plotH = H - mTop - mBottom;
+
+    // Apply zoom
+    const zoom = ChartState.zoomLevel;
+    const visibleCount = Math.max(2, Math.round(count / zoom));
+    const startIdx = Math.max(0, count - visibleCount);
+    const visiblePts = pts.slice(startIdx);
+    const visCount = visiblePts.length;
+
+    const coords = visiblePts.map((pt, i) => {
+      const x = mLeft + (i / Math.max(1, visCount - 1)) * plotW;
+      const y = mTop + (1.0 - (pt.close - yMin) / priceSpan) * plotH;
+      return { x, y, pt, idx: startIdx + i };
+    });
+
+    let pathD = '';
+    let areaD = '';
+    coords.forEach((c, i) => {
+      if (i === 0) {
+        pathD += `M ${c.x.toFixed(1)},${c.y.toFixed(1)}`;
+        areaD += `M ${c.x.toFixed(1)},${c.y.toFixed(1)}`;
+      } else {
+        pathD += ` L ${c.x.toFixed(1)},${c.y.toFixed(1)}`;
+        areaD += ` L ${c.x.toFixed(1)},${c.y.toFixed(1)}`;
+      }
+    });
+
+    const lastCoord = coords[coords.length - 1];
+    const firstCoord = coords[0];
+    const baselineY = mTop + plotH;
+    areaD += ` L ${lastCoord.x.toFixed(1)},${baselineY} L ${firstCoord.x.toFixed(1)},${baselineY} Z`;
+
+    // Compute SMA-10 line
+    let smaD = '';
+    const smaWindow = 10;
+    let smaStarted = false;
+    coords.forEach((c) => {
+      const fullIdx = c.idx;
+      if (fullIdx >= smaWindow - 1) {
+        let sum = 0;
+        for (let k = fullIdx - smaWindow + 1; k <= fullIdx; k++) {
+          sum += pts[k].close;
+        }
+        const smaVal = sum / smaWindow;
+        const smaY = mTop + (1.0 - (smaVal - yMin) / priceSpan) * plotH;
+        if (!smaStarted) {
+          smaD += `M ${c.x.toFixed(1)},${smaY.toFixed(1)}`;
+          smaStarted = true;
+        } else {
+          smaD += ` L ${c.x.toFixed(1)},${smaY.toFixed(1)}`;
+        }
+      }
+    });
+
+    // Horizontal grid lines
+    const gridRows = 4;
+    let gridLinesHtml = '';
+    for (let g = 0; g <= gridRows; g++) {
+      const pRatio = g / gridRows;
+      const yPos = mTop + pRatio * plotH;
+      const pVal = yMax - pRatio * priceSpan;
+      gridLinesHtml += `
+        <line x1="${mLeft}" y1="${yPos.toFixed(1)}" x2="${W - 20}" y2="${yPos.toFixed(1)}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="2,2"/>
+        <text x="${mLeft - 8}" y="${(yPos + 4).toFixed(1)}" fill="#64748b" font-size="10" text-anchor="end" font-family="JetBrains Mono, monospace">
+          ₹${pVal >= 1000 ? Math.round(pVal).toLocaleString('en-IN') : pVal.toFixed(1)}
+        </text>
+      `;
+    }
+
+    // X-axis date labels
+    const xLabelCount = Math.min(5, visCount);
+    let xLabelsHtml = '';
+    for (let xi = 0; xi < xLabelCount; xi++) {
+      const idxOnVis = Math.floor((xi * (visCount - 1)) / Math.max(1, xLabelCount - 1));
+      const c = coords[idxOnVis];
+      if (c && c.pt.timestamp) {
+        const dt = new Date(c.pt.timestamp);
+        const labelText =
+          ChartState.activeRange === 'today'
+            ? dt.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false })
+            : dt.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' });
+        xLabelsHtml += `
+          <text x="${c.x.toFixed(1)}" y="${H - 12}" fill="#64748b" font-size="10" text-anchor="middle" font-family="Inter, sans-serif">
+            ${labelText}
+          </text>
+        `;
+      }
+    }
+
+    // Forward Forecast Point extension
+    let forecastHtml = '';
+    if (data.forecast_point && data.forecast_point.direction) {
+      const fc = data.forecast_point;
+      const isUp = fc.direction === 'UP';
+      const fcColor = isUp ? '#10b981' : '#f43f5e';
+      const fcDelta = isUp ? 0.015 : -0.015;
+      const fcPrice = lastCoord.pt.close * (1.0 + fcDelta);
+      const fcX = Math.min(W - 25, lastCoord.x + 55);
+      const fcY = Math.max(mTop + 10, Math.min(H - mBottom - 10, mTop + (1.0 - (fcPrice - yMin) / priceSpan) * plotH));
+
+      forecastHtml = `
+        <!-- Dashed connector to forecast point -->
+        <line x1="${lastCoord.x.toFixed(1)}" y1="${lastCoord.y.toFixed(1)}" x2="${fcX.toFixed(1)}" y2="${fcY.toFixed(1)}" stroke="${fcColor}" stroke-width="2" stroke-dasharray="4,4" opacity="0.85"/>
+        <!-- Forward forecast node -->
+        <circle cx="${fcX.toFixed(1)}" cy="${fcY.toFixed(1)}" r="6" fill="${fcColor}" stroke="#ffffff" stroke-width="2"/>
+        <circle cx="${fcX.toFixed(1)}" cy="${fcY.toFixed(1)}" r="10" fill="none" stroke="${fcColor}" stroke-width="1.5" opacity="0.5" stroke-dasharray="2,2"/>
+        <!-- Forecast Badge Text -->
+        <rect x="${(fcX - 42).toFixed(1)}" y="${(fcY - 24).toFixed(1)}" width="84" height="18" rx="4" fill="rgba(15, 23, 42, 0.9)" stroke="${fcColor}" stroke-width="1"/>
+        <text x="${fcX.toFixed(1)}" y="${(fcY - 11).toFixed(1)}" fill="${fcColor}" font-size="9" font-weight="700" text-anchor="middle" font-family="Inter, sans-serif">
+          ${isUp ? '▲ FORECAST UP' : '▼ FORECAST DOWN'}
+        </text>
+      `;
+    }
+
+    svg.innerHTML = `
+      <defs>
+        <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#6366f1" stop-opacity="0.3"/>
+          <stop offset="100%" stop-color="#6366f1" stop-opacity="0.0"/>
+        </linearGradient>
+      </defs>
+      ${gridLinesHtml}
+      ${xLabelsHtml}
+      <path d="${areaD}" fill="url(#chartGradient)"/>
+      <path d="${pathD}" fill="none" stroke="#6366f1" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      ${smaD ? `<path d="${smaD}" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="4,4" opacity="0.8"/>` : ''}
+      <circle cx="${lastCoord.x.toFixed(1)}" cy="${lastCoord.y.toFixed(1)}" r="4.5" fill="#10b981" stroke="#ffffff" stroke-width="1.5"/>
+      ${forecastHtml}
+      <line id="chart-crosshair-x" x1="0" y1="${mTop}" x2="0" y2="${baselineY}" stroke="rgba(255,255,255,0.25)" stroke-dasharray="2,2" style="display:none;"/>
+      <circle id="chart-crosshair-dot" cx="0" cy="0" r="5" fill="#6366f1" stroke="#ffffff" stroke-width="2" style="display:none;"/>
+    `;
+
+    // Mousemove for hover tooltips
+    svg.onmousemove = function (e) {
+      const rect = svg.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const svgX = (mouseX / rect.width) * W;
+
+      let closest = coords[0];
+      let minDiff = Infinity;
+      for (let i = 0; i < coords.length; i++) {
+        const diff = Math.abs(coords[i].x - svgX);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closest = coords[i];
+        }
+      }
+
+      const crosshair = document.getElementById('chart-crosshair-x');
+      const dot = document.getElementById('chart-crosshair-dot');
+      if (crosshair && dot) {
+        crosshair.setAttribute('x1', closest.x.toFixed(1));
+        crosshair.setAttribute('x2', closest.x.toFixed(1));
+        crosshair.style.display = 'block';
+        dot.setAttribute('cx', closest.x.toFixed(1));
+        dot.setAttribute('cy', closest.y.toFixed(1));
+        dot.style.display = 'block';
+      }
+
+      if (tooltip) {
+        const pt = closest.pt;
+        const dt = new Date(pt.timestamp);
+        const timeStr =
+          dt.toLocaleString('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          }) + ' IST';
+
+        const instEl = document.getElementById('tooltip-instrument');
+        const timeEl = document.getElementById('tooltip-time');
+        const priceEl = document.getElementById('tooltip-price');
+        const changeEl = document.getElementById('tooltip-change');
+        const volEl = document.getElementById('tooltip-volume');
+        const volRow = document.getElementById('tooltip-vol-row');
+
+        if (instEl) instEl.textContent = `${ChartState.activeSymbol} (${data.instrument_name || 'NSE'})`;
+        if (timeEl) timeEl.textContent = timeStr;
+        if (priceEl) priceEl.textContent = formatPriceINR(pt.close);
+        if (changeEl) {
+          const chg = pt.change || 0;
+          const pct = pt.change_percent || 0;
+          const sign = chg > 0 ? '+' : '';
+          changeEl.textContent = `${sign}₹${chg.toFixed(2)} (${sign}${pct.toFixed(2)}%)`;
+          changeEl.style.color = chg >= 0 ? '#10b981' : '#f43f5e';
+        }
+        if (volEl && volRow) {
+          if (pt.volume !== null && pt.volume !== undefined) {
+            volEl.textContent = Number(pt.volume).toLocaleString('en-IN');
+            volRow.style.display = 'flex';
+          } else {
+            volRow.style.display = 'none';
+          }
+        }
+
+        const wrapRect = svg.parentElement.getBoundingClientRect();
+        let leftPx = e.clientX - wrapRect.left + 15;
+        let topPx = e.clientY - wrapRect.top - 10;
+        if (leftPx + 220 > wrapRect.width) {
+          leftPx = e.clientX - wrapRect.left - 230;
+        }
+        tooltip.style.left = `${Math.max(10, leftPx)}px`;
+        tooltip.style.top = `${Math.max(10, topPx)}px`;
+        tooltip.style.display = 'block';
+      }
+    };
+
+    svg.onmouseleave = function () {
+      const crosshair = document.getElementById('chart-crosshair-x');
+      const dot = document.getElementById('chart-crosshair-dot');
+      if (crosshair) crosshair.style.display = 'none';
+      if (dot) dot.style.display = 'none';
+      if (tooltip) tooltip.style.display = 'none';
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // Dashboard Controller
+  // -------------------------------------------------------------------------
   function initDashboard() {
+    initInteractiveChart();
+
     const btnAnalyze = document.getElementById('dash-btn-analyze');
     if (btnAnalyze) {
       btnAnalyze.addEventListener('click', () => {
@@ -372,6 +743,7 @@
 
   async function loadDashboard() {
     renderDashboardCatalog();
+    loadInteractiveChart();
 
     try {
       const hist = await ApiService.fetchHistory({ symbol: 'BHARTIARTL', limit: 1 });
@@ -521,6 +893,62 @@
     drawer.setAttribute('aria-hidden', 'true');
   }
 
+  function renderMarkdownText(rawText) {
+    if (!rawText) return '';
+    let escaped = escapeHtml(rawText);
+
+    // Headings
+    escaped = escaped.replace(/^###\s+(.*$)/gim, '<h4 style="margin:0.5rem 0 0.25rem 0;color:#f8fafc;font-size:0.92rem;">$1</h4>');
+    escaped = escaped.replace(/^##\s+(.*$)/gim, '<h3 style="margin:0.6rem 0 0.3rem 0;color:#f8fafc;font-size:1rem;">$1</h3>');
+
+    // Blockquotes
+    escaped = escaped.replace(/^&gt;\s+(.*$)/gim, '<blockquote>$1</blockquote>');
+
+    // Bold and Italic
+    escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    escaped = escaped.replace(/\*(.*?)\*/g, '<em>$1</em>');
+
+    // Inline code
+    escaped = escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+    // Bullet lists
+    const lines = escaped.split('\n');
+    let inList = false;
+    const formattedLines = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (/^\s*[-*]\s+(.*)/.test(line)) {
+        const itemContent = line.replace(/^\s*[-*]\s+/, '');
+        if (!inList) {
+          formattedLines.push('<ul>');
+          inList = true;
+        }
+        formattedLines.push(`<li>${itemContent}</li>`);
+      } else {
+        if (inList) {
+          formattedLines.push('</ul>');
+          inList = false;
+        }
+        formattedLines.push(line);
+      }
+    }
+    if (inList) formattedLines.push('</ul>');
+
+    // Double line-break paragraphs
+    const joined = formattedLines.join('\n');
+    return joined
+      .split('\n\n')
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0)
+      .map((p) => {
+        if (p.startsWith('<h3>') || p.startsWith('<h4>') || p.startsWith('<ul>') || p.startsWith('<blockquote>')) {
+          return p;
+        }
+        return `<p style="margin:0.35rem 0;">${p.replace(/\n/g, '<br>')}</p>`;
+      })
+      .join('');
+  }
+
   function appendChatMessage(sender, text) {
     const container = document.getElementById('chat-messages-container');
     if (!container) return;
@@ -531,12 +959,13 @@
     const bubble = document.createElement('div');
     bubble.className = 'message-bubble';
 
-    const paragraphs = String(text).split('\n\n');
-    paragraphs.forEach((pText) => {
+    if (sender === 'assistant') {
+      bubble.innerHTML = renderMarkdownText(text);
+    } else {
       const p = document.createElement('p');
-      p.textContent = pText.trim();
+      p.textContent = text;
       bubble.appendChild(p);
-    });
+    }
 
     const timeSpan = document.createElement('span');
     timeSpan.className = 'message-time';
@@ -980,67 +1409,127 @@
     const uncalBanner = document.getElementById('res-uncalibrated-banner');
     if (uncalBanner) uncalBanner.style.display = 'flex';
 
-    // Historical Fact vs Forward Forecast Distinction
-    const obsPriceEl = document.getElementById('res-observed-price');
-    const obsTimeEl = document.getElementById('res-observed-time');
-    const obsMetaEl = document.getElementById('res-observed-meta');
-    const forecastDirEl = document.getElementById('res-forecast-direction');
-    const forecastMetaEl = document.getElementById('res-forecast-meta');
-
-    const qc = res.quote_context || res.market_quote;
-    const lastPrice = qc ? (typeof qc.last_price === 'number' ? qc.last_price : (typeof qc.last_traded_price === 'number' ? qc.last_traded_price : null)) : null;
-    const priceTime = qc ? (qc.price_timestamp || qc.quote_timestamp) : null;
-    const priceType = (res.quote_context && (res.quote_context.price_type || 'LAST_TRADED_PRICE')) || (qc && qc.price_type) || 'LAST_TRADED_PRICE';
-    const source = qc ? qc.source : null;
-    const sessionState = qc ? qc.session_state : null;
-    const isDelayed = qc ? (typeof qc.is_delayed === 'boolean' ? qc.is_delayed : true) : true;
-    const delayMins = qc ? (qc.delay_minutes || 15) : 15;
-
-    if (obsPriceEl) {
-      if (typeof lastPrice === 'number') {
-        obsPriceEl.textContent = `Last Observed Price: ${formatPriceINR(lastPrice)}`;
-      } else if (res.ensemble && res.ensemble.target_range && typeof res.ensemble.target_range.reference_price === 'number') {
-        obsPriceEl.textContent = `Last Observed Close: ${formatPriceINR(res.ensemble.target_range.reference_price)}`;
-      } else {
-        obsPriceEl.textContent = 'Last Observed Price: ₹--';
-      }
-    }
-
-    if (obsTimeEl) {
-      if (priceTime) {
-        obsTimeEl.textContent = `Observed As of: ${formatDateTimeIST(priceTime)}`;
-      } else if (res.latest_input_timestamp) {
-        obsTimeEl.textContent = `Bar Timestamp: ${formatDateTimeIST(res.latest_input_timestamp)}`;
-      } else {
-        obsTimeEl.textContent = 'Observed As of: --';
-      }
-    }
-
-    if (obsMetaEl) {
-      if (source && source !== 'none') {
-        const delayStr = isDelayed ? ` • Delayed ~${delayMins}m` : '';
-        const sessionStr = sessionState ? ` • Session: ${sessionState}` : '';
-        obsMetaEl.textContent = `Type: ${res.quote_context && res.quote_context.price_type ? res.quote_context.price_type : priceType} • Feed: ${source}${delayStr}${sessionStr} • Not a predicted price`;
-      } else {
-        obsMetaEl.textContent = 'Price Type: LAST_TRADED_PRICE • Not a predicted opening or closing price';
-      }
-    }
-
     const dir = res.predicted_direction || res.direction;
+    const horizonEl = document.getElementById('res-forecast-horizon');
+    if (horizonEl) horizonEl.textContent = 'Next Trading Session (Close-to-Close)';
 
-    if (forecastDirEl) {
-      forecastDirEl.textContent = `Direction: ${dir || '--'}`;
-    }
-
-    if (forecastMetaEl) {
-      forecastMetaEl.textContent = 'Price Target: Unsupported / Not Modeled (Direction Only)';
-    }
-
-    // Direction Decision & Accessibility (never color alone)
+    // 1. Direction Decision & Accessibility (never color alone)
     if (heroCard) {
       heroCard.classList.remove('direction-up', 'direction-down');
       if (dir === 'UP') heroCard.classList.add('direction-up');
       if (dir === 'DOWN') heroCard.classList.add('direction-down');
+    }
+
+    if (dirBadge && dirIcon && dirText) {
+      dirBadge.className = 'direction-badge';
+      if (dir === 'UP') {
+        dirBadge.classList.add('up');
+        dirIcon.textContent = '↗';
+        dirText.textContent = 'PREDICTED UP (Bullish Return)';
+        dirBadge.setAttribute('aria-label', 'Predicted Direction: UP (Bullish Return)');
+      } else if (dir === 'DOWN') {
+        dirBadge.classList.add('down');
+        dirIcon.textContent = '↘';
+        dirText.textContent = 'PREDICTED DOWN (Bearish Return)';
+        dirBadge.setAttribute('aria-label', 'Predicted Direction: DOWN (Bearish Return)');
+      } else {
+        dirBadge.classList.add('neutral');
+        dirIcon.textContent = '⏸';
+        dirText.textContent = dir ? `PREDICTED ${dir} (Flat Return)` : 'NEUTRAL (Flat Return)';
+        dirBadge.setAttribute('aria-label', `Predicted Direction: ${dir || 'NEUTRAL'}`);
+      }
+    }
+
+    // 2. Primary Grounded Reason Box
+    const reasonTextEl = document.getElementById('res-primary-reason-text');
+    if (reasonTextEl) {
+      let groundReason = res.reason;
+      if (!groundReason && res.explanation && res.explanation.summary) {
+        groundReason = res.explanation.summary;
+      }
+      if (!groundReason && res.ensemble && res.ensemble.llm_reasoning_summary) {
+        groundReason = res.ensemble.llm_reasoning_summary;
+      }
+      if (!groundReason) {
+        const pUpVal = typeof res.probability_up === 'number' ? ` (P(UP)=${(res.probability_up * 100).toFixed(1)}%)` : '';
+        groundReason = `Quantitative feature analysis projects ${dir || 'neutral'} momentum for ${res.symbol}${pUpVal}, grounded in moving averages, RSI, and MACD technical indicators.`;
+      }
+      reasonTextEl.textContent = groundReason;
+    }
+
+    // 3. Price Strip: Latest Price, Opening Price, Previous Close, Daily Change
+    const obsPriceEl = document.getElementById('res-observed-price');
+    const obsMetaEl = document.getElementById('res-observed-meta');
+    const openPriceEl = document.getElementById('res-opening-price');
+    const openStatusEl = document.getElementById('res-opening-status');
+    const prevCloseEl = document.getElementById('res-prev-close');
+    const dailyChangeEl = document.getElementById('res-daily-change');
+    const dailyChangePctEl = document.getElementById('res-daily-change-pct');
+
+    const qc = res.quote_context || res.market_quote || {};
+    const lastPrice = typeof qc.last_price === 'number' ? qc.last_price : null;
+    const priceTime = qc.price_timestamp;
+    const source = qc.source || 'yfinance';
+    const sessionState = qc.session_state || 'CLOSED';
+    const isDelayed = typeof qc.is_delayed === 'boolean' ? qc.is_delayed : true;
+
+    // Field 4: Latest Price
+    if (obsPriceEl) {
+      if (typeof lastPrice === 'number') {
+        obsPriceEl.textContent = formatPriceINR(lastPrice);
+      } else {
+        obsPriceEl.textContent = '₹--';
+      }
+    }
+    const forecastMetaEl = document.getElementById('res-forecast-meta');
+    if (forecastMetaEl) {
+      forecastMetaEl.textContent = 'Price Target: Unsupported / Not Modeled (Direction Only)';
+    }
+    if (obsMetaEl) {
+      const pType = (res.quote_context && res.quote_context.price_type) ? (res.quote_context.price_type || 'LAST_TRADED_PRICE') : 'LAST_TRADED_PRICE';
+      const timeStr = priceTime ? formatDateTimeIST(priceTime) : '--';
+      const delayLabel = isDelayed ? 'Delayed ~15m' : 'Real-time';
+      const stateLabel = sessionState === 'REGULAR_HOURS' ? 'Trading Session Active' : 'Confirmed Close';
+      obsMetaEl.textContent = `${delayLabel} • ${pType} • ${stateLabel} • As of ${timeStr}`;
+    }
+
+    // Field 3: Session Opening Price
+    if (openPriceEl && openStatusEl) {
+      if (sessionState === 'REGULAR_HOURS' && typeof qc.open_price === 'number' && qc.open_price > 0) {
+        openPriceEl.textContent = formatPriceINR(qc.open_price);
+        openStatusEl.textContent = 'Observed Session Open';
+        openStatusEl.style.color = '#10b981';
+      } else {
+        openPriceEl.textContent = 'Unavailable / Pre-Market';
+        openStatusEl.textContent = 'Not yet observed (Before Open)';
+        openStatusEl.style.color = '#94a3b8';
+      }
+    }
+
+    // Previous Close
+    if (prevCloseEl) {
+      if (typeof qc.previous_close === 'number' && qc.previous_close > 0) {
+        prevCloseEl.textContent = formatPriceINR(qc.previous_close);
+      } else {
+        prevCloseEl.textContent = '₹--';
+      }
+    }
+
+    // Compact Daily Change & %
+    if (dailyChangeEl && dailyChangePctEl) {
+      if (typeof qc.change === 'number' && typeof qc.change_percent === 'number') {
+        const sign = qc.change > 0 ? '+' : '';
+        dailyChangeEl.textContent = `${sign}₹${Math.abs(qc.change).toFixed(2)}`;
+        dailyChangePctEl.textContent = `${sign}${qc.change_percent.toFixed(2)}%`;
+        const color = qc.change >= 0 ? '#10b981' : '#f43f5e';
+        dailyChangeEl.style.color = color;
+        dailyChangePctEl.style.color = color;
+      } else {
+        dailyChangeEl.textContent = '--';
+        dailyChangePctEl.textContent = '--%';
+        dailyChangeEl.style.color = '#f8fafc';
+        dailyChangePctEl.style.color = '#94a3b8';
+      }
     }
 
     if (dirBadge && dirIcon && dirText) {

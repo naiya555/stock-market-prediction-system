@@ -482,3 +482,47 @@ class ChatResponse(BaseModel):
     sources: List[str] = Field(default_factory=list)
     limitations: List[str] = Field(default_factory=list)
     timestamp: str
+
+
+# ---------------------------------------------------------------------------
+# Chart Schemas (Phase 5)
+# ---------------------------------------------------------------------------
+
+
+class ChartPointResponse(BaseModel):
+    """Single point-in-time observation for interactive charting."""
+
+    timestamp: str
+    open: Optional[float] = None
+    high: Optional[float] = None
+    low: Optional[float] = None
+    close: float
+    volume: Optional[int] = None
+    change: Optional[float] = None
+    change_percent: Optional[float] = None
+
+
+class ChartForecastPointResponse(BaseModel):
+    """Forward-looking directional forecast point cleanly separated from history."""
+
+    timestamp: str
+    direction: str
+    reference_price: float
+    horizon: str = "Next Trading Session (Close-to-Close)"
+    label: str = "Model Forecast Point"
+
+
+class ChartDataResponse(BaseModel):
+    """Structured payload for live-updating and historical charts."""
+
+    symbol: str
+    instrument_name: Optional[str] = None
+    range: str
+    interval: str
+    data_points: List[ChartPointResponse]
+    forecast_point: Optional[ChartForecastPointResponse] = None
+    last_updated: str
+    source: str
+    is_delayed: bool = True
+    session_state: Optional[str] = None
+    note: str

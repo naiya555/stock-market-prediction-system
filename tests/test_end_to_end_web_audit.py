@@ -138,10 +138,10 @@ class TestApiIntegrationAndContracts:
 
         symbols = {inst["symbol"]: inst["status"] for inst in data["instruments"]}
         assert symbols.get("BHARTIARTL") == "SUPPORTED"
-        assert symbols.get("TCS") == "BLOCKED"
+        assert symbols.get("TCS") == "SUPPORTED"
         assert symbols.get("RELIANCE") == "BLOCKED"
-        assert symbols.get("NIFTY_TELECOMMUNICATIONS") == "BLOCKED"
-        assert symbols.get("NIFTY_50") == "BLOCKED"
+        assert symbols.get("NIFTY_TELECOMMUNICATIONS") == "SUPPORTED"
+        assert symbols.get("NIFTY_50") == "SUPPORTED"
 
     def test_predict_bhartiartl_returns_uncalibrated_flag_and_quote_distinction(self, client):
         """Verify BHARTIARTL prediction output contains explicit uncalibrated labeling and quote context."""
@@ -165,10 +165,10 @@ class TestApiIntegrationAndContracts:
         assert data["quote_context"]["price_type"] == "LAST_TRADED_PRICE"
         assert "NOT a predicted opening or closing price" in data["quote_context"]["note"]
 
-    def test_predict_blocked_instrument_tcs_sanitized_error(self, client):
-        """Verify TCS returns MODEL_UNAVAILABLE with sanitized message and zero path leakage."""
+    def test_predict_blocked_instrument_reliance_sanitized_error(self, client):
+        """Verify RELIANCE returns MODEL_UNAVAILABLE with sanitized message and zero path leakage."""
         payload = {
-            "symbol": "TCS",
+            "symbol": "RELIANCE",
             "model_name": "xgboost",
             "persist": False,
         }
@@ -176,29 +176,29 @@ class TestApiIntegrationAndContracts:
         assert resp.status_code == 200
         data = resp.json()
 
-        assert data["symbol"] == "TCS"
+        assert data["symbol"] == "RELIANCE"
         assert data["status"] == "MODEL_UNAVAILABLE"
-        assert "No trained model artifact found for equity instrument 'TCS'" in data["error_message"]
+        assert "No trained model artifact found for equity instrument 'RELIANCE'" in data["error_message"]
         # Must not leak filesystem paths
         assert "C:\\" not in data["error_message"]
         assert "D:\\" not in data["error_message"]
         assert ".json" not in data["error_message"]
         assert ".pt" not in data["error_message"]
 
-    def test_predict_blocked_sectoral_index_nifty_telecom(self, client):
-        """Verify NIFTY_TELECOMMUNICATIONS returns MODEL_UNAVAILABLE rejecting cross-asset model application."""
-        payload = {
-            "symbol": "NIFTY_TELECOMMUNICATIONS",
-            "model_name": "xgboost",
-            "persist": False,
-        }
-        resp = client.post("/api/predict", json=payload)
-        assert resp.status_code == 200
-        data = resp.json()
-
-        assert data["symbol"] == "NIFTY_TELECOMMUNICATIONS"
-        assert data["status"] in ["MODEL_UNAVAILABLE", "FAILED"]
-        assert "BHARTIARTL equity models cannot be reused" in data["error_message"]
+    def test_predict_supported_instrument_tcs_and_indices(self, client):
+        """Verify TCS and indices return SUCCESS with valid forecasts."""
+        for sym in ["TCS", "NIFTY_50", "NIFTY_TELECOMMUNICATIONS"]:
+            payload = {
+                "symbol": sym,
+                "model_name": "xgboost",
+                "persist": False,
+            }
+            resp = client.post("/api/predict", json=payload)
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["symbol"] == sym
+            assert data["status"] == "SUCCESS"
+            assert data["predicted_direction"] in ["UP", "DOWN"]
 
     def test_predict_malformed_symbol_422_rejection(self, client):
         """Verify malformed symbol fails request validation and returns structured error response."""
