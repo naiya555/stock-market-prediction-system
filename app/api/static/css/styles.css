@@ -358,12 +358,14 @@ code, .font-mono {
   gap: 16px;
   align-items: flex-start;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .form-group {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
 }
 
 .flex-1 { flex: 1; min-width: 220px; }
@@ -3098,6 +3100,13 @@ code, .font-mono {
 }
 
 .chat-drawer {
+  top: auto;
+  right: -380px;
+  bottom: 84px;
+  width: min(360px, calc(100vw - 32px));
+  max-width: none;
+  height: min(620px, calc(100vh - 120px));
+  overflow: hidden;
   border-left: 1px solid var(--border-card);
   box-shadow: -8px 0 24px rgba(32, 43, 48, 0.1);
 }
@@ -3150,6 +3159,46 @@ code, .font-mono {
   font-size: 0.82rem;
 }
 
+.prediction-form,
+.prediction-form .form-row,
+.prediction-form .form-row-grid,
+.chat-input-wrapper {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.prediction-form input,
+.prediction-form select,
+.chat-input-field {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.alert-banner {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.alert-content {
+  min-width: 0;
+}
+
+.alert-text {
+  overflow-wrap: anywhere;
+}
+
+.chat-header,
+.chat-prompts-bar,
+.chat-input-form {
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.chat-prompts-bar {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
 @media (max-width: 700px) {
   .app-layout { padding: 0 16px; }
   .app-header { align-items: flex-start; }
@@ -3164,5 +3213,12 @@ code, .font-mono {
   .dash-price-row,
   .dash-direction-row { gap: 16px; flex-wrap: wrap; }
   .floating-chat-btn { right: 16px; bottom: 16px; }
+  .chat-drawer {
+    right: -100%;
+    bottom: 72px;
+    width: calc(100vw - 32px);
+    height: min(600px, calc(100vh - 96px));
+  }
+  .chat-drawer.open { right: 16px; }
   .legal-shell { padding: 24px; }
 }

@@ -190,6 +190,9 @@
         if (err.name === 'AbortError') {
           throw new Error('Prediction request timed out after 30 seconds. The server or market data provider may be busy.');
         }
+        if (err instanceof TypeError && /fetch/i.test(err.message)) {
+          throw new Error('The prediction service could not be reached. Check that the application server is running, then retry.');
+        }
         throw err;
       } finally {
         clearTimeout(timer);
@@ -1278,8 +1281,12 @@
     const heroCard = document.getElementById('result-hero-card');
     const blockedCard = document.getElementById('result-blocked-card');
     const breakdownGrid = document.querySelector('.breakdown-grid');
+    const emptyTitle = document.querySelector('#predict-empty-state .empty-state-title');
+    const emptyText = document.querySelector('#predict-empty-state .empty-state-text');
 
     AppState.prediction = null;
+    if (emptyTitle) emptyTitle.textContent = 'Prediction unavailable';
+    if (emptyText) emptyText.textContent = 'No prediction was returned. Review the notice above and retry when the service is available.';
     if (alertBanner && alertMsg) {
       alertMsg.textContent = msg;
       if (alertRetryBtn) alertRetryBtn.style.display = isRetryable ? 'inline-block' : 'none';
