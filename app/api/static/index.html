@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Indian Stock Market Analysis & Prediction Platform</title>
   <meta name="description" content="Professional Indian stock market analysis platform combining quantitative gradient-boosted ML (XGBoost/LightGBM) with qualitative contextual AI reasoning (Gemma 3 12B) and macroeconomic event tracking.">
-  <link rel="stylesheet" href="/static/css/styles.css">
+  <link rel="stylesheet" href="/static/css/styles.css?v=20261101">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
   <!-- App Container -->
@@ -21,7 +21,7 @@
           <div class="logo-symbol" aria-hidden="true">📈</div>
           <div>
             <h1 class="logo-title">Indian Stock Market <span class="gradient-text">Analysis Platform</span></h1>
-            <p class="logo-subtitle">Automated Model Routing &bull; Multi-Agent Intelligence &bull; Verified Market Outcomes</p>
+            <p class="logo-subtitle">Market intelligence for informed research</p>
           </div>
         </div>
       </div>
@@ -106,10 +106,10 @@
               </div>
               <div class="dash-action-buttons">
                 <button type="button" class="btn btn-primary btn-sm" id="dash-btn-analyze">
-                  <span>⚡ Analyze Stock</span>
+                  <span>Analyze Stock</span>
                 </button>
                 <button type="button" class="btn btn-outline btn-sm" id="dash-btn-ask-ai">
-                  <span>💬 Ask AI Assistant</span>
+                  <span>Ask AI Assistant</span>
                 </button>
               </div>
             </div>
@@ -374,7 +374,7 @@
             <!-- Advanced / Technical Diagnostics Accordion (Hidden from everyday workflow) -->
             <details class="advanced-accordion" id="advanced-options-accordion">
               <summary class="accordion-toggle">
-                <span>⚙️ Advanced Diagnostics & Model Routing Details</span>
+                <span>Advanced Diagnostics & Model Routing Details</span>
                 <span class="toggle-icon">▼</span>
               </summary>
               <div class="accordion-content">
@@ -467,7 +467,7 @@
                 Switch to Supported Instrument (BHARTIARTL)
               </button>
               <button type="button" class="btn btn-outline btn-sm" id="btn-ask-chat-about-blocked">
-                Ask Assistant About This Blocker 💬
+                Ask Assistant About This Blocker
               </button>
             </div>
           </div>
@@ -855,7 +855,7 @@
               <p class="card-subtitle">Every prediction is permanently logged prior to market outcome. Verified outcomes are linked automatically via SQLite foreign keys.</p>
             </div>
             <button type="button" class="btn btn-secondary btn-sm" id="btn-refresh-history">
-              <span class="icon-refresh">🔄</span> Refresh History
+              <span>Refresh History</span>
             </button>
           </div>
 
@@ -959,7 +959,7 @@
               <p class="card-subtitle">Official policy announcements and regulatory circulars ingested from Reserve Bank of India (RBI) and SEBI feeds with point-in-time deduplication.</p>
             </div>
             <button type="button" class="btn btn-secondary btn-sm" id="btn-refresh-events">
-              <span class="icon-refresh">🔄</span> Refresh Events
+              <span>Refresh Events</span>
             </button>
           </div>
 
@@ -995,7 +995,7 @@
               <p class="card-subtitle">Real-time status of underlying prediction pipelines, SQLite database storage, model registry, and local Ollama runtime.</p>
             </div>
             <button type="button" class="btn btn-secondary btn-sm" id="btn-refresh-health">
-              <span class="icon-refresh">🔄</span> Refresh Diagnostics
+              <span>Refresh Diagnostics</span>
             </button>
           </div>
 
@@ -1018,7 +1018,7 @@
 
           <!-- Security Non-Disclosure Box -->
           <div class="security-card">
-            <h4 class="security-title">🔒 Architectural Safety & Privacy Guarantee</h4>
+            <h4 class="security-title">Architectural Safety & Privacy Guarantee</h4>
             <p class="security-text">
               Lightweight diagnostics only. No internal credentials, file system paths, or private model parameters exposed.
             </p>
@@ -1032,13 +1032,13 @@
     <footer class="app-footer">
       <div class="footer-content">
         <div class="footer-left">
-          <span>Indian Stock Market Prediction System &bull; Production Platform</span>
+          <span>Indian Stock Market Prediction System</span>
         </div>
         <div class="footer-center">
-          <code>Multi-Agent Ensemble &bull; 37 Technical Features &bull; Local Gemma 3 12B AI</code>
+          <code>Observed data · directional signals · local AI</code>
         </div>
         <div class="footer-right">
-          <span>Verified Market Outcomes &bull; Immutable SQLite Audit Trail</span>
+          <span><a href="/static/terms.html">Terms</a> <a href="/static/privacy.html">Privacy</a></span>
         </div>
       </div>
     </footer>
@@ -1080,7 +1080,7 @@
     <div id="chat-messages-container" class="chat-messages-container">
       <div class="chat-message assistant">
         <div class="message-bubble">
-          <p>👋 Hello! I am your AI Market Assistant. I can help explain directional forecasts, market terminology (like Repo Rate or Inflation), regulatory announcements, and instrument capabilities.</p>
+          <p>Hello. I am your AI Market Assistant. I can help explain directional forecasts, market terminology (like Repo Rate or Inflation), regulatory announcements, and instrument capabilities.</p>
           <p style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-muted);">How can I assist your market analysis today?</p>
         </div>
         <span class="message-time">Platform Assistant</span>
@@ -1096,7 +1096,7 @@
         </button>
       </div>
       <div class="chat-drawer-disclaimer">
-        <span>⚠️ Research assistant grounded in platform evidence. Does not provide financial advice.</span>
+        <span>Research assistant grounded in platform evidence. Does not provide financial advice.</span>
       </div>
     </form>
   </aside>
