@@ -262,25 +262,41 @@
       return await res.json();
     },
 
-    async sendChatMessage(payload) {
-      const res = await fetch(`${API_BASE}/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
+    async sendChatMessage(payload, timeoutMs = 45000) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-      const data = await res.json().catch(() => null);
-      if (!res.ok) {
-        let msg = `Chat service error (${res.status})`;
-        if (data && data.detail) {
-          msg = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
+      try {
+        const res = await fetch(`${API_BASE}/chat`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+
+        const data = await res.json().catch(() => null);
+        if (!res.ok) {
+          let msg = `Chat service error (${res.status})`;
+          if (data && data.detail) {
+            msg = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
+          }
+          throw new Error(msg);
         }
-        throw new Error(msg);
+        return data;
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          throw new Error('The chat request timed out. The local model may still be loading; retry in a moment.');
+        }
+        if (err instanceof TypeError && /fetch/i.test(err.message)) {
+          throw new Error('The chat service could not be reached. Check that the application server is running, then retry.');
+        }
+        throw err;
+      } finally {
+        clearTimeout(timer);
       }
-      return data;
     },
   };
 

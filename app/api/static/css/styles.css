@@ -3183,6 +3183,90 @@ code, .font-mono {
   min-width: 0;
 }
 
+/* Final chart contrast refinement */
+:root {
+  --text-muted: #4f5d65;
+  --text-dim: #6f7a80;
+}
+
+.trend-svg {
+  background: #f7f5f0;
+  border-color: #d3d0c7;
+}
+
+#dash-trend-svg text {
+  fill: #34434c;
+}
+
+#dash-trend-svg text[fill="#10b981"] {
+  fill: #147d52;
+}
+
+#dash-trend-svg text[fill="#f43f5e"] {
+  fill: #b44942;
+}
+
+#dash-trend-svg line:not(#chart-crosshair-x) {
+  stroke: #d9d6ce;
+}
+
+#chart-crosshair-x {
+  stroke: #6f7a80;
+}
+
+.chart-tooltip-floating {
+  background: #fffefa;
+  border-color: var(--color-primary);
+  color: var(--text-main);
+  box-shadow: 0 4px 14px rgba(32, 43, 48, 0.14);
+}
+
+.chart-tooltip-title {
+  color: var(--color-primary);
+}
+
+.chart-legend,
+.chart-status-footer,
+.chart-legend-row,
+.chart-card-header .card-subtitle,
+.dash-price-label,
+.prob-name,
+.range-caption,
+.dash-status-item {
+  color: var(--text-muted);
+}
+
+.chart-pill-btn,
+.btn-chart-control {
+  background: #e8e5de;
+  border-color: #c9c5bb;
+  color: #34434c;
+}
+
+.chart-pill-btn:hover,
+.btn-chart-control:hover {
+  background: #ddd9d0;
+  color: #202b30;
+  border-color: #aeb8bb;
+}
+
+.chart-pill-btn.active {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+  box-shadow: none;
+}
+
+#dash-trend-svg text {
+  font-size: 11px;
+}
+
+@media (max-width: 700px) {
+  #dash-trend-svg text {
+    font-size: 12px;
+  }
+}
+
 .alert-text {
   overflow-wrap: anywhere;
 }
