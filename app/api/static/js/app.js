@@ -658,10 +658,6 @@
       volumePanelLabel = `<text x="${mLeft - 8}" y="${(volumeTopY + 10).toFixed(1)}" fill="#6f7a80" font-size="9" text-anchor="end" font-family="JetBrains Mono, monospace">VOL</text>`;
     }
 
-    /*
-     * The API exposes direction and a reference price, not a future price.
-     * Keep the marker at the latest actual close instead of inventing a target.
-     */
     // Horizontal grid lines
     const gridRows = 4;
     let gridLinesHtml = '';
@@ -706,29 +702,37 @@
       const fcX = lastCoord.x;
       const fcY = lastCoord.y;
       const futureX = Math.min(W - 20, fcX + forecastSpace);
-      const futureY = forecastTarget === undefined
-        ? fcY
-        : mTop + (1.0 - (forecastTarget - yMin) / priceSpan) * pricePlotH;
+      const hasNumericalTarget = typeof forecastTarget === 'number' && Number.isFinite(forecastTarget);
+      const futureY = hasNumericalTarget
+        ? mTop + (1.0 - (forecastTarget - yMin) / priceSpan) * pricePlotH
+        : fcY;
       const forecastDate = fc.timestamp ? new Date(fc.timestamp).toLocaleDateString('en-IN', {
         timeZone: 'Asia/Kolkata',
         day: '2-digit',
         month: 'short',
       }) : 'Next session';
+      const forecastLabel = hasNumericalTarget
+        ? `${isUp ? 'UP' : 'DOWN'} • ${forecastDate}`
+        : `${isUp ? 'UP' : 'DOWN'} • DIRECTION ONLY`;
 
-      forecastHtml = `
-        <line x1="${fcX.toFixed(1)}" y1="${mTop}" x2="${fcX.toFixed(1)}" y2="${baselineY}" stroke="${fcColor}" stroke-width="1.5" stroke-dasharray="4,4" opacity="0.7"/>
-        <circle cx="${fcX.toFixed(1)}" cy="${fcY.toFixed(1)}" r="6" fill="${fcColor}" stroke="#fffefa" stroke-width="2"/>
-        <line x1="${fcX.toFixed(1)}" y1="${fcY.toFixed(1)}" x2="${futureX.toFixed(1)}" y2="${futureY.toFixed(1)}" stroke="${fcColor}" stroke-width="2.4" stroke-dasharray="7,5"/>
-        <circle cx="${futureX.toFixed(1)}" cy="${futureY.toFixed(1)}" r="6" fill="#fffefa" stroke="${fcColor}" stroke-width="2.5"/>
-        <text x="${futureX.toFixed(1)}" y="${(futureY + 3).toFixed(1)}" fill="${fcColor}" font-size="10" font-weight="700" text-anchor="middle" font-family="Inter, sans-serif">
-          ${isUp ? '▲' : '▼'}
-        </text>
-        <rect x="${Math.max(mLeft, Math.min(W - 124, futureX - 52)).toFixed(1)}" y="${Math.max(4, Math.min(baselineY - 20, futureY - 30)).toFixed(1)}" width="104" height="22" rx="4" fill="#fffefa" stroke="${fcColor}" stroke-width="1"/>
-        <text x="${Math.max(mLeft + 52, Math.min(W - 72, futureX)).toFixed(1)}" y="${Math.max(16, Math.min(baselineY - 9, futureY - 16)).toFixed(1)}" fill="${fcColor}" font-size="8.5" font-weight="700" text-anchor="middle" font-family="Inter, sans-serif">
-          ${isUp ? 'UP' : 'DOWN'} • ${forecastTarget === undefined ? 'DIRECTION ONLY' : forecastDate}
-        </text>
-        <text x="${futureX.toFixed(1)}" y="${(H - 12).toFixed(1)}" fill="${fcColor}" font-size="9" text-anchor="middle" font-family="Inter, sans-serif">${forecastDate}</text>
-      `;
+      forecastHtml = hasNumericalTarget
+        ? `
+          <line x1="${fcX.toFixed(1)}" y1="${fcY.toFixed(1)}" x2="${futureX.toFixed(1)}" y2="${futureY.toFixed(1)}" stroke="${fcColor}" stroke-width="2.4" stroke-dasharray="7,5"/>
+          <circle cx="${futureX.toFixed(1)}" cy="${futureY.toFixed(1)}" r="6" fill="#fffefa" stroke="${fcColor}" stroke-width="2.5"/>
+          <text x="${futureX.toFixed(1)}" y="${(futureY + 3).toFixed(1)}" fill="${fcColor}" font-size="10" font-weight="700" text-anchor="middle" font-family="Inter, sans-serif">
+            ${isUp ? '▲' : '▼'}
+          </text>
+          <rect x="${Math.max(mLeft, Math.min(W - 124, futureX - 52)).toFixed(1)}" y="${Math.max(4, Math.min(baselineY - 20, futureY - 30)).toFixed(1)}" width="104" height="22" rx="4" fill="#fffefa" stroke="${fcColor}" stroke-width="1"/>
+          <text x="${Math.max(mLeft + 52, Math.min(W - 72, futureX)).toFixed(1)}" y="${Math.max(16, Math.min(baselineY - 9, futureY - 16)).toFixed(1)}" fill="${fcColor}" font-size="8.5" font-weight="700" text-anchor="middle" font-family="Inter, sans-serif">
+            ${forecastLabel}
+          </text>
+          <text x="${futureX.toFixed(1)}" y="${(H - 12).toFixed(1)}" fill="${fcColor}" font-size="9" text-anchor="middle" font-family="Inter, sans-serif">${forecastDate}</text>
+        `
+        : `
+          <text x="${(fcX + 8).toFixed(1)}" y="${(fcY - 12).toFixed(1)}" fill="#64748b" font-size="9" font-weight="700" font-family="Inter, sans-serif">
+            Numerical forecast unavailable
+          </text>
+        `;
     }
 
     svg.innerHTML = `
@@ -835,7 +839,7 @@
             year: 'numeric',
           });
           if (forecastTarget === undefined) {
-            forecastEl.textContent = `${forecast.direction} • ${forecastDate} • Direction only`;
+            forecastEl.textContent = `Numerical forecast unavailable • ${forecast.direction} direction only`;
           } else {
             const openText = forecastOpen === undefined ? '' : ` • Open ${formatPriceINR(forecastOpen)}`;
             const closeText = forecastClose === undefined ? ` • Close ${formatPriceINR(forecastTarget)}` : ` • Close ${formatPriceINR(forecastClose)}`;

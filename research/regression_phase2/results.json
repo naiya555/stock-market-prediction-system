@@ -1,0 +1,3502 @@
+{
+  "generated_at": "2026-11-03T18:54:10.537178+00:00",
+  "research_scope": "isolated_phase_2_return_regression",
+  "results": [
+    {
+      "symbol": "BHARTIARTL",
+      "rows": 2433,
+      "features": [
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "daily_return",
+        "rolling_return_3d",
+        "rolling_return_5d",
+        "rolling_volatility_5d",
+        "annualized_volatility_5d",
+        "sma_5",
+        "sma_10",
+        "ema_5",
+        "ema_10",
+        "rsi_14",
+        "macd",
+        "macd_signal",
+        "macd_histogram",
+        "bb_middle",
+        "bb_upper",
+        "bb_lower",
+        "bb_bandwidth",
+        "bb_percent_b",
+        "atr_14",
+        "roc_10",
+        "candle_body",
+        "candle_body_abs",
+        "candle_range",
+        "candle_upper_wick",
+        "candle_lower_wick",
+        "candle_body_ratio",
+        "candle_upper_wick_ratio",
+        "candle_lower_wick_ratio",
+        "candle_close_location",
+        "candle_body_return_pct",
+        "candle_direction_encoded",
+        "trend_regime_encoded"
+      ],
+      "target": "next_session_return",
+      "n_splits": 5,
+      "embargo_sessions": 1,
+      "models": {
+        "xgboost": {
+          "folds": [
+            {
+              "fold": 1,
+              "train_start": "2016-12-23 00:00:00+05:30",
+              "train_end": "2020-12-01 00:00:00+05:30",
+              "validation_start": "2020-12-03 00:00:00+05:30",
+              "validation_end": "2022-02-03 00:00:00+05:30",
+              "train_rows": 973,
+              "validation_rows": 291,
+              "metrics": {
+                "previous_close": {
+                  "mae": 7.788621306009719,
+                  "rmse": 10.459634157236087,
+                  "mape": 1.2964273537587219,
+                  "directional_accuracy": 0.5051546391752577,
+                  "samples": 291
+                },
+                "moving_average": {
+                  "mae": 15.29847749795291,
+                  "rmse": 19.66866841135311,
+                  "mape": 2.538282262199604,
+                  "directional_accuracy": 0.49828178694158076,
+                  "samples": 291
+                },
+                "historical_return": {
+                  "mae": 7.816419095127234,
+                  "rmse": 10.43520873642169,
+                  "mape": 1.3012126451950752,
+                  "directional_accuracy": 0.4948453608247423,
+                  "samples": 291
+                },
+                "xgboost": {
+                  "mae": 8.015263716904995,
+                  "rmse": 10.898211788954287,
+                  "mape": 1.3290753312707506,
+                  "directional_accuracy": 0.5463917525773195,
+                  "samples": 291
+                }
+              },
+              "feature_importance": {
+                "open": 0.0017294172430410981,
+                "high": 0.002298504812642932,
+                "low": 0.0020826468244194984,
+                "volume": 0.0034284868743270636,
+                "daily_return": 0.003261957550421357,
+                "rolling_return_3d": 0.0030055551324039698,
+                "rolling_return_5d": 0.0032293370459228754,
+                "rolling_volatility_5d": 0.003821822116151452,
+                "annualized_volatility_5d": 0.0044080414809286594,
+                "sma_5": 0.0032826887909322977,
+                "sma_10": 0.0056182690896093845,
+                "ema_5": 0.0033039883710443974,
+                "ema_10": 0.003293298650532961,
+                "rsi_14": 0.002875050762668252,
+                "macd": 0.0032990106847137213,
+                "macd_signal": 0.00271447841078043,
+                "macd_histogram": 0.0043043699115514755,
+                "bb_middle": 0.0045387218706309795,
+                "bb_upper": 0.003980941604822874,
+                "bb_lower": 0.0028711254708468914,
+                "bb_bandwidth": 0.0030221175402402878,
+                "bb_percent_b": 0.0029529049061238766,
+                "atr_14": 0.003628266742452979,
+                "roc_10": 0.00303135858848691,
+                "candle_body": 0.002739258809015155,
+                "candle_body_abs": 0.0014091160846874118,
+                "candle_range": 0.004115240648388863,
+                "candle_upper_wick": 0.0035209786146879196,
+                "candle_lower_wick": 0.0036309128627181053,
+                "candle_body_ratio": 0.00258748815394938,
+                "candle_upper_wick_ratio": 0.0034687130246311426,
+                "candle_lower_wick_ratio": 0.002731999149546027,
+                "candle_close_location": 0.0036918476689606905,
+                "candle_body_return_pct": 0.001663460861891508,
+                "trend_regime_encoded": 0.003066113218665123
+              },
+              "residual_mean": -1.6567518129706695,
+              "residual_std": 10.771545554242465,
+              "residual_max_abs": 41.4963543273916,
+              "regime": "positive_return_regime, normal_volatility"
+            },
+            {
+              "fold": 2,
+              "train_start": "2016-12-23 00:00:00+05:30",
+              "train_end": "2022-02-02 00:00:00+05:30",
+              "validation_start": "2022-02-04 00:00:00+05:30",
+              "validation_end": "2023-04-10 00:00:00+05:30",
+              "train_rows": 1264,
+              "validation_rows": 291,
+              "metrics": {
+                "previous_close": {
+                  "mae": 7.968214107133269,
+                  "rmse": 10.341942904592607,
+                  "mape": 1.0804507364388491,
+                  "directional_accuracy": 0.4845360824742268,
+                  "samples": 291
+                },
+                "moving_average": {
+                  "mae": 14.157010045002414,
+                  "rmse": 17.505607848138872,
+                  "mape": 1.91865061354958,
+                  "directional_accuracy": 0.5189003436426117,
+                  "samples": 291
+                },
+                "historical_return": {
+                  "mae": 7.9851930280723495,
+                  "rmse": 10.361853071913533,
+                  "mape": 1.082902602514647,
+                  "directional_accuracy": 0.5154639175257731,
+                  "samples": 291
+                },
+                "xgboost": {
+                  "mae": 8.071085104901579,
+                  "rmse": 10.477400910061458,
+                  "mape": 1.094230496566847,
+                  "directional_accuracy": 0.4879725085910653,
+                  "samples": 291
+                }
+              },
+              "feature_importance": {
+                "open": 0.0012733893236145377,
+                "high": 0.0017967879539355636,
+                "low": 0.0026346680242568254,
+                "volume": 0.0036008849274367094,
+                "daily_return": 0.0023344506043940783,
+                "rolling_return_3d": 0.0028681508265435696,
+                "rolling_return_5d": 0.0031895609572529793,
+                "rolling_volatility_5d": 0.0037024265620857477,
+                "annualized_volatility_5d": 0.004869179334491491,
+                "sma_5": 0.003212917363271117,
+                "sma_10": 0.0028801795560866594,
+                "ema_5": 0.003411502344533801,
+                "ema_10": 0.0030303155072033405,
+                "rsi_14": 0.0033535838592797518,
+                "macd": 0.0031198784708976746,
+                "macd_signal": 0.0030479496344923973,
+                "macd_histogram": 0.0034804122988134623,
+                "bb_middle": 0.003670000471174717,
+                "bb_upper": 0.004367359448224306,
+                "bb_lower": 0.0024414577055722475,
+                "bb_bandwidth": 0.0030665418598800898,
+                "bb_percent_b": 0.0032746493816375732,
+                "atr_14": 0.0033460368867963552,
+                "roc_10": 0.002897762693464756,
+                "candle_body": 0.002717738039791584,
+                "candle_body_abs": 0.0051584914326667786,
+                "candle_range": 0.0031837178394198418,
+                "candle_upper_wick": 0.003325902158394456,
+                "candle_lower_wick": 0.003024992998689413,
+                "candle_body_ratio": 0.0019925921224057674,
+                "candle_upper_wick_ratio": 0.002638912294059992,
+                "candle_lower_wick_ratio": 0.004248969256877899,
+                "candle_close_location": 0.003401926951482892,
+                "candle_body_return_pct": 0.0026973444037139416
+              },
+              "residual_mean": -0.19430953752843258,
+              "residual_std": 10.475598963008377,
+              "residual_max_abs": 35.82577036371367,
+              "regime": "positive_return_regime, normal_volatility"
+            },
+            {
+              "fold": 3,
+              "train_start": "2016-12-23 00:00:00+05:30",
+              "train_end": "2023-04-06 00:00:00+05:30",
+              "validation_start": "2023-04-11 00:00:00+05:30",
+              "validation_end": "2024-06-18 00:00:00+05:30",
+              "train_rows": 1555,
+              "validation_rows": 291,
+              "metrics": {
+                "previous_close": {
+                  "mae": 9.590718796982388,
+                  "rmse": 14.30915749791057,
+                  "mape": 0.9107579238493215,
+                  "directional_accuracy": 0.46048109965635736,
+                  "samples": 291
+                },
+                "moving_average": {
+                  "mae": 20.212493183358838,
+                  "rmse": 27.47786851040647,
+                  "mape": 1.8752984665951977,
+                  "directional_accuracy": 0.5051546391752577,
+                  "samples": 291
+                },
+                "historical_return": {
+                  "mae": 9.554074507563017,
+                  "rmse": 14.201516731053776,
+                  "mape": 0.908157533194952,
+                  "directional_accuracy": 0.5395189003436426,
+                  "samples": 291
+                },
+                "xgboost": {
+                  "mae": 9.700130711758408,
+                  "rmse": 14.120736682829767,
+                  "mape": 0.9203784556328402,
+                  "directional_accuracy": 0.5257731958762887,
+                  "samples": 291
+                }
+              },
+              "feature_importance": {
+                "open": 0.001582852564752102,
+                "high": 0.0023002466186881065,
+                "low": 0.003203169209882617,
+                "volume": 0.00309856329113245,
+                "daily_return": 0.0027790202293545008,
+                "rolling_return_3d": 0.0026303944177925587,
+                "rolling_return_5d": 0.0026504863053560257,
+                "rolling_volatility_5d": 0.0036778338253498077,
+                "annualized_volatility_5d": 0.0046822624281048775,
+                "sma_5": 0.0030050103086978197,
+                "sma_10": 0.0023597897961735725,
+                "ema_5": 0.003581191413104534,
+                "ema_10": 0.0033763032406568527,
+                "rsi_14": 0.002907973015680909,
+                "macd": 0.0026743952184915543,
+                "macd_signal": 0.0021720819640904665,
+                "macd_histogram": 0.0041136108338832855,
+                "bb_middle": 0.0031617137137800455,
+                "bb_upper": 0.0048353285528719425,
+                "bb_lower": 0.002127615734934807,
+                "bb_bandwidth": 0.0029012432787567377,
+                "bb_percent_b": 0.0022011282853782177,
+                "atr_14": 0.0031806938350200653,
+                "roc_10": 0.0035654751118272543,
+                "candle_body": 0.003024808829650283,
+                "candle_body_abs": 0.005297158379107714,
+                "candle_range": 0.003393744118511677,
+                "candle_upper_wick": 0.0029697248246520758,
+                "candle_lower_wick": 0.003274809569120407,
+                "candle_body_ratio": 0.0013594257179647684,
+                "candle_upper_wick_ratio": 0.0023384829983115196,
+                "candle_lower_wick_ratio": 0.004224431235343218,
+                "candle_close_location": 0.002999634249135852,
+                "candle_body_return_pct": 0.002565135480836034,
+                "trend_regime_encoded": 0.006312002893537283
+              },
+              "residual_mean": -2.4528467853960674,
+              "residual_std": 13.906068715247542,
+              "residual_max_abs": 88.44614120541519,
+              "regime": "positive_return_regime, normal_volatility"
+            },
+            {
+              "fold": 4,
+              "train_start": "2016-12-23 00:00:00+05:30",
+              "train_end": "2024-06-14 00:00:00+05:30",
+              "validation_start": "2024-06-19 00:00:00+05:30",
+              "validation_end": "2025-08-19 00:00:00+05:30",
+              "train_rows": 1846,
+              "validation_rows": 291,
+              "metrics": {
+                "previous_close": {
+                  "mae": 17.115294780927837,
+                  "rmse": 23.233722323405978,
+                  "mape": 1.0153003970445809,
+                  "directional_accuracy": 0.47079037800687284,
+                  "samples": 291
+                },
+                "moving_average": {
+                  "mae": 32.56209662263746,
+                  "rmse": 42.69745810258438,
+                  "mape": 1.9058000429706818,
+                  "directional_accuracy": 0.5395189003436426,
+                  "samples": 291
+                },
+                "historical_return": {
+                  "mae": 17.11963543816992,
+                  "rmse": 23.175684548724924,
+                  "mape": 1.015954963835449,
+                  "directional_accuracy": 0.5292096219931272,
+                  "samples": 291
+                },
+                "xgboost": {
+                  "mae": 21.70186014742276,
+                  "rmse": 27.56563585165808,
+                  "mape": 1.295078551229241,
+                  "directional_accuracy": 0.5120274914089347,
+                  "samples": 291
+                }
+              },
+              "feature_importance": {
+                "open": 0.001991833094507456,
+                "high": 0.0019480412593111396,
+                "low": 0.0026662189047783613,
+                "volume": 0.0031978627666831017,
+                "daily_return": 0.002610491355881095,
+                "rolling_return_3d": 0.002469401340931654,
+                "rolling_return_5d": 0.0026749877724796534,
+                "rolling_volatility_5d": 0.0036881498526781797,
+                "annualized_volatility_5d": 0.004556927364319563,
+                "sma_5": 0.0030622375197708607,
+                "sma_10": 0.0026596535462886095,
+                "ema_5": 0.0027147058863192797,
+                "ema_10": 0.004781309515237808,
+                "rsi_14": 0.003078649751842022,
+                "macd": 0.0025174166075885296,
+                "macd_signal": 0.0026289590168744326,
+                "macd_histogram": 0.0037540425546467304,
+                "bb_middle": 0.0030274400487542152,
+                "bb_upper": 0.003789294511079788,
+                "bb_lower": 0.001966813113540411,
+                "bb_bandwidth": 0.003261364297941327,
+                "bb_percent_b": 0.0021502075251191854,
+                "atr_14": 0.003211149014532566,
+                "roc_10": 0.0031793115194886923,
+                "candle_body": 0.002471309620887041,
+                "candle_body_abs": 0.0032401387579739094,
+                "candle_range": 0.0030173559207469225,
+                "candle_upper_wick": 0.0032767662778496742,
+                "candle_lower_wick": 0.0034601103980094194,
+                "candle_body_ratio": 0.001976192928850651,
+                "candle_upper_wick_ratio": 0.004844507668167353,
+                "candle_lower_wick_ratio": 0.00576117355376482,
+                "candle_close_location": 0.002984067192301154,
+                "candle_body_return_pct": 0.002533690305426717,
+                "trend_regime_encoded": 0.0016143545508384705
+              },
+              "residual_mean": 7.331131477414163,
+              "residual_std": 26.57289579942473,
+              "residual_max_abs": 96.68221927229024,
+              "regime": "positive_return_regime, normal_volatility"
+            },
+            {
+              "fold": 5,
+              "train_start": "2016-12-23 00:00:00+05:30",
+              "train_end": "2025-08-18 00:00:00+05:30",
+              "validation_start": "2025-08-20 00:00:00+05:30",
+              "validation_end": "2026-10-30 00:00:00+05:30",
+              "train_rows": 2137,
+              "validation_rows": 295,
+              "metrics": {
+                "previous_close": {
+                  "mae": 18.79254626257945,
+                  "rmse": 24.85584124043558,
+                  "mape": 0.9787445154552888,
+                  "directional_accuracy": 0.49491525423728816,
+                  "samples": 295
+                },
+                "moving_average": {
+                  "mae": 35.327564304157825,
+                  "rmse": 42.94757335815061,
+                  "mape": 1.8346534444913938,
+                  "directional_accuracy": 0.5186440677966102,
+                  "samples": 295
+                },
+                "historical_return": {
+                  "mae": 18.907791416356435,
+                  "rmse": 24.940085816244483,
+                  "mape": 0.9852678067966062,
+                  "directional_accuracy": 0.5050847457627119,
+                  "samples": 295
+                },
+                "xgboost": {
+                  "mae": 19.178817816881757,
+                  "rmse": 25.012918468423823,
+                  "mape": 1.0002053880826494,
+                  "directional_accuracy": 0.5050847457627119,
+                  "samples": 295
+                }
+              },
+              "feature_importance": {
+                "open": 0.00221563340164721,
+                "high": 0.002185286022722721,
+                "low": 0.0028737750835716724,
+                "volume": 0.0024054828099906445,
+                "daily_return": 0.002777528716251254,
+                "rolling_return_3d": 0.002432126086205244,
+                "rolling_return_5d": 0.002679258119314909,
+                "rolling_volatility_5d": 0.0032525386195629835,
+                "annualized_volatility_5d": 0.003803183790296316,
+                "sma_5": 0.002918519079685211,
+                "sma_10": 0.0016754093812778592,
+                "ema_5": 0.0032815386075526476,
+                "ema_10": 0.0037602141965180635,
+                "rsi_14": 0.002670100424438715,
+                "macd": 0.002542877336964011,
+                "macd_signal": 0.0022674729116261005,
+                "macd_histogram": 0.003504699794575572,
+                "bb_middle": 0.0027499624993652105,
+                "bb_upper": 0.004468149039894342,
+                "bb_lower": 0.002346915891394019,
+                "bb_bandwidth": 0.0029631145298480988,
+                "bb_percent_b": 0.002423513913527131,
+                "atr_14": 0.002573079662397504,
+                "roc_10": 0.0029895873740315437,
+                "candle_body": 0.0026235783006995916,
+                "candle_body_abs": 0.0023730669636279345,
+                "candle_range": 0.002835329854860902,
+                "candle_upper_wick": 0.0029428270645439625,
+                "candle_lower_wick": 0.003393127117305994,
+                "candle_body_ratio": 0.0020143843721598387,
+                "candle_upper_wick_ratio": 0.002277915831655264,
+                "candle_lower_wick_ratio": 0.00538371317088604,
+                "candle_close_location": 0.002654271200299263,
+                "trend_regime_encoded": 0.0007063602097332478
+              },
+              "residual_mean": 2.738902681144482,
+              "residual_std": 24.86251198916226,
+              "residual_max_abs": 92.78605864135898,
+              "regime": "positive_return_regime, normal_volatility"
+            }
+          ],
+          "mean_metrics": {
+            "previous_close": {
+              "mae": 12.251079050726531,
+              "rmse": 16.640059624716166,
+              "mape": 1.0563361853093525,
+              "directional_accuracy": 0.4831754907100006
+            },
+            "moving_average": {
+              "mae": 23.51152833062189,
+              "rmse": 30.05943524612669,
+              "mape": 2.0145369659612915,
+              "directional_accuracy": 0.5160999475799406
+            },
+            "historical_return": {
+              "mae": 12.276622697057789,
+              "rmse": 16.62286978087168,
+              "mape": 1.0586991103073458,
+              "directional_accuracy": 0.5168245092899995
+            },
+            "xgboost": {
+              "mae": 13.3334314995739,
+              "rmse": 17.614980740385484,
+              "mape": 1.1277936445564656,
+              "directional_accuracy": 0.5154499388432641
+            }
+          },
+          "beats_previous_close_all_folds": false,
+          "beats_any_baseline_all_folds": false
+        },
+        "lightgbm": {
+          "folds": [
+            {
+              "fold": 1,
+              "train_start": "2016-12-23 00:00:00+05:30",
+              "train_end": "2020-12-01 00:00:00+05:30",
+              "validation_start": "2020-12-03 00:00:00+05:30",
+              "validation_end": "2022-02-03 00:00:00+05:30",
+              "train_rows": 973,
+              "validation_rows": 291,
+              "metrics": {
+                "previous_close": {
+                  "mae": 7.788621306009719,
+                  "rmse": 10.459634157236087,
+                  "mape": 1.2964273537587219,
+                  "directional_accuracy": 0.5051546391752577,
+                  "samples": 291
+                },
+                "moving_average": {
+                  "mae": 15.29847749795291,
+                  "rmse": 19.66866841135311,
+                  "mape": 2.538282262199604,
+                  "directional_accuracy": 0.49828178694158076,
+                  "samples": 291
+                },
+                "historical_return": {
+                  "mae": 7.816419095127234,
+                  "rmse": 10.43520873642169,
+                  "mape": 1.3012126451950752,
+                  "directional_accuracy": 0.4948453608247423,
+                  "samples": 291
+                },
+                "lightgbm": {
+                  "mae": 8.046932308195958,
+                  "rmse": 10.89076753908842,
+                  "mape": 1.3338559539369101,
+                  "directional_accuracy": 0.5601374570446735,
+                  "samples": 291
+                }
+              },
+              "feature_importance": {
+                "open": 0.015937020420096815,
+                "high": 0.020453250035643578,
+                "low": 0.013434689724817872,
+                "close": 0.0,
+                "volume": 0.04370937985368073,
+                "daily_return": 0.013390577456448227,
+                "rolling_return_3d": 0.03127512987703085,
+                "rolling_return_5d": 0.0232102801091969,
+                "rolling_volatility_5d": 0.10923186945728958,
+                "annualized_volatility_5d": 0.017421410069800913,
+                "sma_5": 0.05321198038291186,
+                "sma_10": 0.030963669531047344,
+                "ema_5": 0.030780970118939877,
+                "ema_10": 0.013249799842014909,
+                "rsi_14": 0.03431355021893978,
+                "macd": 0.057554700411856174,
+                "macd_signal": 0.03073803032748401,
+                "macd_histogram": 0.03227020043414086,
+                "bb_middle": 0.027636660262942314,
+                "bb_upper": 0.08986789034679532,
+                "bb_lower": 0.018484539818018675,
+                "bb_bandwidth": 0.0516249998472631,
+                "bb_percent_b": 0.026859950041398406,
+                "atr_14": 0.15046746074222028,
+                "roc_10": 0.027271610219031572,
+                "candle_body": 0.0,
+                "candle_body_abs": 0.007476500002667308,
+                "candle_range": 0.041987209697254,
+                "candle_upper_wick": 0.0751911906991154,
+                "candle_lower_wick": 0.130866501131095,
+                "candle_body_ratio": 0.014144479995593429,
+                "candle_upper_wick_ratio": 0.01247368985787034,
+                "candle_lower_wick_ratio": 0.034099520184099674,
+                "candle_close_location": 0.031537450035102665,
+                "candle_body_return_pct": 0.003485300112515688,
+                "candle_direction_encoded": 0.0,
+                "trend_regime_encoded": 0.0024429000914096832
+              },
+              "residual_mean": -1.5510480113651637,
+              "residual_std": 10.779752671416086,
+              "residual_max_abs": 43.22850842616492,
+              "regime": "positive_return_regime, normal_volatility"
+            },
+            {
+              "fold": 2,
+              "train_start": "2016-12-23 00:00:00+05:30",
+              "train_end": "2022-02-02 00:00:00+05:30",
+              "validation_start": "2022-02-04 00:00:00+05:30",
+              "validation_end": "2023-04-10 00:00:00+05:30",
+              "train_rows": 1264,
+              "validation_rows": 291,
+              "metrics": {
+                "previous_close": {
+                  "mae": 7.968214107133269,
+                  "rmse": 10.341942904592607,
+                  "mape": 1.0804507364388491,
+                  "directional_accuracy": 0.4845360824742268,
+                  "samples": 291
+                },
+                "moving_average": {
+                  "mae": 14.157010045002414,
+                  "rmse": 17.505607848138872,
+                  "mape": 1.91865061354958,
+                  "directional_accuracy": 0.5189003436426117,
+                  "samples": 291
+                },
+                "historical_return": {
+                  "mae": 7.9851930280723495,
+                  "rmse": 10.361853071913533,
+                  "mape": 1.082902602514647,
+                  "directional_accuracy": 0.5154639175257731,
+                  "samples": 291
+                },
+                "lightgbm": {
+                  "mae": 8.046664776505873,
+                  "rmse": 10.439975366954892,
+                  "mape": 1.0910640481077136,
+                  "directional_accuracy": 0.5189003436426117,
+                  "samples": 291
+                }
+              },
+              "feature_importance": {
+                "open": 0.02533242991194129,
+                "high": 0.021119369892403483,
+                "low": 0.0491639202227816,
+                "close": 0.0,
+                "volume": 0.03252264950424433,
+                "daily_return": 0.02703969948925078,
+                "rolling_return_3d": 0.023207977006677538,
+                "rolling_return_5d": 0.01819663995411247,
+                "rolling_volatility_5d": 0.16894664079882205,
+                "annualized_volatility_5d": 0.011954089859500527,
+                "sma_5": 0.042295389575883746,
+                "sma_10": 0.016307599958963692,
+                "ema_5": 0.01388519024476409,
+                "ema_10": 0.016288259881548584,
+                "rsi_14": 0.038740322226658463,
+                "macd": 0.03295651020016521,
+                "macd_signal": 0.03745060972869396,
+                "macd_histogram": 0.011837579775601625,
+                "bb_middle": 0.009091550018638372,
+                "bb_upper": 0.09591701999306679,
+                "bb_lower": 0.02374948957003653,
+                "bb_bandwidth": 0.05193359998520464,
+                "bb_percent_b": 0.014773629955016077,
+                "atr_14": 0.06952797994017601,
+                "roc_10": 0.0366938600782305,
+                "candle_body": 0.011498759966343641,
+                "candle_body_abs": 0.02561242983210832,
+                "candle_range": 0.02389641012996435,
+                "candle_upper_wick": 0.07308656955137849,
+                "candle_lower_wick": 0.041289630346000195,
+                "candle_body_ratio": 0.012246069964021444,
+                "candle_upper_wick_ratio": 0.002692990005016327,
+                "candle_lower_wick_ratio": 0.020082139875739813,
+                "candle_close_location": 0.033977439859882,
+                "candle_body_return_pct": 0.005538390018045902,
+                "candle_direction_encoded": 0.0,
+                "trend_regime_encoded": 0.01305978000164032
+              },
+              "residual_mean": -0.1816249737601943,
+              "residual_std": 10.438395376279416,
+              "residual_max_abs": 34.84396387084087,
+              "regime": "positive_return_regime, normal_volatility"
+            },
+            {
+              "fold": 3,
+              "train_start": "2016-12-23 00:00:00+05:30",
+              "train_end": "2023-04-06 00:00:00+05:30",
+              "validation_start": "2023-04-11 00:00:00+05:30",
+              "validation_end": "2024-06-18 00:00:00+05:30",
+              "train_rows": 1555,
+              "validation_rows": 291,
+              "metrics": {
+                "previous_close": {
+                  "mae": 9.590718796982388,
+                  "rmse": 14.30915749791057,
+                  "mape": 0.9107579238493215,
+                  "directional_accuracy": 0.46048109965635736,
+                  "samples": 291
+                },
+                "moving_average": {
+                  "mae": 20.212493183358838,
+                  "rmse": 27.47786851040647,
+                  "mape": 1.8752984665951977,
+                  "directional_accuracy": 0.5051546391752577,
+                  "samples": 291
+                },
+                "historical_return": {
+                  "mae": 9.554074507563017,
+                  "rmse": 14.201516731053776,
+                  "mape": 0.908157533194952,
+                  "directional_accuracy": 0.5395189003436426,
+                  "samples": 291
+                },
+                "lightgbm": {
+                  "mae": 9.71488870423431,
+                  "rmse": 14.226040869208909,
+                  "mape": 0.9216639731578274,
+                  "directional_accuracy": 0.5223367697594502,
+                  "samples": 291
+                }
+              },
+              "feature_importance": {
+                "open": 0.017490620259195566,
+                "high": 0.030655500129796565,
+                "low": 0.03915797045920044,
+                "close": 0.0,
+                "volume": 0.0324692603899166,
+                "daily_return": 0.05107360961847007,
+                "rolling_return_3d": 0.049300239188596606,
+                "rolling_return_5d": 0.023104719817638397,
+                "rolling_volatility_5d": 0.14747803017962724,
+                "annualized_volatility_5d": 0.007433339953422546,
+                "sma_5": 0.033615609747357666,
+                "sma_10": 0.02325909025967121,
+                "ema_5": 0.045502940309233963,
+                "ema_10": 0.014030120335519314,
+                "rsi_14": 0.0381711102090776,
+                "macd": 0.04941707011312246,
+                "macd_signal": 0.033949659671634436,
+                "macd_histogram": 0.01732888980768621,
+                "bb_middle": 0.008829970029182732,
+                "bb_upper": 0.08614359993953258,
+                "bb_lower": 0.014151779934763908,
+                "bb_bandwidth": 0.053542166482657194,
+                "bb_percent_b": 0.007858189987018704,
+                "atr_14": 0.08436677989084274,
+                "roc_10": 0.02044771029613912,
+                "candle_body": 0.00310035003349185,
+                "candle_body_abs": 0.03534847975242883,
+                "candle_range": 0.0260317197535187,
+                "candle_upper_wick": 0.04774560977239162,
+                "candle_lower_wick": 0.03653460007626563,
+                "candle_body_ratio": 0.013440029579214752,
+                "candle_upper_wick_ratio": 0.018009849824011326,
+                "candle_lower_wick_ratio": 0.023808210040442646,
+                "candle_close_location": 0.03702220995910466,
+                "candle_body_return_pct": 0.0147296201903373,
+                "candle_direction_encoded": 0.0,
+                "trend_regime_encoded": 0.007294019917026162
+              },
+              "residual_mean": -1.1176016278308671,
+              "residual_std": 14.182073382050735,
+              "residual_max_abs": 94.80377994743276,
+              "regime": "positive_return_regime, normal_volatility"
+            },
+            {
+              "fold": 4,
+              "train_start": "2016-12-23 00:00:00+05:30",
+              "train_end": "2024-06-14 00:00:00+05:30",
+              "validation_start": "2024-06-19 00:00:00+05:30",
+              "validation_end": "2025-08-19 00:00:00+05:30",
+              "train_rows": 1846,
+              "validation_rows": 291,
+              "metrics": {
+                "previous_close": {
+                  "mae": 17.115294780927837,
+                  "rmse": 23.233722323405978,
+                  "mape": 1.0153003970445809,
+                  "directional_accuracy": 0.47079037800687284,
+                  "samples": 291
+                },
+                "moving_average": {
+                  "mae": 32.56209662263746,
+                  "rmse": 42.69745810258438,
+                  "mape": 1.9058000429706818,
+                  "directional_accuracy": 0.5395189003436426,
+                  "samples": 291
+                },
+                "historical_return": {
+                  "mae": 17.11963543816992,
+                  "rmse": 23.175684548724924,
+                  "mape": 1.015954963835449,
+                  "directional_accuracy": 0.5292096219931272,
+                  "samples": 291
+                },
+                "lightgbm": {
+                  "mae": 18.580153146598903,
+                  "rmse": 24.412405704234697,
+                  "mape": 1.1079267325596243,
+                  "directional_accuracy": 0.5189003436426117,
+                  "samples": 291
+                }
+              },
+              "feature_importance": {
+                "open": 0.012118409853428602,
+                "high": 0.03398020996246487,
+                "low": 0.04533843963872641,
+                "close": 0.0,
+                "volume": 0.04115529963746667,
+                "daily_return": 0.05002287996467203,
+                "rolling_return_3d": 0.04636029002722353,
+                "rolling_return_5d": 0.01319704984780401,
+                "rolling_volatility_5d": 0.1468380601145327,
+                "annualized_volatility_5d": 0.013676679925993085,
+                "sma_5": 0.04096778959501535,
+                "sma_10": 0.006863849936053157,
+                "ema_5": 0.037222700542770326,
+                "ema_10": 0.01628562994301319,
+                "rsi_14": 0.03207258018665016,
+                "macd": 0.046395370620302856,
+                "macd_signal": 0.0287462598644197,
+                "macd_histogram": 0.012084590154699981,
+                "bb_middle": 0.015876250341534615,
+                "bb_upper": 0.06881042046006769,
+                "bb_lower": 0.03010951029136777,
+                "bb_bandwidth": 0.029272479936480522,
+                "bb_percent_b": 0.0014610299840569496,
+                "atr_14": 0.08614533045329154,
+                "roc_10": 0.03135289985220879,
+                "candle_body": 0.009881050209514797,
+                "candle_body_abs": 0.006180780124850571,
+                "candle_range": 0.02112060016952455,
+                "candle_upper_wick": 0.03401787963230163,
+                "candle_lower_wick": 0.03472060977946967,
+                "candle_body_ratio": 0.016796580399386585,
+                "candle_upper_wick_ratio": 0.013557339902035892,
+                "candle_lower_wick_ratio": 0.007436069892719388,
+                "candle_close_location": 0.025483549805358052,
+                "candle_body_return_pct": 0.012848029844462872,
+                "candle_direction_encoded": 0.0,
+                "trend_regime_encoded": 0.004868580028414726
+              },
+              "residual_mean": 6.1329269433037075,
+              "residual_std": 23.629489189913738,
+              "residual_max_abs": 88.9448751008672,
+              "regime": "positive_return_regime, normal_volatility"
+            },
+            {
+              "fold": 5,
+              "train_start": "2016-12-23 00:00:00+05:30",
+              "train_end": "2025-08-18 00:00:00+05:30",
+              "validation_start": "2025-08-20 00:00:00+05:30",
+              "validation_end": "2026-10-30 00:00:00+05:30",
+              "train_rows": 2137,
+              "validation_rows": 295,
+              "metrics": {
+                "previous_close": {
+                  "mae": 18.79254626257945,
+                  "rmse": 24.85584124043558,
+                  "mape": 0.9787445154552888,
+                  "directional_accuracy": 0.49491525423728816,
+                  "samples": 295
+                },
+                "moving_average": {
+                  "mae": 35.327564304157825,
+                  "rmse": 42.94757335815061,
+                  "mape": 1.8346534444913938,
+                  "directional_accuracy": 0.5186440677966102,
+                  "samples": 295
+                },
+                "historical_return": {
+                  "mae": 18.907791416356435,
+                  "rmse": 24.940085816244483,
+                  "mape": 0.9852678067966062,
+                  "directional_accuracy": 0.5050847457627119,
+                  "samples": 295
+                },
+                "lightgbm": {
+                  "mae": 19.32596512018626,
+                  "rmse": 25.11343415329416,
+                  "mape": 1.0083992769390524,
+                  "directional_accuracy": 0.4847457627118644,
+                  "samples": 295
+                }
+              },
+              "feature_importance": {
+                "open": 0.015158110181801021,
+                "high": 0.032422570046037436,
+                "low": 0.04469417087966576,
+                "close": 0.0,
+                "volume": 0.029299579793587327,
+                "daily_return": 0.05509976064786315,
+                "rolling_return_3d": 0.04235856991726905,
+                "rolling_return_5d": 0.020946450298652053,
+                "rolling_volatility_5d": 0.16047813079785556,
+                "annualized_volatility_5d": 0.015417509712278843,
+                "sma_5": 0.05666417011525482,
+                "sma_10": 0.018024870194494724,
+                "ema_5": 0.015582010033540428,
+                "ema_10": 0.032528980053029954,
+                "rsi_14": 0.0410598594462499,
+                "macd": 0.028131560189649463,
+                "macd_signal": 0.04564560949802399,
+                "macd_histogram": 0.025192129658535123,
+                "bb_middle": 0.010629610042087734,
+                "bb_upper": 0.12236253020819277,
+                "bb_lower": 0.040023860172368586,
+                "bb_bandwidth": 0.05665654060430825,
+                "bb_percent_b": 0.006198680028319359,
+                "atr_14": 0.02707686007488519,
+                "roc_10": 0.018756979843601584,
+                "candle_body": 0.02061794011387974,
+                "candle_body_abs": 0.014321430237032473,
+                "candle_range": 0.009576400043442845,
+                "candle_upper_wick": 0.03103831980843097,
+                "candle_lower_wick": 0.04330339003354311,
+                "candle_body_ratio": 0.013574760057963431,
+                "candle_upper_wick_ratio": 0.010805589728988707,
+                "candle_lower_wick_ratio": 0.019404049846343696,
+                "candle_close_location": 0.020928110112436116,
+                "candle_body_return_pct": 0.0028869900852441788,
+                "candle_direction_encoded": 0.0,
+                "trend_regime_encoded": 0.0030015800148248672
+              },
+              "residual_mean": 3.442162522009715,
+              "residual_std": 24.87641638467875,
+              "residual_max_abs": 91.42078347560482,
+              "regime": "positive_return_regime, normal_volatility"
+            }
+          ],
+          "mean_metrics": {
+            "previous_close": {
+              "mae": 12.251079050726531,
+              "rmse": 16.640059624716166,
+              "mape": 1.0563361853093525,
+              "directional_accuracy": 0.4831754907100006
+            },
+            "moving_average": {
+              "mae": 23.51152833062189,
+              "rmse": 30.05943524612669,
+              "mape": 2.0145369659612915,
+              "directional_accuracy": 0.5160999475799406
+            },
+            "historical_return": {
+              "mae": 12.276622697057789,
+              "rmse": 16.62286978087168,
+              "mape": 1.0586991103073458,
+              "directional_accuracy": 0.5168245092899995
+            },
+            "lightgbm": {
+              "mae": 12.742920811144261,
+              "rmse": 17.016524726556217,
+              "mape": 1.0925819969402255,
+              "directional_accuracy": 0.5210041353602424
+            }
+          },
+          "beats_previous_close_all_folds": false,
+          "beats_any_baseline_all_folds": false
+        }
+      }
+    },
+    {
+      "symbol": "TCS",
+      "rows": 2433,
+      "features": [
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "daily_return",
+        "rolling_return_3d",
+        "rolling_return_5d",
+        "rolling_volatility_5d",
+        "annualized_volatility_5d",
+        "sma_5",
+        "sma_10",
+        "ema_5",
+        "ema_10",
+        "rsi_14",
+        "macd",
+        "macd_signal",
+        "macd_histogram",
+        "bb_middle",
+        "bb_upper",
+        "bb_lower",
+        "bb_bandwidth",
+        "bb_percent_b",
+        "atr_14",
+        "roc_10",
+        "candle_body",
+        "candle_body_abs",
+        "candle_range",
+        "candle_upper_wick",
+        "candle_lower_wick",
+        "candle_body_ratio",
+        "candle_upper_wick_ratio",
+        "candle_lower_wick_ratio",
+        "candle_close_location",
+        "candle_body_return_pct",
+        "candle_direction_encoded",
+        "trend_regime_encoded"
+      ],
+      "target": "next_session_return",
+      "n_splits": 5,
+      "embargo_sessions": 1,
+      "models": {
+        "xgboost": {
+          "folds": [
+            {
+              "fold": 1,
+              "train_start": "2016-12-23 00:00:00+05:30",
+              "train_end": "2020-12-01 00:00:00+05:30",
+              "validation_start": "2020-12-03 00:00:00+05:30",
+              "validation_end": "2022-02-03 00:00:00+05:30",
+              "train_rows": 973,
+              "validation_rows": 291,
+              "metrics": {
+                "previous_close": {
+                  "mae": 33.322852065882735,
+                  "rmse": 45.01579494317951,
+                  "mape": 0.990435931075418,
+                  "directional_accuracy": 0.44329896907216493,
+                  "samples": 291
+                },
+                "moving_average": {
+                  "mae": 72.62128511933525,
+                  "rmse": 88.74173445213383,
+                  "mape": 2.1508965245741574,
+                  "directional_accuracy": 0.43986254295532645,
+                  "samples": 291
+                },
+                "historical_return": {
+                  "mae": 33.10984308511238,
+                  "rmse": 44.889271176456035,
+                  "mape": 0.9847768507007902,
+                  "directional_accuracy": 0.5567010309278351,
+                  "samples": 291
+                },
+                "xgboost": {
+                  "mae": 34.63637902486444,
+                  "rmse": 47.53489213787426,
+                  "mape": 1.0286719693257713,
+                  "directional_accuracy": 0.5360824742268041,
+                  "samples": 291
+                }
+              },
+              "feature_importance": {
+                "open": 0.001626624376513064,
+                "high": 0.0010928123956546187,
+                "low": 0.0020474493503570557,
+                "volume": 0.0012292773462831974,
+                "daily_return": 0.0016386397182941437,
+                "rolling_return_3d": 0.0020281856413930655,
+                "rolling_return_5d": 0.0015671027358621359,
+                "rolling_volatility_5d": 0.0017060183454304934,
+                "annualized_volatility_5d": 0.0024117999710142612,
+                "sma_5": 0.0020032627508044243,
+                "sma_10": 0.001795595628209412,
+                "ema_5": 0.0014768991386517882,
+                "ema_10": 0.002532766666263342,
+                "rsi_14": 0.0014299886533990502,
+                "macd": 0.0019117288757115602,
+                "macd_signal": 0.0020317446906119585,
+                "macd_histogram": 0.0010741299483925104,
+                "bb_middle": 0.001789069501683116,
+                "bb_upper": 0.0016503222286701202,
+                "bb_lower": 0.002612879266962409,
+                "bb_bandwidth": 0.0021858233958482742,
+                "bb_percent_b": 0.0023771324194967747,
+                "atr_14": 0.0021065925247967243,
+                "roc_10": 0.002523843664675951,
+                "candle_body": 0.001850761822424829,
+                "candle_body_abs": 0.0022513647563755512,
+                "candle_range": 0.00263388198800385,
+                "candle_upper_wick": 0.0018777708755806088,
+                "candle_lower_wick": 0.0020141175482422113,
+                "candle_body_ratio": 0.0016993730096146464,
+                "candle_upper_wick_ratio": 0.0015643449733033776,
+                "candle_lower_wick_ratio": 0.0018454414093866944,
+                "candle_close_location": 0.0015492681413888931,
+                "candle_body_return_pct": 0.002603976521641016,
+                "trend_regime_encoded": 0.0018893765518441796
+              },
+              "residual_mean": 3.2858361194412407,
+              "residual_std": 47.421189900249395,
+              "residual_max_abs": 286.7808130806079,
+              "regime": "positive_return_regime, normal_volatility"
+            },
+            {
+              "fold": 2,
+              "train_start": "2016-12-23 00:00:00+05:30",
+              "train_end": "2022-02-02 00:00:00+05:30",
+              "validation_start": "2022-02-04 00:00:00+05:30",
+              "validation_end": "2023-04-10 00:00:00+05:30",
+              "train_rows": 1264,
+              "validation_rows": 291,
+              "metrics": {
+                "previous_close": {
+                  "mae": 34.974918955380154,
+                  "rmse": 47.36380208786249,
+                  "mape": 1.0478396860821435,
+                  "directional_accuracy": 0.5189003436426117,
+                  "samples": 291
+                },
+                "moving_average": {
+                  "mae": 72.16461068379509,
+                  "rmse": 88.13680417126365,
+                  "mape": 2.181351542640746,
+                  "directional_accuracy": 0.4742268041237113,
+                  "samples": 291
+                },
+                "historical_return": {
+                  "mae": 35.23048748235179,
+                  "rmse": 47.69417567369608,
+                  "mape": 1.0559220125298823,
+                  "directional_accuracy": 0.48109965635738833,
+                  "samples": 291
+                },
+                "xgboost": {
+                  "mae": 34.91414252805467,
+                  "rmse": 47.899276426882906,
+                  "mape": 1.0477248238800005,
+                  "directional_accuracy": 0.5051546391752577,
+                  "samples": 291
+                }
+              },
+              "feature_importance": {
+                "open": 0.001498547731898725,
+                "high": 0.0009473729296587408,
+                "low": 0.0019977139309048653,
+                "volume": 0.0015593975549563766,
+                "daily_return": 0.0018448034534230828,
+                "rolling_return_3d": 0.0018653542501851916,
+                "rolling_return_5d": 0.0016222231788560748,
+                "rolling_volatility_5d": 0.001299552503041923,
+                "annualized_volatility_5d": 0.0012812006752938032,
+                "sma_5": 0.0015673426678404212,
+                "sma_10": 0.0014378157211467624,
+                "ema_5": 0.001849760883487761,
+                "ema_10": 0.003224367741495371,
+                "rsi_14": 0.0019070451380684972,
+                "macd": 0.002048427937552333,
+                "macd_signal": 0.001949642552062869,
+                "macd_histogram": 0.0014993451768532395,
+                "bb_middle": 0.002486837562173605,
+                "bb_upper": 0.002208979334682226,
+                "bb_lower": 0.002255301456898451,
+                "bb_bandwidth": 0.0020485003478825092,
+                "bb_percent_b": 0.0015577630838379264,
+                "atr_14": 0.0018126036738976836,
+                "roc_10": 0.002078679157420993,
+                "candle_body": 0.0015913322567939758,
+                "candle_body_abs": 0.001908137695863843,
+                "candle_range": 0.0016656545922160149,
+                "candle_upper_wick": 0.001656544511206448,
+                "candle_lower_wick": 0.0020273083355277777,
+                "candle_body_ratio": 0.001389961806125939,
+                "candle_upper_wick_ratio": 0.0012582158669829369,
+                "candle_lower_wick_ratio": 0.0016413769917562604,
+                "candle_close_location": 0.001851702923886478,
+                "candle_body_return_pct": 0.0025742696598172188,
+                "trend_regime_encoded": 0.0011581528233364224
+              },
+              "residual_mean": 6.935227821658476,
+              "residual_std": 47.39454923596841,
+              "residual_max_abs": 192.4640642007289,
+              "regime": "negative_return_regime, normal_volatility"
+            },
+            {
+              "fold": 3,
+              "train_start": "2016-12-23 00:00:00+05:30",
+              "train_end": "2023-04-06 00:00:00+05:30",
+              "validation_start": "2023-04-11 00:00:00+05:30",
+              "validation_end": "2024-06-18 00:00:00+05:30",
+              "train_rows": 1555,
+              "validation_rows": 291,
+              "metrics": {
+                "previous_close": {
+                  "mae": 32.474565748496566,
+                  "rmse": 43.91078270933782,
+                  "mape": 0.890739269096705,
+                  "directional_accuracy": 0.5017182130584192,
+                  "samples": 291
+                },
+                "moving_average": {
+                  "mae": 63.23105124771801,
+                  "rmse": 81.52894060926974,
+                  "mape": 1.7286774326134846,
+                  "directional_accuracy": 0.5154639175257731,
+                  "samples": 291
+                },
+                "historical_return": {
+                  "mae": 32.616504344570366,
+                  "rmse": 43.894495579584316,
+                  "mape": 0.8948011244544581,
+                  "directional_accuracy": 0.49828178694158076,
+                  "samples": 291
+                },
+                "xgboost": {
+                  "mae": 33.325153436422745,
+                  "rmse": 44.49097727391848,
+                  "mape": 0.913017032709807,
+                  "directional_accuracy": 0.4879725085910653,
+                  "samples": 291
+                }
+              },
+              "feature_importance": {
+                "open": 0.0016280662966892123,
+                "high": 0.001381290378049016,
+                "low": 0.0018402598798274994,
+                "volume": 0.0013799280859529972,
+                "daily_return": 0.00190124346408993,
+                "rolling_return_3d": 0.0017533752834424376,
+                "rolling_return_5d": 0.001940258895047009,
+                "rolling_volatility_5d": 0.0014216284034773707,
+                "annualized_volatility_5d": 0.0023987528402358294,
+                "sma_5": 0.0018022016156464815,
+                "sma_10": 0.0016245227307081223,
+                "ema_5": 0.002112210961058736,
+                "ema_10": 0.002764180302619934,
+                "rsi_14": 0.002056306693702936,
+                "macd": 0.0020434160251170397,
+                "macd_signal": 0.0020325148943811655,
+                "macd_histogram": 0.001612213789485395,
+                "bb_middle": 0.0016083003720268607,
+                "bb_upper": 0.0025226043071597815,
+                "bb_lower": 0.0020228158682584763,
+                "bb_bandwidth": 0.0022410869132727385,
+                "bb_percent_b": 0.0016796240815892816,
+                "atr_14": 0.001959886634722352,
+                "roc_10": 0.0015571258263662457,
+                "candle_body": 0.0014901577960699797,
+                "candle_body_abs": 0.0018198298057541251,
+                "candle_range": 0.0021374474745243788,
+                "candle_upper_wick": 0.0013336276169866323,
+                "candle_lower_wick": 0.0019217750523239374,
+                "candle_body_ratio": 0.0016227863961830735,
+                "candle_upper_wick_ratio": 0.00164177012629807,
+                "candle_lower_wick_ratio": 0.0022911636624485254,
+                "candle_close_location": 0.0017672484973445535,
+                "candle_body_return_pct": 0.002856454811990261,
+                "trend_regime_encoded": 0.0023934971541166306
+              },
+              "residual_mean": -0.6592394704417417,
+              "residual_std": 44.486092906760675,
+              "residual_max_abs": 183.0563780963421,
+              "regime": "positive_return_regime, normal_volatility"
+            },
+            {
+              "fold": 4,
+              "train_start": "2016-12-23 00:00:00+05:30",
+              "train_end": "2024-06-14 00:00:00+05:30",
+              "validation_start": "2024-06-19 00:00:00+05:30",
+              "validation_end": "2025-08-19 00:00:00+05:30",
+              "train_rows": 1846,
+              "validation_rows": 291,
+              "metrics": {
+                "previous_close": {
+                  "mae": 35.65327500805412,
+                  "rmse": 51.98153841842947,
+                  "mape": 0.9203427063204271,
+                  "directional_accuracy": 0.5498281786941581,
+                  "samples": 291
+                },
+                "moving_average": {
+                  "mae": 85.4888473038821,
+                  "rmse": 108.1958289241971,
+                  "mape": 2.214920077808961,
+                  "directional_accuracy": 0.4948453608247423,
+                  "samples": 291
+                },
+                "historical_return": {
+                  "mae": 36.00939249522163,
+                  "rmse": 52.210013352128016,
+                  "mape": 0.9306020612000214,
+                  "directional_accuracy": 0.45017182130584193,
+                  "samples": 291
+                },
+                "xgboost": {
+                  "mae": 40.00338823058401,
+                  "rmse": 55.530094407050264,
+                  "mape": 1.0425552683817927,
+                  "directional_accuracy": 0.45017182130584193,
+                  "samples": 291
+                }
+              },
+              "feature_importance": {
+                "open": 0.0016314348904415965,
+                "high": 0.0011707503581419587,
+                "low": 0.0020098197273910046,
+                "volume": 0.0013938553165644407,
+                "daily_return": 0.0017755372682586312,
+                "rolling_return_3d": 0.0018702198285609484,
+                "rolling_return_5d": 0.002000911859795451,
+                "rolling_volatility_5d": 0.0015047721099108458,
+                "annualized_volatility_5d": 0.0018568526720628142,
+                "sma_5": 0.0016657343367114663,
+                "sma_10": 0.0024481890723109245,
+                "ema_5": 0.0026383125223219395,
+                "ema_10": 0.001858022529631853,
+                "rsi_14": 0.0019046691013500094,
+                "macd": 0.0017756125889718533,
+                "macd_signal": 0.002005899790674448,
+                "macd_histogram": 0.0016226833686232567,
+                "bb_middle": 0.0021955238189548254,
+                "bb_upper": 0.0019353332463651896,
+                "bb_lower": 0.002264115959405899,
+                "bb_bandwidth": 0.0016270405612885952,
+                "bb_percent_b": 0.001814941642805934,
+                "atr_14": 0.001892930711619556,
+                "roc_10": 0.0016581715317443013,
+                "candle_body": 0.002133549889549613,
+                "candle_body_abs": 0.001898080692626536,
+                "candle_range": 0.0017600770806893706,
+                "candle_upper_wick": 0.001721867942251265,
+                "candle_lower_wick": 0.0018165751826018095,
+                "candle_body_ratio": 0.0017665863269940019,
+                "candle_upper_wick_ratio": 0.0015281355008482933,
+                "candle_lower_wick_ratio": 0.0019328756025061011,
+                "candle_close_location": 0.0015536709688603878,
+                "candle_body_return_pct": 0.0015642422949895263,
+                "trend_regime_encoded": 0.002377826487645507
+              },
+              "residual_mean": 8.797371755755409,
+              "residual_std": 54.828802969305755,
+              "residual_max_abs": 243.82643742734217,
+              "regime": "negative_return_regime, normal_volatility"
+            },
+            {
+              "fold": 5,
+              "train_start": "2016-12-23 00:00:00+05:30",
+              "train_end": "2025-08-18 00:00:00+05:30",
+              "validation_start": "2025-08-20 00:00:00+05:30",
+              "validation_end": "2026-10-30 00:00:00+05:30",
+              "train_rows": 2137,
+              "validation_rows": 295,
+              "metrics": {
+                "previous_close": {
+                  "mae": 32.73796510858051,
+                  "rmse": 45.69132856153525,
+                  "mape": 1.2753820605790915,
+                  "directional_accuracy": 0.5491525423728814,
+                  "samples": 295
+                },
+                "moving_average": {
+                  "mae": 71.25420418432203,
+                  "rmse": 92.11035459118258,
+                  "mape": 2.797014124589971,
+                  "directional_accuracy": 0.5050847457627119,
+                  "samples": 295
+                },
+                "historical_return": {
+                  "mae": 32.91951796045448,
+                  "rmse": 45.80132511827388,
+                  "mape": 1.2829866045113867,
+                  "directional_accuracy": 0.45084745762711864,
+                  "samples": 295
+                },
+                "xgboost": {
+                  "mae": 33.490188820397144,
+                  "rmse": 45.939538814542196,
+                  "mape": 1.3027394205281535,
+                  "directional_accuracy": 0.43728813559322033,
+                  "samples": 295
+                }
+              },
+              "feature_importance": {
+                "open": 0.0012157621094956994,
+                "high": 0.001247064908966422,
+                "low": 0.0019086430547758937,
+                "volume": 0.0012493367539718747,
+                "daily_return": 0.0017601882573217154,
+                "rolling_return_3d": 0.001962994923815131,
+                "rolling_return_5d": 0.0015613356372341514,
+                "rolling_volatility_5d": 0.0013620593817904592,
+                "annualized_volatility_5d": 0.0017666969215497375,
+                "sma_5": 0.002016218611970544,
+                "sma_10": 0.0016518954653292894,
+                "ema_5": 0.002101542428135872,
+                "ema_10": 0.002387124579399824,
+                "rsi_14": 0.0014440722297877073,
+                "macd": 0.0014860472874715924,
+                "macd_signal": 0.0012754667550325394,
+                "macd_histogram": 0.0017753501888364553,
+                "bb_middle": 0.0020009116269648075,
+                "bb_upper": 0.0020865194965153933,
+                "bb_lower": 0.002114214701578021,
+                "bb_bandwidth": 0.0019611085299402475,
+                "bb_percent_b": 0.0017910581082105637,
+                "atr_14": 0.0018486971966922283,
+                "roc_10": 0.0016744129825383425,
+                "candle_body": 0.0028872424736618996,
+                "candle_body_abs": 0.0014996582176536322,
+                "candle_range": 0.0012233192101120949,
+                "candle_upper_wick": 0.002356679877266288,
+                "candle_lower_wick": 0.0017968220636248589,
+                "candle_body_ratio": 0.0014605573378503323,
+                "candle_upper_wick_ratio": 0.002412130357697606,
+                "candle_lower_wick_ratio": 0.0018582476768642664,
+                "candle_close_location": 0.0027280489448457956,
+                "candle_body_return_pct": 0.001457263482734561,
+                "trend_regime_encoded": 0.002183234319090843
+              },
+              "residual_mean": 4.489725771911839,
+              "residual_std": 45.71961930053508,
+              "residual_max_abs": 236.2219561425154,
+              "regime": "negative_return_regime, high_volatility"
+            }
+          ],
+          "mean_metrics": {
+            "previous_close": {
+              "mae": 33.83271537727882,
+              "rmse": 46.792649344068906,
+              "mape": 1.024947930630757,
+              "directional_accuracy": 0.512579649368047
+            },
+            "moving_average": {
+              "mae": 72.9519997078105,
+              "rmse": 91.74273254960937,
+              "mape": 2.214571940445464,
+              "directional_accuracy": 0.48589667423845295
+            },
+            "historical_return": {
+              "mae": 33.97714907354212,
+              "rmse": 46.89785618002767,
+              "mape": 1.0298177306793077,
+              "directional_accuracy": 0.487420350631953
+            },
+            "xgboost": {
+              "mae": 35.273850408064604,
+              "rmse": 48.27895581205362,
+              "mape": 1.0669417029651052,
+              "directional_accuracy": 0.4833339157784378
+            }
+          },
+          "beats_previous_close_all_folds": false,
+          "beats_any_baseline_all_folds": false
+        },
+        "lightgbm": {
+          "folds": [
+            {
+              "fold": 1,
+              "train_start": "2016-12-23 00:00:00+05:30",
+              "train_end": "2020-12-01 00:00:00+05:30",
+              "validation_start": "2020-12-03 00:00:00+05:30",
+              "validation_end": "2022-02-03 00:00:00+05:30",
+              "train_rows": 973,
+              "validation_rows": 291,
+              "metrics": {
+                "previous_close": {
+                  "mae": 33.322852065882735,
+                  "rmse": 45.01579494317951,
+                  "mape": 0.990435931075418,
+                  "directional_accuracy": 0.44329896907216493,
+                  "samples": 291
+                },
+                "moving_average": {
+                  "mae": 72.62128511933525,
+                  "rmse": 88.74173445213383,
+                  "mape": 2.1508965245741574,
+                  "directional_accuracy": 0.43986254295532645,
+                  "samples": 291
+                },
+                "historical_return": {
+                  "mae": 33.10984308511238,
+                  "rmse": 44.889271176456035,
+                  "mape": 0.9847768507007902,
+                  "directional_accuracy": 0.5567010309278351,
+                  "samples": 291
+                },
+                "lightgbm": {
+                  "mae": 35.22613404701329,
+                  "rmse": 48.38051443662744,
+                  "mape": 1.049093770032933,
+                  "directional_accuracy": 0.5189003436426117,
+                  "samples": 291
+                }
+              },
+              "feature_importance": {
+                "open": 0.004314969992265105,
+                "high": 0.01668386987876147,
+                "low": 0.025723270140588284,
+                "close": 0.0,
+                "volume": 0.0389508098596707,
+                "daily_return": 0.018808099906891584,
+                "rolling_return_3d": 0.016405136149842292,
+                "rolling_return_5d": 0.029709761787671596,
+                "rolling_volatility_5d": 0.05675544263795018,
+                "annualized_volatility_5d": 0.009804570348933339,
+                "sma_5": 0.028522959677502513,
+                "sma_10": 0.028347989777103066,
+                "ema_5": 0.01673413021489978,
+                "ema_10": 0.006802210002206266,
+                "rsi_14": 0.021824860014021397,
+                "macd": 0.03829642559867352,
+                "macd_signal": 0.022730070049874485,
+                "macd_histogram": 0.009336458111647516,
+                "bb_middle": 0.00203277007676661,
+                "bb_upper": 0.01717414997983724,
+                "bb_lower": 0.040246210410259664,
+                "bb_bandwidth": 0.021968920016661286,
+                "bb_percent_b": 0.004070610040798783,
+                "atr_14": 0.05974547972436994,
+                "roc_10": 0.013237430131994188,
+                "candle_body": 0.008334300015121698,
+                "candle_body_abs": 0.005199969979003072,
+                "candle_range": 0.019760299182962626,
+                "candle_upper_wick": 0.024265347339678556,
+                "candle_lower_wick": 0.03175075992476195,
+                "candle_body_ratio": 0.004960571066476405,
+                "candle_upper_wick_ratio": 0.012973199947737157,
+                "candle_lower_wick_ratio": 0.020036169909872115,
+                "candle_close_location": 0.008441479760222137,
+                "candle_body_return_pct": 0.0018568099476397038,
+                "candle_direction_encoded": 0.0,
+                "trend_regime_encoded": 0.0031049599638208747
+              },
+              "residual_mean": 6.38660217337517,
+              "residual_std": 47.957121367235494,
+              "residual_max_abs": 289.8945141133431,
+              "regime": "positive_return_regime, normal_volatility"
+            },
+            {
+              "fold": 2,
+              "train_start": "2016-12-23 00:00:00+05:30",
+              "train_end": "2022-02-02 00:00:00+05:30",
+              "validation_start": "2022-02-04 00:00:00+05:30",
+              "validation_end": "2023-04-10 00:00:00+05:30",
+              "train_rows": 1264,
+              "validation_rows": 291,
+              "metrics": {
+                "previous_close": {
+                  "mae": 34.974918955380154,
+                  "rmse": 47.36380208786249,
+                  "mape": 1.0478396860821435,
+                  "directional_accuracy": 0.5189003436426117,
+                  "samples": 291
+                },
+                "moving_average": {
+                  "mae": 72.16461068379509,
+                  "rmse": 88.13680417126365,
+                  "mape": 2.181351542640746,
+                  "directional_accuracy": 0.4742268041237113,
+                  "samples": 291
+                },
+                "historical_return": {
+                  "mae": 35.23048748235179,
+                  "rmse": 47.69417567369608,
+                  "mape": 1.0559220125298823,
+                  "directional_accuracy": 0.48109965635738833,
+                  "samples": 291
+                },
+                "lightgbm": {
+                  "mae": 35.411652943296254,
+                  "rmse": 48.11399259438186,
+                  "mape": 1.062981964705649,
+                  "directional_accuracy": 0.5292096219931272,
+                  "samples": 291
+                }
+              },
+              "feature_importance": {
+                "open": 0.010741982841864228,
+                "high": 0.021100528887473047,
+                "low": 0.03491098969243467,
+                "close": 0.0,
+                "volume": 0.03178229997865856,
+                "daily_return": 0.01808452175464481,
+                "rolling_return_3d": 0.017610250157304108,
+                "rolling_return_5d": 0.05384667019825429,
+                "rolling_volatility_5d": 0.04188801988493651,
+                "annualized_volatility_5d": 0.002219409914687276,
+                "sma_5": 0.03854191501159221,
+                "sma_10": 0.02105196926277131,
+                "ema_5": 0.022480108367744833,
+                "ema_10": 0.006530110142193735,
+                "rsi_14": 0.020243219914846122,
+                "macd": 0.016763410065323114,
+                "macd_signal": 0.025261603703256696,
+                "macd_histogram": 0.012224360019899905,
+                "bb_middle": 0.007748930132947862,
+                "bb_upper": 0.02470092987641692,
+                "bb_lower": 0.028123263036832213,
+                "bb_bandwidth": 0.010866167896892875,
+                "bb_percent_b": 0.015565279987640679,
+                "atr_14": 0.025052160024642944,
+                "roc_10": 0.02004211989697069,
+                "candle_body": 0.0022729099728167057,
+                "candle_body_abs": 0.012255579815246165,
+                "candle_range": 0.00943680014461279,
+                "candle_upper_wick": 0.02512202027719468,
+                "candle_lower_wick": 0.039381439913995564,
+                "candle_body_ratio": 0.012072429759427905,
+                "candle_upper_wick_ratio": 0.005930370069108903,
+                "candle_lower_wick_ratio": 0.01751963293645531,
+                "candle_close_location": 0.011645650025457144,
+                "candle_body_return_pct": 0.001823729951865971,
+                "candle_direction_encoded": 0.0,
+                "trend_regime_encoded": 0.0017495700158178806
+              },
+              "residual_mean": 7.747787133101712,
+              "residual_std": 47.48608299188697,
+              "residual_max_abs": 199.10139775720518,
+              "regime": "negative_return_regime, normal_volatility"
+            },
+            {
+              "fold": 3,
+              "train_start": "2016-12-23 00:00:00+05:30",
+              "train_end": "2023-04-06 00:00:00+05:30",
+              "validation_start": "2023-04-11 00:00:00+05:30",
+              "validation_end": "2024-06-18 00:00:00+05:30",
+              "train_rows": 1555,
+              "validation_rows": 291,
+              "metrics": {
+                "previous_close": {
+                  "mae": 32.474565748496566,
+                  "rmse": 43.91078270933782,
+                  "mape": 0.890739269096705,
+                  "directional_accuracy": 0.5017182130584192,
+                  "samples": 291
+                },
+                "moving_average": {
+                  "mae": 63.23105124771801,
+                  "rmse": 81.52894060926974,
+                  "mape": 1.7286774326134846,
+                  "directional_accuracy": 0.5154639175257731,
+                  "samples": 291
+                },
+                "historical_return": {
+                  "mae": 32.616504344570366,
+                  "rmse": 43.894495579584316,
+                  "mape": 0.8948011244544581,
+                  "directional_accuracy": 0.49828178694158076,
+                  "samples": 291
+                },
+                "lightgbm": {
+                  "mae": 33.182040164184244,
+                  "rmse": 44.414842374200134,
+                  "mape": 0.9098827073320871,
+                  "directional_accuracy": 0.49828178694158076,
+                  "samples": 291
+                }
+              },
+              "feature_importance": {
+                "open": 0.00704481010325253,
+                "high": 0.01828421000391245,
+                "low": 0.03470025351271033,
+                "close": 0.0,
+                "volume": 0.03964520012959838,
+                "daily_return": 0.01724416995421052,
+                "rolling_return_3d": 0.04471936007030308,
+                "rolling_return_5d": 0.03402534022461623,
+                "rolling_volatility_5d": 0.03852752939565107,
+                "annualized_volatility_5d": 0.004065090091899037,
+                "sma_5": 0.03818639705423266,
+                "sma_10": 0.03833516035228968,
+                "ema_5": 0.015014860895462334,
+                "ema_10": 0.003038379945792258,
+                "rsi_14": 0.007298029959201813,
+                "macd": 0.022770090261474252,
+                "macd_signal": 0.02833128988277167,
+                "macd_histogram": 0.01782847021240741,
+                "bb_middle": 0.011769740143790841,
+                "bb_upper": 0.02123220986686647,
+                "bb_lower": 0.039379240013659,
+                "bb_bandwidth": 0.010089200106449425,
+                "bb_percent_b": 0.00732207007240504,
+                "atr_14": 0.03152483003214002,
+                "roc_10": 0.02082655020058155,
+                "candle_body": 0.0029524400597438216,
+                "candle_body_abs": 0.012465439736843109,
+                "candle_range": 0.003568010055460036,
+                "candle_upper_wick": 0.03176486992742866,
+                "candle_lower_wick": 0.0283495900221169,
+                "candle_body_ratio": 0.0010808800579980016,
+                "candle_upper_wick_ratio": 0.008272071194369346,
+                "candle_lower_wick_ratio": 0.016421231091953814,
+                "candle_close_location": 0.006011949852108955,
+                "candle_body_return_pct": 0.0,
+                "candle_direction_encoded": 0.0,
+                "trend_regime_encoded": 0.0
+              },
+              "residual_mean": -1.0073833830393186,
+              "residual_std": 44.40341655598835,
+              "residual_max_abs": 188.95923877822224,
+              "regime": "positive_return_regime, normal_volatility"
+            },
+            {
+              "fold": 4,
+              "train_start": "2016-12-23 00:00:00+05:30",
+              "train_end": "2024-06-14 00:00:00+05:30",
+              "validation_start": "2024-06-19 00:00:00+05:30",
+              "validation_end": "2025-08-19 00:00:00+05:30",
+              "train_rows": 1846,
+              "validation_rows": 291,
+              "metrics": {
+                "previous_close": {
+                  "mae": 35.65327500805412,
+                  "rmse": 51.98153841842947,
+                  "mape": 0.9203427063204271,
+                  "directional_accuracy": 0.5498281786941581,
+                  "samples": 291
+                },
+                "moving_average": {
+                  "mae": 85.4888473038821,
+                  "rmse": 108.1958289241971,
+                  "mape": 2.214920077808961,
+                  "directional_accuracy": 0.4948453608247423,
+                  "samples": 291
+                },
+                "historical_return": {
+                  "mae": 36.00939249522163,
+                  "rmse": 52.210013352128016,
+                  "mape": 0.9306020612000214,
+                  "directional_accuracy": 0.45017182130584193,
+                  "samples": 291
+                },
+                "lightgbm": {
+                  "mae": 38.7339642573366,
+                  "rmse": 54.56182452218088,
+                  "mape": 1.00920114352661,
+                  "directional_accuracy": 0.47079037800687284,
+                  "samples": 291
+                }
+              },
+              "feature_importance": {
+                "open": 0.004767740028910339,
+                "high": 0.0063151001231744885,
+                "low": 0.0223156176507473,
+                "close": 0.0,
+                "volume": 0.03465514036361128,
+                "daily_return": 0.01854010985698551,
+                "rolling_return_3d": 0.04123577900463715,
+                "rolling_return_5d": 0.031194249750114977,
+                "rolling_volatility_5d": 0.04844615003094077,
+                "annualized_volatility_5d": 0.002877199905924499,
+                "sma_5": 0.03668591205496341,
+                "sma_10": 0.03573712985962629,
+                "ema_5": 0.036655229749158025,
+                "ema_10": 0.008297719876281917,
+                "rsi_14": 0.018754850141704082,
+                "macd": 0.03304925991687924,
+                "macd_signal": 0.031684639980085194,
+                "macd_histogram": 0.022237844998016953,
+                "bb_middle": 0.007604799931868911,
+                "bb_upper": 0.015355549985542893,
+                "bb_lower": 0.027617172803729773,
+                "bb_bandwidth": 0.007775199948810041,
+                "bb_percent_b": 0.0013895999873057008,
+                "atr_14": 0.02374529035296291,
+                "roc_10": 0.03176876995712519,
+                "candle_body": 0.004773060092702508,
+                "candle_body_abs": 0.013731293904129416,
+                "candle_range": 0.010824835044331849,
+                "candle_upper_wick": 0.010482189944013953,
+                "candle_lower_wick": 0.026562917861156166,
+                "candle_body_ratio": 0.006464179896283895,
+                "candle_upper_wick_ratio": 0.010920579894445837,
+                "candle_lower_wick_ratio": 0.013800510205328465,
+                "candle_close_location": 0.0,
+                "candle_body_return_pct": 0.004307220107875764,
+                "candle_direction_encoded": 0.0,
+                "trend_regime_encoded": 0.0009484890033490956
+              },
+              "residual_mean": 7.260288814909793,
+              "residual_std": 54.07662065544919,
+              "residual_max_abs": 245.0542510906189,
+              "regime": "negative_return_regime, normal_volatility"
+            },
+            {
+              "fold": 5,
+              "train_start": "2016-12-23 00:00:00+05:30",
+              "train_end": "2025-08-18 00:00:00+05:30",
+              "validation_start": "2025-08-20 00:00:00+05:30",
+              "validation_end": "2026-10-30 00:00:00+05:30",
+              "train_rows": 2137,
+              "validation_rows": 295,
+              "metrics": {
+                "previous_close": {
+                  "mae": 32.73796510858051,
+                  "rmse": 45.69132856153525,
+                  "mape": 1.2753820605790915,
+                  "directional_accuracy": 0.5491525423728814,
+                  "samples": 295
+                },
+                "moving_average": {
+                  "mae": 71.25420418432203,
+                  "rmse": 92.11035459118258,
+                  "mape": 2.797014124589971,
+                  "directional_accuracy": 0.5050847457627119,
+                  "samples": 295
+                },
+                "historical_return": {
+                  "mae": 32.91951796045448,
+                  "rmse": 45.80132511827388,
+                  "mape": 1.2829866045113867,
+                  "directional_accuracy": 0.45084745762711864,
+                  "samples": 295
+                },
+                "lightgbm": {
+                  "mae": 33.320003597269995,
+                  "rmse": 46.326621499345656,
+                  "mape": 1.296056095003136,
+                  "directional_accuracy": 0.49830508474576274,
+                  "samples": 295
+                }
+              },
+              "feature_importance": {
+                "open": 0.006930270115844905,
+                "high": 0.022238720091991127,
+                "low": 0.02362441591685638,
+                "close": 0.0,
+                "volume": 0.042461599805392325,
+                "daily_return": 0.02298682602122426,
+                "rolling_return_3d": 0.039614830166101456,
+                "rolling_return_5d": 0.01588227500906214,
+                "rolling_volatility_5d": 0.03375388972926885,
+                "annualized_volatility_5d": 0.00378389994148165,
+                "sma_5": 0.02357382996706292,
+                "sma_10": 0.033523006131872535,
+                "ema_5": 0.028064240235835314,
+                "ema_10": 0.019591789925470948,
+                "rsi_14": 0.011822278902400285,
+                "macd": 0.03360262990463525,
+                "macd_signal": 0.021312430151738226,
+                "macd_histogram": 0.005181579967029393,
+                "bb_middle": 0.007198130013421178,
+                "bb_upper": 0.019478530040942132,
+                "bb_lower": 0.03375757031608373,
+                "bb_bandwidth": 0.016920021269470453,
+                "bb_percent_b": 0.014347248070407659,
+                "atr_14": 0.028572950104717165,
+                "roc_10": 0.029727280139923096,
+                "candle_body": 0.012298319838009775,
+                "candle_body_abs": 0.008424421946983784,
+                "candle_range": 0.009149981895461679,
+                "candle_upper_wick": 0.022169800009578466,
+                "candle_lower_wick": 0.03368438011966646,
+                "candle_body_ratio": 0.006711840047501028,
+                "candle_upper_wick_ratio": 0.011834070086479187,
+                "candle_lower_wick_ratio": 0.02048842003569007,
+                "candle_close_location": 0.004033090081065893,
+                "candle_body_return_pct": 0.005672360071912408,
+                "candle_direction_encoded": 0.0,
+                "trend_regime_encoded": 0.0
+              },
+              "residual_mean": 5.077977804381283,
+              "residual_std": 46.04747551127908,
+              "residual_max_abs": 240.08928696420662,
+              "regime": "negative_return_regime, high_volatility"
+            }
+          ],
+          "mean_metrics": {
+            "previous_close": {
+              "mae": 33.83271537727882,
+              "rmse": 46.792649344068906,
+              "mape": 1.024947930630757,
+              "directional_accuracy": 0.512579649368047
+            },
+            "moving_average": {
+              "mae": 72.9519997078105,
+              "rmse": 91.74273254960937,
+              "mape": 2.214571940445464,
+              "directional_accuracy": 0.48589667423845295
+            },
+            "historical_return": {
+              "mae": 33.97714907354212,
+              "rmse": 46.89785618002767,
+              "mape": 1.0298177306793077,
+              "directional_accuracy": 0.487420350631953
+            },
+            "lightgbm": {
+              "mae": 35.17475900182008,
+              "rmse": 48.35955908534719,
+              "mape": 1.065443136120083,
+              "directional_accuracy": 0.503097443065991
+            }
+          },
+          "beats_previous_close_all_folds": false,
+          "beats_any_baseline_all_folds": false
+        }
+      }
+    },
+    {
+      "symbol": "NIFTY_50",
+      "rows": 2443,
+      "features": [
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "daily_return",
+        "rolling_return_3d",
+        "rolling_return_5d",
+        "rolling_volatility_5d",
+        "annualized_volatility_5d",
+        "sma_5",
+        "sma_10",
+        "ema_5",
+        "ema_10",
+        "rsi_14",
+        "macd",
+        "macd_signal",
+        "macd_histogram",
+        "bb_middle",
+        "bb_upper",
+        "bb_lower",
+        "bb_bandwidth",
+        "bb_percent_b",
+        "atr_14",
+        "roc_10",
+        "candle_body",
+        "candle_body_abs",
+        "candle_range",
+        "candle_upper_wick",
+        "candle_lower_wick",
+        "candle_body_ratio",
+        "candle_upper_wick_ratio",
+        "candle_lower_wick_ratio",
+        "candle_close_location",
+        "candle_body_return_pct",
+        "candle_direction_encoded",
+        "trend_regime_encoded"
+      ],
+      "target": "next_session_return",
+      "n_splits": 5,
+      "embargo_sessions": 1,
+      "models": {
+        "xgboost": {
+          "folds": [
+            {
+              "fold": 1,
+              "train_start": "2016-12-23 05:30:00+05:30",
+              "train_end": "2020-12-02 05:30:00+05:30",
+              "validation_start": "2020-12-04 05:30:00+05:30",
+              "validation_end": "2022-02-08 05:30:00+05:30",
+              "train_rows": 977,
+              "validation_rows": 293,
+              "metrics": {
+                "previous_close": {
+                  "mae": 118.47457337883955,
+                  "rmse": 155.91812541994915,
+                  "mape": 0.7469560829865322,
+                  "directional_accuracy": 0.42662116040955633,
+                  "samples": 293
+                },
+                "moving_average": {
+                  "mae": 242.46337883959046,
+                  "rmse": 302.48667999895764,
+                  "mape": 1.5207315031829758,
+                  "directional_accuracy": 0.4812286689419795,
+                  "samples": 293
+                },
+                "historical_return": {
+                  "mae": 117.579828298092,
+                  "rmse": 155.4210110640854,
+                  "mape": 0.741138562547548,
+                  "directional_accuracy": 0.5733788395904437,
+                  "samples": 293
+                },
+                "xgboost": {
+                  "mae": 117.81369066436737,
+                  "rmse": 155.62899129973084,
+                  "mape": 0.7430652558497566,
+                  "directional_accuracy": 0.552901023890785,
+                  "samples": 293
+                }
+              },
+              "feature_importance": {
+                "open": 0.0012979888124391437,
+                "high": 0.0021508189383894205,
+                "low": 0.0014095696387812495,
+                "daily_return": 0.0016423148335888982,
+                "rolling_return_3d": 0.0008709030807949603,
+                "rolling_return_5d": 0.001693593803793192,
+                "rolling_volatility_5d": 0.0013303570449352264,
+                "annualized_volatility_5d": 0.000813390885014087,
+                "sma_5": 0.0020506747532635927,
+                "sma_10": 0.002460307441651821,
+                "ema_5": 0.001558021642267704,
+                "ema_10": 0.001769644790329039,
+                "rsi_14": 0.0009415177046321332,
+                "macd": 0.002110560890287161,
+                "macd_signal": 0.002072529401630163,
+                "macd_histogram": 0.003881328273564577,
+                "bb_middle": 0.0017301136394962668,
+                "bb_upper": 0.0025049906689673662,
+                "bb_lower": 0.001404240378178656,
+                "bb_bandwidth": 0.003736720187589526,
+                "bb_percent_b": 0.004549629054963589,
+                "atr_14": 0.0011443757684901357,
+                "roc_10": 0.0017901468090713024,
+                "candle_body": 0.001518619479611516,
+                "candle_body_abs": 0.0018902717856690288,
+                "candle_range": 0.0017730091931298375,
+                "candle_upper_wick": 0.0018917263951152563,
+                "candle_lower_wick": 0.0015905213076621294,
+                "candle_body_ratio": 0.006582225207239389,
+                "candle_upper_wick_ratio": 0.0011761263012886047,
+                "candle_lower_wick_ratio": 0.000525614304933697,
+                "candle_close_location": 0.0019160483498126268,
+                "candle_body_return_pct": 0.0013007663656026125
+              },
+              "residual_mean": 5.425776624079481,
+              "residual_std": 155.53438166848284,
+              "residual_max_abs": 628.1894229173668,
+              "regime": "positive_return_regime, normal_volatility"
+            },
+            {
+              "fold": 2,
+              "train_start": "2016-12-23 05:30:00+05:30",
+              "train_end": "2022-02-07 05:30:00+05:30",
+              "validation_start": "2022-02-09 05:30:00+05:30",
+              "validation_end": "2023-04-18 05:30:00+05:30",
+              "train_rows": 1270,
+              "validation_rows": 293,
+              "metrics": {
+                "previous_close": {
+                  "mae": 130.3493174061433,
+                  "rmse": 171.82754825577427,
+                  "mape": 0.7612814367153121,
+                  "directional_accuracy": 0.515358361774744,
+                  "samples": 293
+                },
+                "moving_average": {
+                  "mae": 272.86068259385655,
+                  "rmse": 339.8252086958642,
+                  "mape": 1.5984970150619997,
+                  "directional_accuracy": 0.4641638225255973,
+                  "samples": 293
+                },
+                "historical_return": {
+                  "mae": 130.99878730377108,
+                  "rmse": 172.24500624232664,
+                  "mape": 0.7653964577949407,
+                  "directional_accuracy": 0.48464163822525597,
+                  "samples": 293
+                },
+                "xgboost": {
+                  "mae": 137.8277112122077,
+                  "rmse": 178.26290367422538,
+                  "mape": 0.8077933099480875,
+                  "directional_accuracy": 0.45051194539249145,
+                  "samples": 293
+                }
+              },
+              "feature_importance": {
+                "open": 0.0012090069940313697,
+                "high": 0.0016656068619340658,
+                "low": 0.0018121158936992288,
+                "daily_return": 0.0013535618782043457,
+                "rolling_return_3d": 0.0005089580081403255,
+                "rolling_return_5d": 0.0025358775164932013,
+                "rolling_volatility_5d": 0.0015268863644450903,
+                "annualized_volatility_5d": 0.0009901796001940966,
+                "sma_5": 0.0009862106526270509,
+                "sma_10": 0.0025895533617585897,
+                "ema_5": 0.0011933099012821913,
+                "ema_10": 0.0019915339071303606,
+                "rsi_14": 0.0017189602367579937,
+                "macd": 0.001874173292890191,
+                "macd_signal": 0.0015775695210322738,
+                "macd_histogram": 0.0011124471202492714,
+                "bb_middle": 0.0011586095206439495,
+                "bb_upper": 0.0024940106086432934,
+                "bb_lower": 0.0016192912589758635,
+                "bb_bandwidth": 0.003659298410639167,
+                "bb_percent_b": 0.0014598073903471231,
+                "atr_14": 0.00144055241253227,
+                "roc_10": 0.0022660738322883844,
+                "candle_body": 0.001131841097958386,
+                "candle_body_abs": 0.0008759431657381356,
+                "candle_range": 0.002251249272376299,
+                "candle_upper_wick": 0.00245367712341249,
+                "candle_lower_wick": 0.0017112575005739927,
+                "candle_body_ratio": 0.0008932422497309744,
+                "candle_upper_wick_ratio": 0.000858242972753942,
+                "candle_lower_wick_ratio": 0.001760978251695633,
+                "candle_close_location": 0.0020623323507606983,
+                "candle_body_return_pct": 0.0017602405278012156
+              },
+              "residual_mean": 16.698120183342525,
+              "residual_std": 177.4791131618276,
+              "residual_max_abs": 823.989666271209,
+              "regime": "positive_return_regime, normal_volatility"
+            },
+            {
+              "fold": 3,
+              "train_start": "2016-12-23 05:30:00+05:30",
+              "train_end": "2023-04-17 05:30:00+05:30",
+              "validation_start": "2023-04-19 05:30:00+05:30",
+              "validation_end": "2024-06-21 05:30:00+05:30",
+              "train_rows": 1563,
+              "validation_rows": 293,
+              "metrics": {
+                "previous_close": {
+                  "mae": 111.34300341296928,
+                  "rmse": 165.87443449934605,
+                  "mape": 0.5354671117867447,
+                  "directional_accuracy": 0.3924914675767918,
+                  "samples": 293
+                },
+                "moving_average": {
+                  "mae": 232.08361774744031,
+                  "rmse": 286.3722353157286,
+                  "mape": 1.1187476022205363,
+                  "directional_accuracy": 0.47440273037542663,
+                  "samples": 293
+                },
+                "historical_return": {
+                  "mae": 109.45055712243546,
+                  "rmse": 164.90518541634697,
+                  "mape": 0.5263425081007572,
+                  "directional_accuracy": 0.6075085324232082,
+                  "samples": 293
+                },
+                "xgboost": {
+                  "mae": 109.81254047856193,
+                  "rmse": 163.30232825729092,
+                  "mape": 0.5278124624252168,
+                  "directional_accuracy": 0.5665529010238908,
+                  "samples": 293
+                }
+              },
+              "feature_importance": {
+                "open": 0.0012819955591112375,
+                "high": 0.001711065648123622,
+                "low": 0.0010210600448772311,
+                "daily_return": 0.0010563229443505406,
+                "rolling_return_3d": 0.0009941321332007647,
+                "rolling_return_5d": 0.0030158048029989004,
+                "rolling_volatility_5d": 0.0019285111920908093,
+                "annualized_volatility_5d": 0.0008538787951692939,
+                "sma_5": 0.001551251974888146,
+                "sma_10": 0.0021750095766037703,
+                "ema_5": 0.002003634348511696,
+                "ema_10": 0.0023820323403924704,
+                "rsi_14": 0.0008273818530142307,
+                "macd": 0.0023634936660528183,
+                "macd_signal": 0.001886863959953189,
+                "macd_histogram": 0.000967123603913933,
+                "bb_middle": 0.0013271181378513575,
+                "bb_upper": 0.0031456458382308483,
+                "bb_lower": 0.0016264576697722077,
+                "bb_bandwidth": 0.0014257222646847367,
+                "bb_percent_b": 0.0012177175376564264,
+                "atr_14": 0.0023679782170802355,
+                "roc_10": 0.0020933926571160555,
+                "candle_body": 0.001085040275938809,
+                "candle_body_abs": 0.0010260591516271234,
+                "candle_range": 0.0011507435701787472,
+                "candle_upper_wick": 0.002452034270390868,
+                "candle_lower_wick": 0.0013611529720947146,
+                "candle_body_ratio": 0.0031544745434075594,
+                "candle_upper_wick_ratio": 0.0040919119492173195,
+                "candle_lower_wick_ratio": 0.0009442831506021321,
+                "candle_close_location": 0.0006758900126442313,
+                "candle_body_return_pct": 0.0015611568232998252
+              },
+              "residual_mean": -9.240244821059878,
+              "residual_std": 163.04069519570527,
+              "residual_max_abs": 1426.051998257637,
+              "regime": "positive_return_regime, normal_volatility"
+            },
+            {
+              "fold": 4,
+              "train_start": "2016-12-23 05:30:00+05:30",
+              "train_end": "2024-06-20 05:30:00+05:30",
+              "validation_start": "2024-06-24 05:30:00+05:30",
+              "validation_end": "2025-08-25 05:30:00+05:30",
+              "train_rows": 1856,
+              "validation_rows": 293,
+              "metrics": {
+                "previous_close": {
+                  "mae": 144.16860068259393,
+                  "rmse": 196.29532884477894,
+                  "mape": 0.5964377904708021,
+                  "directional_accuracy": 0.49829351535836175,
+                  "samples": 293
+                },
+                "moving_average": {
+                  "mae": 320.1221843003414,
+                  "rmse": 390.7372982796679,
+                  "mape": 1.324550599727958,
+                  "directional_accuracy": 0.4129692832764505,
+                  "samples": 293
+                },
+                "historical_return": {
+                  "mae": 145.01875548001485,
+                  "rmse": 196.65902742649058,
+                  "mape": 0.6002178647712348,
+                  "directional_accuracy": 0.5017064846416383,
+                  "samples": 293
+                },
+                "xgboost": {
+                  "mae": 147.8155461535926,
+                  "rmse": 198.98658506497438,
+                  "mape": 0.6115848003322941,
+                  "directional_accuracy": 0.515358361774744,
+                  "samples": 293
+                }
+              },
+              "feature_importance": {
+                "open": 0.0019784497562795877,
+                "high": 0.0015025162138044834,
+                "low": 0.0010912764118984342,
+                "daily_return": 0.0014920750400051475,
+                "rolling_return_3d": 0.0008286531083285809,
+                "rolling_return_5d": 0.00235385331325233,
+                "rolling_volatility_5d": 0.0016969667049124837,
+                "annualized_volatility_5d": 0.00234908121638,
+                "sma_5": 0.001250445726327598,
+                "sma_10": 0.0022238288074731827,
+                "ema_5": 0.0014426533598452806,
+                "ema_10": 0.0014052217593416572,
+                "rsi_14": 0.0013593640178442001,
+                "macd": 0.0018935285042971373,
+                "macd_signal": 0.0014676055870950222,
+                "macd_histogram": 0.001660384819842875,
+                "bb_middle": 0.0024847551248967648,
+                "bb_upper": 0.001178488484583795,
+                "bb_lower": 0.0016468493267893791,
+                "bb_bandwidth": 0.002320883795619011,
+                "bb_percent_b": 0.0021199150942265987,
+                "atr_14": 0.0010598426451906562,
+                "roc_10": 0.0016854254063218832,
+                "candle_body": 0.0011168289929628372,
+                "candle_body_abs": 0.0010033053113147616,
+                "candle_range": 0.0011941653210669756,
+                "candle_upper_wick": 0.0016468977555632591,
+                "candle_lower_wick": 0.0021012271754443645,
+                "candle_body_ratio": 0.0014515201328322291,
+                "candle_upper_wick_ratio": 0.0009911471279338002,
+                "candle_lower_wick_ratio": 0.0011414405889809132,
+                "candle_close_location": 0.00354337552562356,
+                "candle_body_return_pct": 0.0017562307184562087,
+                "trend_regime_encoded": 0.0001190341790788807
+              },
+              "residual_mean": 18.718122470887614,
+              "residual_std": 198.10424762479258,
+              "residual_max_abs": 884.2566329956062,
+              "regime": "positive_return_regime, normal_volatility"
+            },
+            {
+              "fold": 5,
+              "train_start": "2016-12-23 05:30:00+05:30",
+              "train_end": "2025-08-22 05:30:00+05:30",
+              "validation_start": "2025-08-26 05:30:00+05:30",
+              "validation_end": "2026-11-02 05:30:00+05:30",
+              "train_rows": 2149,
+              "validation_rows": 293,
+              "metrics": {
+                "previous_close": {
+                  "mae": 150.94812286689427,
+                  "rmse": 200.73158087288354,
+                  "mape": 0.623340039630484,
+                  "directional_accuracy": 0.5017064846416383,
+                  "samples": 293
+                },
+                "moving_average": {
+                  "mae": 300.10105802047804,
+                  "rmse": 385.0386798157638,
+                  "mape": 1.236269358735753,
+                  "directional_accuracy": 0.49829351535836175,
+                  "samples": 293
+                },
+                "historical_return": {
+                  "mae": 151.49826936819218,
+                  "rmse": 201.52063357673134,
+                  "mape": 0.6257714133717616,
+                  "directional_accuracy": 0.49829351535836175,
+                  "samples": 293
+                },
+                "xgboost": {
+                  "mae": 152.82472679073905,
+                  "rmse": 211.9301052298373,
+                  "mape": 0.6319230521993392,
+                  "directional_accuracy": 0.49829351535836175,
+                  "samples": 293
+                }
+              },
+              "feature_importance": {
+                "open": 0.0012308396399021149,
+                "high": 0.0015312517061829567,
+                "low": 0.0015749611193314195,
+                "daily_return": 0.0015746396966278553,
+                "rolling_return_3d": 0.0008507686434313655,
+                "rolling_return_5d": 0.0014465001877397299,
+                "rolling_volatility_5d": 0.0015195515006780624,
+                "annualized_volatility_5d": 0.0010371701791882515,
+                "sma_5": 0.00172582664526999,
+                "sma_10": 0.003082430921494961,
+                "ema_5": 0.001402047579176724,
+                "ema_10": 0.0015748735750094056,
+                "rsi_14": 0.0015892676310613751,
+                "macd": 0.0013984007528051734,
+                "macd_signal": 0.0025094719603657722,
+                "macd_histogram": 0.0012530150124803185,
+                "bb_middle": 0.0012984201312065125,
+                "bb_upper": 0.0026620076969265938,
+                "bb_lower": 0.0011581949656829238,
+                "bb_bandwidth": 0.0022683239076286554,
+                "bb_percent_b": 0.0024113976396620274,
+                "atr_14": 0.0012862212024629116,
+                "roc_10": 0.002578843617811799,
+                "candle_body": 0.002170972991734743,
+                "candle_body_abs": 0.0014006812125444412,
+                "candle_range": 0.0011730572441592813,
+                "candle_upper_wick": 0.0021571721881628036,
+                "candle_lower_wick": 0.0018840668490156531,
+                "candle_body_ratio": 0.001084218150936067,
+                "candle_upper_wick_ratio": 0.0022860204335302114,
+                "candle_lower_wick_ratio": 0.0011383359087631106,
+                "candle_close_location": 0.002408775966614485,
+                "candle_body_return_pct": 0.0018834181828424335,
+                "trend_regime_encoded": 0.0006260945228859782
+              },
+              "residual_mean": 27.955728416922923,
+              "residual_std": 210.0781919938601,
+              "residual_max_abs": 877.486326193808,
+              "regime": "negative_return_regime, normal_volatility"
+            }
+          ],
+          "mean_metrics": {
+            "previous_close": {
+              "mae": 131.05672354948805,
+              "rmse": 178.1294035785464,
+              "mape": 0.652696492317975,
+              "directional_accuracy": 0.4668941979522184
+            },
+            "moving_average": {
+              "mae": 273.52618430034136,
+              "rmse": 340.89202042119643,
+              "mape": 1.3597592157858447,
+              "directional_accuracy": 0.4662116040955631
+            },
+            "historical_return": {
+              "mae": 130.9092395145011,
+              "rmse": 178.1501727451962,
+              "mape": 0.6517733613172484,
+              "directional_accuracy": 0.5331058020477816
+            },
+            "xgboost": {
+              "mae": 133.21884305989374,
+              "rmse": 181.62218270521177,
+              "mape": 0.6644357761509387,
+              "directional_accuracy": 0.5167235494880547
+            }
+          },
+          "beats_previous_close_all_folds": false,
+          "beats_any_baseline_all_folds": false
+        },
+        "lightgbm": {
+          "folds": [
+            {
+              "fold": 1,
+              "train_start": "2016-12-23 05:30:00+05:30",
+              "train_end": "2020-12-02 05:30:00+05:30",
+              "validation_start": "2020-12-04 05:30:00+05:30",
+              "validation_end": "2022-02-08 05:30:00+05:30",
+              "train_rows": 977,
+              "validation_rows": 293,
+              "metrics": {
+                "previous_close": {
+                  "mae": 118.47457337883955,
+                  "rmse": 155.91812541994915,
+                  "mape": 0.7469560829865322,
+                  "directional_accuracy": 0.42662116040955633,
+                  "samples": 293
+                },
+                "moving_average": {
+                  "mae": 242.46337883959046,
+                  "rmse": 302.48667999895764,
+                  "mape": 1.5207315031829758,
+                  "directional_accuracy": 0.4812286689419795,
+                  "samples": 293
+                },
+                "historical_return": {
+                  "mae": 117.579828298092,
+                  "rmse": 155.4210110640854,
+                  "mape": 0.741138562547548,
+                  "directional_accuracy": 0.5733788395904437,
+                  "samples": 293
+                },
+                "lightgbm": {
+                  "mae": 119.88661977313105,
+                  "rmse": 161.0558582000624,
+                  "mape": 0.7559192736420939,
+                  "directional_accuracy": 0.5699658703071673,
+                  "samples": 293
+                }
+              },
+              "feature_importance": {
+                "open": 0.007761375105474144,
+                "high": 0.03387838997878134,
+                "low": 0.005157581006642431,
+                "close": 0.0,
+                "volume": 0.0,
+                "daily_return": 0.0193964290083386,
+                "rolling_return_3d": 0.007985492935404181,
+                "rolling_return_5d": 0.021915392950177193,
+                "rolling_volatility_5d": 0.0049157600733451545,
+                "annualized_volatility_5d": 0.003414142061956227,
+                "sma_5": 0.008828621066641062,
+                "sma_10": 0.004066639055963606,
+                "ema_5": 0.005825939006172121,
+                "ema_10": 0.02219295804388821,
+                "rsi_14": 0.02659877995029092,
+                "macd": 0.016910028003621846,
+                "macd_signal": 0.005658769980072975,
+                "macd_histogram": 0.0006056950078345835,
+                "bb_middle": 0.004208365047816187,
+                "bb_upper": 0.010645515896612778,
+                "bb_lower": 0.0016927500255405903,
+                "bb_bandwidth": 0.026607230014633387,
+                "bb_percent_b": 0.0,
+                "atr_14": 0.026078103051986545,
+                "roc_10": 0.03882048436207697,
+                "candle_body": 0.011021834041457623,
+                "candle_body_abs": 0.01792524685151875,
+                "candle_range": 0.008959702972788364,
+                "candle_upper_wick": 0.01920664112549275,
+                "candle_lower_wick": 0.022560827841516584,
+                "candle_body_ratio": 0.0004572689940687269,
+                "candle_upper_wick_ratio": 0.00034689801395870745,
+                "candle_lower_wick_ratio": 0.002898045931942761,
+                "candle_close_location": 0.002303350018337369,
+                "candle_body_return_pct": 0.005236443947069347,
+                "candle_direction_encoded": 0.0,
+                "trend_regime_encoded": 0.0
+              },
+              "residual_mean": 15.89942141153509,
+              "residual_std": 160.2691419435976,
+              "residual_max_abs": 695.9847356018872,
+              "regime": "positive_return_regime, normal_volatility"
+            },
+            {
+              "fold": 2,
+              "train_start": "2016-12-23 05:30:00+05:30",
+              "train_end": "2022-02-07 05:30:00+05:30",
+              "validation_start": "2022-02-09 05:30:00+05:30",
+              "validation_end": "2023-04-18 05:30:00+05:30",
+              "train_rows": 1270,
+              "validation_rows": 293,
+              "metrics": {
+                "previous_close": {
+                  "mae": 130.3493174061433,
+                  "rmse": 171.82754825577427,
+                  "mape": 0.7612814367153121,
+                  "directional_accuracy": 0.515358361774744,
+                  "samples": 293
+                },
+                "moving_average": {
+                  "mae": 272.86068259385655,
+                  "rmse": 339.8252086958642,
+                  "mape": 1.5984970150619997,
+                  "directional_accuracy": 0.4641638225255973,
+                  "samples": 293
+                },
+                "historical_return": {
+                  "mae": 130.99878730377108,
+                  "rmse": 172.24500624232664,
+                  "mape": 0.7653964577949407,
+                  "directional_accuracy": 0.48464163822525597,
+                  "samples": 293
+                },
+                "lightgbm": {
+                  "mae": 138.13872350364556,
+                  "rmse": 178.14025625896429,
+                  "mape": 0.8099770907192883,
+                  "directional_accuracy": 0.45733788395904434,
+                  "samples": 293
+                }
+              },
+              "feature_importance": {
+                "open": 0.011089726991485804,
+                "high": 0.05122678092448041,
+                "low": 0.010879877081606537,
+                "close": 0.0,
+                "volume": 0.0,
+                "daily_return": 0.01664150587748736,
+                "rolling_return_3d": 0.004425993945915252,
+                "rolling_return_5d": 0.03252451471053064,
+                "rolling_volatility_5d": 0.013285683002322912,
+                "annualized_volatility_5d": 0.0018525399500504136,
+                "sma_5": 0.002476642024703324,
+                "sma_10": 0.009505620924755931,
+                "ema_5": 0.007865660998504609,
+                "ema_10": 0.029704271000809968,
+                "rsi_14": 0.020432817982509732,
+                "macd": 0.004660779959522188,
+                "macd_signal": 0.008375672856345773,
+                "macd_histogram": 0.006145446910522878,
+                "bb_middle": 0.017069711408112198,
+                "bb_upper": 0.02735894708894193,
+                "bb_lower": 0.0,
+                "bb_bandwidth": 0.035280255891848356,
+                "bb_percent_b": 0.0021375430515035987,
+                "atr_14": 0.003688025113660842,
+                "roc_10": 0.02651748200878501,
+                "candle_body": 0.013780308072455227,
+                "candle_body_abs": 0.025090506009291857,
+                "candle_range": 0.006067182112019509,
+                "candle_upper_wick": 0.02743732323870063,
+                "candle_lower_wick": 0.007791533076670021,
+                "candle_body_ratio": 0.0058788678725250065,
+                "candle_upper_wick_ratio": 0.0,
+                "candle_lower_wick_ratio": 0.005925745062995702,
+                "candle_close_location": 0.009651370230130851,
+                "candle_body_return_pct": 0.002081201004330069,
+                "candle_direction_encoded": 0.0,
+                "trend_regime_encoded": 0.0
+              },
+              "residual_mean": 13.829417827844718,
+              "residual_std": 177.602641034846,
+              "residual_max_abs": 802.433645150486,
+              "regime": "positive_return_regime, normal_volatility"
+            },
+            {
+              "fold": 3,
+              "train_start": "2016-12-23 05:30:00+05:30",
+              "train_end": "2023-04-17 05:30:00+05:30",
+              "validation_start": "2023-04-19 05:30:00+05:30",
+              "validation_end": "2024-06-21 05:30:00+05:30",
+              "train_rows": 1563,
+              "validation_rows": 293,
+              "metrics": {
+                "previous_close": {
+                  "mae": 111.34300341296928,
+                  "rmse": 165.87443449934605,
+                  "mape": 0.5354671117867447,
+                  "directional_accuracy": 0.3924914675767918,
+                  "samples": 293
+                },
+                "moving_average": {
+                  "mae": 232.08361774744031,
+                  "rmse": 286.3722353157286,
+                  "mape": 1.1187476022205363,
+                  "directional_accuracy": 0.47440273037542663,
+                  "samples": 293
+                },
+                "historical_return": {
+                  "mae": 109.45055712243546,
+                  "rmse": 164.90518541634697,
+                  "mape": 0.5263425081007572,
+                  "directional_accuracy": 0.6075085324232082,
+                  "samples": 293
+                },
+                "lightgbm": {
+                  "mae": 111.43392196899684,
+                  "rmse": 165.47894806260044,
+                  "mape": 0.5353172989132416,
+                  "directional_accuracy": 0.5494880546075085,
+                  "samples": 293
+                }
+              },
+              "feature_importance": {
+                "open": 0.009435674175620079,
+                "high": 0.040256012172903866,
+                "low": 0.006018795014824718,
+                "close": 0.0,
+                "volume": 0.0,
+                "daily_return": 0.02957546984544024,
+                "rolling_return_3d": 0.0027560199378058314,
+                "rolling_return_5d": 0.033091298886574805,
+                "rolling_volatility_5d": 0.0038071880699135363,
+                "annualized_volatility_5d": 0.0010619900422170758,
+                "sma_5": 0.009898788935970515,
+                "sma_10": 0.005802154948469251,
+                "ema_5": 0.009686669916845858,
+                "ema_10": 0.020361207250971347,
+                "rsi_14": 0.020113571896217763,
+                "macd": 0.009318942262325436,
+                "macd_signal": 0.01580689602997154,
+                "macd_histogram": 0.01343447616090998,
+                "bb_middle": 0.02477176988031715,
+                "bb_upper": 0.013818085251841694,
+                "bb_lower": 0.0030497339903376997,
+                "bb_bandwidth": 0.039706640294753015,
+                "bb_percent_b": 0.0033789699082262814,
+                "atr_14": 0.014455400756560266,
+                "roc_10": 0.02364043495617807,
+                "candle_body": 0.00773394585121423,
+                "candle_body_abs": 0.03161365381674841,
+                "candle_range": 0.0025253259809687734,
+                "candle_upper_wick": 0.02760391990887001,
+                "candle_lower_wick": 0.008881915069650859,
+                "candle_body_ratio": 0.009522820997517556,
+                "candle_upper_wick_ratio": 0.0013661399716511369,
+                "candle_lower_wick_ratio": 0.011084355995990336,
+                "candle_close_location": 0.0035832489957101643,
+                "candle_body_return_pct": 0.001966342970263213,
+                "candle_direction_encoded": 0.0,
+                "trend_regime_encoded": 0.0
+              },
+              "residual_mean": -14.2082697657339,
+              "residual_std": 164.86784805464328,
+              "residual_max_abs": 1429.1098791938784,
+              "regime": "positive_return_regime, normal_volatility"
+            },
+            {
+              "fold": 4,
+              "train_start": "2016-12-23 05:30:00+05:30",
+              "train_end": "2024-06-20 05:30:00+05:30",
+              "validation_start": "2024-06-24 05:30:00+05:30",
+              "validation_end": "2025-08-25 05:30:00+05:30",
+              "train_rows": 1856,
+              "validation_rows": 293,
+              "metrics": {
+                "previous_close": {
+                  "mae": 144.16860068259393,
+                  "rmse": 196.29532884477894,
+                  "mape": 0.5964377904708021,
+                  "directional_accuracy": 0.49829351535836175,
+                  "samples": 293
+                },
+                "moving_average": {
+                  "mae": 320.1221843003414,
+                  "rmse": 390.7372982796679,
+                  "mape": 1.324550599727958,
+                  "directional_accuracy": 0.4129692832764505,
+                  "samples": 293
+                },
+                "historical_return": {
+                  "mae": 145.01875548001485,
+                  "rmse": 196.65902742649058,
+                  "mape": 0.6002178647712348,
+                  "directional_accuracy": 0.5017064846416383,
+                  "samples": 293
+                },
+                "lightgbm": {
+                  "mae": 150.34587360682616,
+                  "rmse": 199.06446179121102,
+                  "mape": 0.6222128278917929,
+                  "directional_accuracy": 0.5631399317406144,
+                  "samples": 293
+                }
+              },
+              "feature_importance": {
+                "open": 0.008914481091778725,
+                "high": 0.049479774897918105,
+                "low": 0.013899987970944494,
+                "close": 0.0,
+                "volume": 0.0,
+                "daily_return": 0.04161570020369254,
+                "rolling_return_3d": 0.010852996085304767,
+                "rolling_return_5d": 0.029282725939992815,
+                "rolling_volatility_5d": 0.016576812195125967,
+                "annualized_volatility_5d": 0.0,
+                "sma_5": 0.0024152009282261133,
+                "sma_10": 0.012110357987694442,
+                "ema_5": 0.030652265064418316,
+                "ema_10": 0.021115188021212816,
+                "rsi_14": 0.0338224804145284,
+                "macd": 0.0040751799824647605,
+                "macd_signal": 0.010244727949611843,
+                "macd_histogram": 0.019190478138625622,
+                "bb_middle": 0.01384706684621051,
+                "bb_upper": 0.005926015961449593,
+                "bb_lower": 0.008734049857594073,
+                "bb_bandwidth": 0.03410092103877105,
+                "bb_percent_b": 0.0008318600011989474,
+                "atr_14": 0.010481280973181129,
+                "roc_10": 0.025715301104355603,
+                "candle_body": 0.005497569974977523,
+                "candle_body_abs": 0.006549632118549198,
+                "candle_range": 0.0034050389658659697,
+                "candle_upper_wick": 0.014937162748537958,
+                "candle_lower_wick": 0.0046099398750811815,
+                "candle_body_ratio": 0.004578660009428859,
+                "candle_upper_wick_ratio": 0.0004993330221623182,
+                "candle_lower_wick_ratio": 0.0009737529908306897,
+                "candle_close_location": 0.005795591103378683,
+                "candle_body_return_pct": 0.004136560077313334,
+                "candle_direction_encoded": 0.0,
+                "trend_regime_encoded": 0.0
+              },
+              "residual_mean": 20.62918391380485,
+              "residual_std": 197.99266834727726,
+              "residual_max_abs": 858.4355816620482,
+              "regime": "positive_return_regime, normal_volatility"
+            },
+            {
+              "fold": 5,
+              "train_start": "2016-12-23 05:30:00+05:30",
+              "train_end": "2025-08-22 05:30:00+05:30",
+              "validation_start": "2025-08-26 05:30:00+05:30",
+              "validation_end": "2026-11-02 05:30:00+05:30",
+              "train_rows": 2149,
+              "validation_rows": 293,
+              "metrics": {
+                "previous_close": {
+                  "mae": 150.94812286689427,
+                  "rmse": 200.73158087288354,
+                  "mape": 0.623340039630484,
+                  "directional_accuracy": 0.5017064846416383,
+                  "samples": 293
+                },
+                "moving_average": {
+                  "mae": 300.10105802047804,
+                  "rmse": 385.0386798157638,
+                  "mape": 1.236269358735753,
+                  "directional_accuracy": 0.49829351535836175,
+                  "samples": 293
+                },
+                "historical_return": {
+                  "mae": 151.49826936819218,
+                  "rmse": 201.52063357673134,
+                  "mape": 0.6257714133717616,
+                  "directional_accuracy": 0.49829351535836175,
+                  "samples": 293
+                },
+                "lightgbm": {
+                  "mae": 153.45865862634906,
+                  "rmse": 211.413601052968,
+                  "mape": 0.6346287022738091,
+                  "directional_accuracy": 0.5119453924914675,
+                  "samples": 293
+                }
+              },
+              "feature_importance": {
+                "open": 0.009473227022681385,
+                "high": 0.03416502190520987,
+                "low": 0.012677944148890674,
+                "close": 0.0,
+                "volume": 0.0,
+                "daily_return": 0.05083807895425707,
+                "rolling_return_3d": 0.008450539025943726,
+                "rolling_return_5d": 0.014409924973733723,
+                "rolling_volatility_5d": 0.012144481064751744,
+                "annualized_volatility_5d": 0.0023528900928795338,
+                "sma_5": 0.004242100985720754,
+                "sma_10": 0.00886689085746184,
+                "ema_5": 0.023033448727801442,
+                "ema_10": 0.024861973011866212,
+                "rsi_14": 0.028893786075059325,
+                "macd": 0.01467316091293469,
+                "macd_signal": 0.006098236015532166,
+                "macd_histogram": 0.016169167996849865,
+                "bb_middle": 0.027409552945755422,
+                "bb_upper": 0.011280342005193233,
+                "bb_lower": 0.004898577928543091,
+                "bb_bandwidth": 0.03344741521868855,
+                "bb_percent_b": 0.0027865709271281958,
+                "atr_14": 0.008236272173235193,
+                "roc_10": 0.023768843966536224,
+                "candle_body": 0.008759056043345481,
+                "candle_body_abs": 0.0030412269406951964,
+                "candle_range": 0.011457515880465508,
+                "candle_upper_wick": 0.007590592809719965,
+                "candle_lower_wick": 0.0075935000204481184,
+                "candle_body_ratio": 0.0005536939715966582,
+                "candle_upper_wick_ratio": 0.00238389999140054,
+                "candle_lower_wick_ratio": 0.0037640189984813333,
+                "candle_close_location": 0.0008829719736240804,
+                "candle_body_return_pct": 0.0022000920143909752,
+                "candle_direction_encoded": 0.0,
+                "trend_regime_encoded": 0.0
+              },
+              "residual_mean": 26.040463560805748,
+              "residual_std": 209.803729632535,
+              "residual_max_abs": 994.3518764318724,
+              "regime": "negative_return_regime, normal_volatility"
+            }
+          ],
+          "mean_metrics": {
+            "previous_close": {
+              "mae": 131.05672354948805,
+              "rmse": 178.1294035785464,
+              "mape": 0.652696492317975,
+              "directional_accuracy": 0.4668941979522184
+            },
+            "moving_average": {
+              "mae": 273.52618430034136,
+              "rmse": 340.89202042119643,
+              "mape": 1.3597592157858447,
+              "directional_accuracy": 0.4662116040955631
+            },
+            "historical_return": {
+              "mae": 130.9092395145011,
+              "rmse": 178.1501727451962,
+              "mape": 0.6517733613172484,
+              "directional_accuracy": 0.5331058020477816
+            },
+            "lightgbm": {
+              "mae": 134.65275949578972,
+              "rmse": 183.03062507316125,
+              "mape": 0.6716110386880452,
+              "directional_accuracy": 0.5303754266211604
+            }
+          },
+          "beats_previous_close_all_folds": false,
+          "beats_any_baseline_all_folds": false
+        }
+      }
+    },
+    {
+      "symbol": "NIFTY_TELECOMMUNICATIONS",
+      "rows": 2443,
+      "features": [
+        "close",
+        "daily_return",
+        "rolling_return_3d",
+        "rolling_return_5d",
+        "rolling_volatility_5d",
+        "annualized_volatility_5d",
+        "sma_5",
+        "sma_10",
+        "ema_5",
+        "ema_10",
+        "rsi_14",
+        "macd",
+        "macd_signal",
+        "macd_histogram",
+        "bb_middle",
+        "bb_upper",
+        "bb_lower",
+        "bb_bandwidth",
+        "bb_percent_b",
+        "roc_10"
+      ],
+      "target": "next_session_return",
+      "n_splits": 5,
+      "embargo_sessions": 1,
+      "models": {
+        "xgboost": {
+          "folds": [
+            {
+              "fold": 1,
+              "train_start": "2016-12-23 05:30:00+05:30",
+              "train_end": "2020-12-02 05:30:00+05:30",
+              "validation_start": "2020-12-04 05:30:00+05:30",
+              "validation_end": "2022-02-08 05:30:00+05:30",
+              "train_rows": 977,
+              "validation_rows": 293,
+              "metrics": {
+                "previous_close": {
+                  "mae": 21.606757679180884,
+                  "rmse": 28.532083838919405,
+                  "mape": 1.1731052265022512,
+                  "directional_accuracy": 0.4641638225255973,
+                  "samples": 293
+                },
+                "moving_average": {
+                  "mae": 44.807167235494866,
+                  "rmse": 58.296714497193015,
+                  "mape": 2.424794662351785,
+                  "directional_accuracy": 0.49146757679180886,
+                  "samples": 293
+                },
+                "historical_return": {
+                  "mae": 21.58436731212145,
+                  "rmse": 28.507825109940995,
+                  "mape": 1.171777051450927,
+                  "directional_accuracy": 0.5358361774744027,
+                  "samples": 293
+                },
+                "xgboost": {
+                  "mae": 21.828280433436703,
+                  "rmse": 28.87914687926264,
+                  "mape": 1.183041285741986,
+                  "directional_accuracy": 0.5085324232081911,
+                  "samples": 293
+                }
+              },
+              "feature_importance": {
+                "daily_return": 0.0017090184846892953,
+                "rolling_return_3d": 0.001238861819729209,
+                "rolling_return_5d": 0.002215253422036767,
+                "rolling_volatility_5d": 0.0028824948240071535,
+                "annualized_volatility_5d": 0.004965325351804495,
+                "sma_5": 0.0024546536151319742,
+                "sma_10": 0.001984477275982499,
+                "ema_5": 0.002424799371510744,
+                "ema_10": 0.0031295299995690584,
+                "rsi_14": 0.0023220174480229616,
+                "macd": 0.001828442676924169,
+                "macd_signal": 0.00201868312433362,
+                "macd_histogram": 0.0022503971122205257,
+                "bb_middle": 0.0020457562059164047,
+                "bb_upper": 0.002483989577740431,
+                "bb_lower": 0.0026829142589122057,
+                "bb_bandwidth": 0.0029787991661578417,
+                "bb_percent_b": 0.0018895380198955536,
+                "roc_10": 0.002361604478210211
+              },
+              "residual_mean": -1.7237417757307658,
+              "residual_std": 28.827657531693855,
+              "residual_max_abs": 103.71762634634979,
+              "regime": "positive_return_regime, normal_volatility"
+            },
+            {
+              "fold": 2,
+              "train_start": "2016-12-23 05:30:00+05:30",
+              "train_end": "2022-02-07 05:30:00+05:30",
+              "validation_start": "2022-02-09 05:30:00+05:30",
+              "validation_end": "2023-04-18 05:30:00+05:30",
+              "train_rows": 1270,
+              "validation_rows": 293,
+              "metrics": {
+                "previous_close": {
+                  "mae": 18.45726962457339,
+                  "rmse": 26.299231032504057,
+                  "mape": 1.023986364604414,
+                  "directional_accuracy": 0.5051194539249146,
+                  "samples": 293
+                },
+                "moving_average": {
+                  "mae": 38.49671672354948,
+                  "rmse": 50.07349611018034,
+                  "mape": 2.1394628006225354,
+                  "directional_accuracy": 0.4778156996587031,
+                  "samples": 293
+                },
+                "historical_return": {
+                  "mae": 18.48270874158106,
+                  "rmse": 26.373145276689655,
+                  "mape": 1.025899344770569,
+                  "directional_accuracy": 0.4948805460750853,
+                  "samples": 293
+                },
+                "xgboost": {
+                  "mae": 19.041497776774836,
+                  "rmse": 27.425239515134837,
+                  "mape": 1.05646820251634,
+                  "directional_accuracy": 0.515358361774744,
+                  "samples": 293
+                }
+              },
+              "feature_importance": {
+                "daily_return": 0.0016911248676478863,
+                "rolling_return_3d": 0.0013530300930142403,
+                "rolling_return_5d": 0.0019325454486534,
+                "rolling_volatility_5d": 0.0024752491153776646,
+                "annualized_volatility_5d": 0.00373297231271863,
+                "sma_5": 0.0026916253846138716,
+                "sma_10": 0.0026050740852952003,
+                "ema_5": 0.001857087598182261,
+                "ema_10": 0.002885496011003852,
+                "rsi_14": 0.0014383891830220819,
+                "macd": 0.0011628103675320745,
+                "macd_signal": 0.0024681927170604467,
+                "macd_histogram": 0.002438972471281886,
+                "bb_middle": 0.0021877137478441,
+                "bb_upper": 0.0020056075882166624,
+                "bb_lower": 0.002853960730135441,
+                "bb_bandwidth": 0.002605614485219121,
+                "bb_percent_b": 0.0017653104150667787,
+                "roc_10": 0.002272584242746234
+              },
+              "residual_mean": 1.5503922334242233,
+              "residual_std": 27.381381381972883,
+              "residual_max_abs": 191.4763620328904,
+              "regime": "negative_return_regime, normal_volatility"
+            },
+            {
+              "fold": 3,
+              "train_start": "2016-12-23 05:30:00+05:30",
+              "train_end": "2023-04-17 05:30:00+05:30",
+              "validation_start": "2023-04-19 05:30:00+05:30",
+              "validation_end": "2024-06-21 05:30:00+05:30",
+              "train_rows": 1563,
+              "validation_rows": 293,
+              "metrics": {
+                "previous_close": {
+                  "mae": 24.275802047781568,
+                  "rmse": 38.68098148533647,
+                  "mape": 1.0218776542014967,
+                  "directional_accuracy": 0.42662116040955633,
+                  "samples": 293
+                },
+                "moving_average": {
+                  "mae": 49.5191979522184,
+                  "rmse": 64.5280657128745,
+                  "mape": 2.0895238330043346,
+                  "directional_accuracy": 0.4812286689419795,
+                  "samples": 293
+                },
+                "historical_return": {
+                  "mae": 24.18778074773924,
+                  "rmse": 38.60389830437792,
+                  "mape": 1.0182174130750172,
+                  "directional_accuracy": 0.5733788395904437,
+                  "samples": 293
+                },
+                "xgboost": {
+                  "mae": 25.29663379423855,
+                  "rmse": 42.44855492300081,
+                  "mape": 1.0546332068811655,
+                  "directional_accuracy": 0.5187713310580204,
+                  "samples": 293
+                }
+              },
+              "feature_importance": {
+                "daily_return": 0.0021261656656861305,
+                "rolling_return_3d": 0.001475582248531282,
+                "rolling_return_5d": 0.0016775343101471663,
+                "rolling_volatility_5d": 0.00256730685941875,
+                "annualized_volatility_5d": 0.003752610646188259,
+                "sma_5": 0.002342344494536519,
+                "sma_10": 0.0015965310158208013,
+                "ema_5": 0.0020225546322762966,
+                "ema_10": 0.002993122674524784,
+                "rsi_14": 0.0017673654947429895,
+                "macd": 0.002532222541049123,
+                "macd_signal": 0.0021868746262043715,
+                "macd_histogram": 0.0027447494212538004,
+                "bb_middle": 0.0023201568983495235,
+                "bb_upper": 0.002488472731783986,
+                "bb_lower": 0.002209355589002371,
+                "bb_bandwidth": 0.002193150343373418,
+                "bb_percent_b": 0.0021049955394119024,
+                "roc_10": 0.0018496318953111768
+              },
+              "residual_mean": -5.177791551506151,
+              "residual_std": 42.13158304289275,
+              "residual_max_abs": 337.1850356423856,
+              "regime": "positive_return_regime, normal_volatility"
+            },
+            {
+              "fold": 4,
+              "train_start": "2016-12-23 05:30:00+05:30",
+              "train_end": "2024-06-20 05:30:00+05:30",
+              "validation_start": "2024-06-24 05:30:00+05:30",
+              "validation_end": "2025-08-25 05:30:00+05:30",
+              "train_rows": 1856,
+              "validation_rows": 293,
+              "metrics": {
+                "previous_close": {
+                  "mae": 31.807713310580215,
+                  "rmse": 41.57248807210268,
+                  "mape": 1.1193506443601529,
+                  "directional_accuracy": 0.49829351535836175,
+                  "samples": 293
+                },
+                "moving_average": {
+                  "mae": 61.98226962457337,
+                  "rmse": 76.07874163896638,
+                  "mape": 2.186608963254634,
+                  "directional_accuracy": 0.4641638225255973,
+                  "samples": 293
+                },
+                "historical_return": {
+                  "mae": 31.83990203324286,
+                  "rmse": 41.691842763355496,
+                  "mape": 1.1207996853201205,
+                  "directional_accuracy": 0.5017064846416383,
+                  "samples": 293
+                },
+                "xgboost": {
+                  "mae": 32.43667246946704,
+                  "rmse": 42.07790171463904,
+                  "mape": 1.1421357159577794,
+                  "directional_accuracy": 0.4948805460750853,
+                  "samples": 293
+                }
+              },
+              "feature_importance": {
+                "daily_return": 0.002259780652821064,
+                "rolling_return_3d": 0.0021339808590710163,
+                "rolling_return_5d": 0.0016274300869554281,
+                "rolling_volatility_5d": 0.002192853717133403,
+                "annualized_volatility_5d": 0.0020120281260460615,
+                "sma_5": 0.0025995683390647173,
+                "sma_10": 0.0019524742383509874,
+                "ema_5": 0.0021910748910158873,
+                "ema_10": 0.0025675243232399225,
+                "rsi_14": 0.001343525480479002,
+                "macd": 0.0033175298012793064,
+                "macd_signal": 0.0025336160324513912,
+                "macd_histogram": 0.0019403856713324785,
+                "bb_middle": 0.00263512646779418,
+                "bb_upper": 0.0024504128377884626,
+                "bb_lower": 0.0022304991725832224,
+                "bb_bandwidth": 0.0029991331975907087,
+                "bb_percent_b": 0.0018012523651123047,
+                "roc_10": 0.0018981791799888015
+              },
+              "residual_mean": 4.772545169555287,
+              "residual_std": 41.80637063069907,
+              "residual_max_abs": 164.38370873570466,
+              "regime": "negative_return_regime, normal_volatility"
+            },
+            {
+              "fold": 5,
+              "train_start": "2016-12-23 05:30:00+05:30",
+              "train_end": "2025-08-22 05:30:00+05:30",
+              "validation_start": "2025-08-26 05:30:00+05:30",
+              "validation_end": "2026-11-02 05:30:00+05:30",
+              "train_rows": 2149,
+              "validation_rows": 293,
+              "metrics": {
+                "previous_close": {
+                  "mae": 32.809556313993184,
+                  "rmse": 41.878554222349486,
+                  "mape": 1.015463693558892,
+                  "directional_accuracy": 0.42662116040955633,
+                  "samples": 293
+                },
+                "moving_average": {
+                  "mae": 68.51452218430033,
+                  "rmse": 84.49915197056137,
+                  "mape": 2.151303618958192,
+                  "directional_accuracy": 0.44368600682593856,
+                  "samples": 293
+                },
+                "historical_return": {
+                  "mae": 32.61393227181013,
+                  "rmse": 41.77561173948118,
+                  "mape": 1.0097527446892565,
+                  "directional_accuracy": 0.5733788395904437,
+                  "samples": 293
+                },
+                "xgboost": {
+                  "mae": 32.522731447549404,
+                  "rmse": 41.94908908533903,
+                  "mape": 1.0067514749073492,
+                  "directional_accuracy": 0.5767918088737202,
+                  "samples": 293
+                }
+              },
+              "feature_importance": {
+                "daily_return": 0.002259601838886738,
+                "rolling_return_3d": 0.0017544281436130404,
+                "rolling_return_5d": 0.0020766768138855696,
+                "rolling_volatility_5d": 0.0023365807719528675,
+                "annualized_volatility_5d": 0.0031453720293939114,
+                "sma_5": 0.0029027245473116636,
+                "sma_10": 0.002052712021395564,
+                "ema_5": 0.002742947544902563,
+                "ema_10": 0.0022271794732660055,
+                "rsi_14": 0.0020599914714694023,
+                "macd": 0.0023165144957602024,
+                "macd_signal": 0.0019839087035506964,
+                "macd_histogram": 0.002615624573081732,
+                "bb_middle": 0.001912358682602644,
+                "bb_upper": 0.0023288594093173742,
+                "bb_lower": 0.002285235095769167,
+                "bb_bandwidth": 0.002018936676904559,
+                "bb_percent_b": 0.0018788251327350736,
+                "roc_10": 0.002062132814899087
+              },
+              "residual_mean": -2.9806185520590467,
+              "residual_std": 41.84306379959326,
+              "residual_max_abs": 129.7102519631385,
+              "regime": "positive_return_regime, normal_volatility"
+            }
+          ],
+          "mean_metrics": {
+            "previous_close": {
+              "mae": 25.79141979522185,
+              "rmse": 35.39266773024242,
+              "mape": 1.0707567166454415,
+              "directional_accuracy": 0.46416382252559724
+            },
+            "moving_average": {
+              "mae": 52.66397474402729,
+              "rmse": 66.69523398595513,
+              "mape": 2.198338775638296,
+              "directional_accuracy": 0.4716723549488055
+            },
+            "historical_return": {
+              "mae": 25.74173822129895,
+              "rmse": 35.390464638769046,
+              "mape": 1.0692892478611782,
+              "directional_accuracy": 0.5358361774744027
+            },
+            "xgboost": {
+              "mae": 26.225163184293308,
+              "rmse": 36.555986423475275,
+              "mape": 1.0886059772009242,
+              "directional_accuracy": 0.5228668941979522
+            }
+          },
+          "beats_previous_close_all_folds": false,
+          "beats_any_baseline_all_folds": false
+        },
+        "lightgbm": {
+          "folds": [
+            {
+              "fold": 1,
+              "train_start": "2016-12-23 05:30:00+05:30",
+              "train_end": "2020-12-02 05:30:00+05:30",
+              "validation_start": "2020-12-04 05:30:00+05:30",
+              "validation_end": "2022-02-08 05:30:00+05:30",
+              "train_rows": 977,
+              "validation_rows": 293,
+              "metrics": {
+                "previous_close": {
+                  "mae": 21.606757679180884,
+                  "rmse": 28.532083838919405,
+                  "mape": 1.1731052265022512,
+                  "directional_accuracy": 0.4641638225255973,
+                  "samples": 293
+                },
+                "moving_average": {
+                  "mae": 44.807167235494866,
+                  "rmse": 58.296714497193015,
+                  "mape": 2.424794662351785,
+                  "directional_accuracy": 0.49146757679180886,
+                  "samples": 293
+                },
+                "historical_return": {
+                  "mae": 21.58436731212145,
+                  "rmse": 28.507825109940995,
+                  "mape": 1.171777051450927,
+                  "directional_accuracy": 0.5358361774744027,
+                  "samples": 293
+                },
+                "lightgbm": {
+                  "mae": 22.453324627183505,
+                  "rmse": 29.374298684493105,
+                  "mape": 1.2179302066468147,
+                  "directional_accuracy": 0.48464163822525597,
+                  "samples": 293
+                }
+              },
+              "feature_importance": {
+                "close": 0.0,
+                "daily_return": 0.07712571747833863,
+                "rolling_return_3d": 0.021429607644677162,
+                "rolling_return_5d": 0.04079515999183059,
+                "rolling_volatility_5d": 0.10665069340029731,
+                "annualized_volatility_5d": 0.011707179946824908,
+                "sma_5": 0.03744294960051775,
+                "sma_10": 0.014552589738741517,
+                "ema_5": 0.004417916992679238,
+                "ema_10": 0.0360360115300864,
+                "rsi_14": 0.014236391230951995,
+                "macd": 0.03332755004521459,
+                "macd_signal": 0.030652759596705437,
+                "macd_histogram": 0.03378109826007858,
+                "bb_middle": 0.03479880967643112,
+                "bb_upper": 0.036783029267098755,
+                "bb_lower": 0.04991677973885089,
+                "bb_bandwidth": 0.05067031015641987,
+                "bb_percent_b": 0.029153035080526024,
+                "roc_10": 0.0584364389651455
+              },
+              "residual_mean": -0.7047860349160809,
+              "residual_std": 29.36584239981548,
+              "residual_max_abs": 96.81615249109154,
+              "regime": "positive_return_regime, normal_volatility"
+            },
+            {
+              "fold": 2,
+              "train_start": "2016-12-23 05:30:00+05:30",
+              "train_end": "2022-02-07 05:30:00+05:30",
+              "validation_start": "2022-02-09 05:30:00+05:30",
+              "validation_end": "2023-04-18 05:30:00+05:30",
+              "train_rows": 1270,
+              "validation_rows": 293,
+              "metrics": {
+                "previous_close": {
+                  "mae": 18.45726962457339,
+                  "rmse": 26.299231032504057,
+                  "mape": 1.023986364604414,
+                  "directional_accuracy": 0.5051194539249146,
+                  "samples": 293
+                },
+                "moving_average": {
+                  "mae": 38.49671672354948,
+                  "rmse": 50.07349611018034,
+                  "mape": 2.1394628006225354,
+                  "directional_accuracy": 0.4778156996587031,
+                  "samples": 293
+                },
+                "historical_return": {
+                  "mae": 18.48270874158106,
+                  "rmse": 26.373145276689655,
+                  "mape": 1.025899344770569,
+                  "directional_accuracy": 0.4948805460750853,
+                  "samples": 293
+                },
+                "lightgbm": {
+                  "mae": 18.493046242745667,
+                  "rmse": 26.34627510174698,
+                  "mape": 1.0265391859703499,
+                  "directional_accuracy": 0.5426621160409556,
+                  "samples": 293
+                }
+              },
+              "feature_importance": {
+                "close": 0.0,
+                "daily_return": 0.07016485987696797,
+                "rolling_return_3d": 0.018750921881292015,
+                "rolling_return_5d": 0.03501174983102828,
+                "rolling_volatility_5d": 0.10028150980360806,
+                "annualized_volatility_5d": 0.01777938986197114,
+                "sma_5": 0.03480063518509269,
+                "sma_10": 0.007748939911834896,
+                "ema_5": 0.008763080928474665,
+                "ema_10": 0.028200550004839897,
+                "rsi_14": 0.016121020074933767,
+                "macd": 0.036551855388097465,
+                "macd_signal": 0.029132981959264725,
+                "macd_histogram": 0.026092836051248014,
+                "bb_middle": 0.034349613008089364,
+                "bb_upper": 0.04220683022867888,
+                "bb_lower": 0.04370756377466023,
+                "bb_bandwidth": 0.03923715010751039,
+                "bb_percent_b": 0.03562435007188469,
+                "roc_10": 0.04382940905634314
+              },
+              "residual_mean": 1.6745549276221523,
+              "residual_std": 26.29300434585803,
+              "residual_max_abs": 185.57783373829307,
+              "regime": "negative_return_regime, normal_volatility"
+            },
+            {
+              "fold": 3,
+              "train_start": "2016-12-23 05:30:00+05:30",
+              "train_end": "2023-04-17 05:30:00+05:30",
+              "validation_start": "2023-04-19 05:30:00+05:30",
+              "validation_end": "2024-06-21 05:30:00+05:30",
+              "train_rows": 1563,
+              "validation_rows": 293,
+              "metrics": {
+                "previous_close": {
+                  "mae": 24.275802047781568,
+                  "rmse": 38.68098148533647,
+                  "mape": 1.0218776542014967,
+                  "directional_accuracy": 0.42662116040955633,
+                  "samples": 293
+                },
+                "moving_average": {
+                  "mae": 49.5191979522184,
+                  "rmse": 64.5280657128745,
+                  "mape": 2.0895238330043346,
+                  "directional_accuracy": 0.4812286689419795,
+                  "samples": 293
+                },
+                "historical_return": {
+                  "mae": 24.18778074773924,
+                  "rmse": 38.60389830437792,
+                  "mape": 1.0182174130750172,
+                  "directional_accuracy": 0.5733788395904437,
+                  "samples": 293
+                },
+                "lightgbm": {
+                  "mae": 24.67540210610701,
+                  "rmse": 39.69516817828289,
+                  "mape": 1.0341552049212395,
+                  "directional_accuracy": 0.5187713310580204,
+                  "samples": 293
+                }
+              },
+              "feature_importance": {
+                "close": 0.0,
+                "daily_return": 0.07375140010844916,
+                "rolling_return_3d": 0.015965490019880235,
+                "rolling_return_5d": 0.03894226998090744,
+                "rolling_volatility_5d": 0.10173190099885687,
+                "annualized_volatility_5d": 0.012225284124724567,
+                "sma_5": 0.03633609530515969,
+                "sma_10": 0.027010280056856573,
+                "ema_5": 0.013603631989099085,
+                "ema_10": 0.014214820112101734,
+                "rsi_14": 0.03485431999433786,
+                "macd": 0.04098402021918446,
+                "macd_signal": 0.0369353013811633,
+                "macd_histogram": 0.04288292728597298,
+                "bb_middle": 0.029755033261608332,
+                "bb_upper": 0.044773819856345654,
+                "bb_lower": 0.036715360009111464,
+                "bb_bandwidth": 0.03242647188017145,
+                "bb_percent_b": 0.039945839904248714,
+                "roc_10": 0.058213857701048255
+              },
+              "residual_mean": -4.179556387809895,
+              "residual_std": 39.47451944106831,
+              "residual_max_abs": 332.9169134690692,
+              "regime": "positive_return_regime, normal_volatility"
+            },
+            {
+              "fold": 4,
+              "train_start": "2016-12-23 05:30:00+05:30",
+              "train_end": "2024-06-20 05:30:00+05:30",
+              "validation_start": "2024-06-24 05:30:00+05:30",
+              "validation_end": "2025-08-25 05:30:00+05:30",
+              "train_rows": 1856,
+              "validation_rows": 293,
+              "metrics": {
+                "previous_close": {
+                  "mae": 31.807713310580215,
+                  "rmse": 41.57248807210268,
+                  "mape": 1.1193506443601529,
+                  "directional_accuracy": 0.49829351535836175,
+                  "samples": 293
+                },
+                "moving_average": {
+                  "mae": 61.98226962457337,
+                  "rmse": 76.07874163896638,
+                  "mape": 2.186608963254634,
+                  "directional_accuracy": 0.4641638225255973,
+                  "samples": 293
+                },
+                "historical_return": {
+                  "mae": 31.83990203324286,
+                  "rmse": 41.691842763355496,
+                  "mape": 1.1207996853201205,
+                  "directional_accuracy": 0.5017064846416383,
+                  "samples": 293
+                },
+                "lightgbm": {
+                  "mae": 32.08629579763012,
+                  "rmse": 41.7265070810925,
+                  "mape": 1.1309865330323927,
+                  "directional_accuracy": 0.5392491467576792,
+                  "samples": 293
+                }
+              },
+              "feature_importance": {
+                "close": 0.0,
+                "daily_return": 0.11794639064464718,
+                "rolling_return_3d": 0.020367999910376966,
+                "rolling_return_5d": 0.031316203239839524,
+                "rolling_volatility_5d": 0.0700746999355033,
+                "annualized_volatility_5d": 0.0102231299970299,
+                "sma_5": 0.02965594979468733,
+                "sma_10": 0.019298020168207586,
+                "ema_5": 0.02875680022407323,
+                "ema_10": 0.015348668035585433,
+                "rsi_14": 0.03381388052366674,
+                "macd": 0.05718280025757849,
+                "macd_signal": 0.030199357017409056,
+                "macd_histogram": 0.06483439973089844,
+                "bb_middle": 0.028966914280317724,
+                "bb_upper": 0.04317394027020782,
+                "bb_lower": 0.04093623877270147,
+                "bb_bandwidth": 0.032710389350540936,
+                "bb_percent_b": 0.03184052009601146,
+                "roc_10": 0.06293762975838035
+              },
+              "residual_mean": 5.227864530378702,
+              "residual_std": 41.39771522246694,
+              "residual_max_abs": 164.55856282616196,
+              "regime": "negative_return_regime, normal_volatility"
+            },
+            {
+              "fold": 5,
+              "train_start": "2016-12-23 05:30:00+05:30",
+              "train_end": "2025-08-22 05:30:00+05:30",
+              "validation_start": "2025-08-26 05:30:00+05:30",
+              "validation_end": "2026-11-02 05:30:00+05:30",
+              "train_rows": 2149,
+              "validation_rows": 293,
+              "metrics": {
+                "previous_close": {
+                  "mae": 32.809556313993184,
+                  "rmse": 41.878554222349486,
+                  "mape": 1.015463693558892,
+                  "directional_accuracy": 0.42662116040955633,
+                  "samples": 293
+                },
+                "moving_average": {
+                  "mae": 68.51452218430033,
+                  "rmse": 84.49915197056137,
+                  "mape": 2.151303618958192,
+                  "directional_accuracy": 0.44368600682593856,
+                  "samples": 293
+                },
+                "historical_return": {
+                  "mae": 32.61393227181013,
+                  "rmse": 41.77561173948118,
+                  "mape": 1.0097527446892565,
+                  "directional_accuracy": 0.5733788395904437,
+                  "samples": 293
+                },
+                "lightgbm": {
+                  "mae": 32.74425171025662,
+                  "rmse": 41.867184502293945,
+                  "mape": 1.0134987354750644,
+                  "directional_accuracy": 0.515358361774744,
+                  "samples": 293
+                }
+              },
+              "feature_importance": {
+                "close": 0.0,
+                "daily_return": 0.07194594002794474,
+                "rolling_return_3d": 0.02802364993840456,
+                "rolling_return_5d": 0.04007785953581333,
+                "rolling_volatility_5d": 0.101116809877567,
+                "annualized_volatility_5d": 0.007298370008356869,
+                "sma_5": 0.04292984039057046,
+                "sma_10": 0.025245446944609284,
+                "ema_5": 0.03684218053240329,
+                "ema_10": 0.014048010110855103,
+                "rsi_14": 0.031825343903619796,
+                "macd": 0.044587729847989976,
+                "macd_signal": 0.02471823012456298,
+                "macd_histogram": 0.054601937998086214,
+                "bb_middle": 0.039410660159774125,
+                "bb_upper": 0.02726894011721015,
+                "bb_lower": 0.04935194889549166,
+                "bb_bandwidth": 0.04027661186410114,
+                "bb_percent_b": 0.018179295933805406,
+                "roc_10": 0.06988608976826072
+              },
+              "residual_mean": -2.4887055814475705,
+              "residual_std": 41.79315114558836,
+              "residual_max_abs": 126.67344273482558,
+              "regime": "positive_return_regime, normal_volatility"
+            }
+          ],
+          "mean_metrics": {
+            "previous_close": {
+              "mae": 25.79141979522185,
+              "rmse": 35.39266773024242,
+              "mape": 1.0707567166454415,
+              "directional_accuracy": 0.46416382252559724
+            },
+            "moving_average": {
+              "mae": 52.66397474402729,
+              "rmse": 66.69523398595513,
+              "mape": 2.198338775638296,
+              "directional_accuracy": 0.4716723549488055
+            },
+            "historical_return": {
+              "mae": 25.74173822129895,
+              "rmse": 35.390464638769046,
+              "mape": 1.0692892478611782,
+              "directional_accuracy": 0.5358361774744027
+            },
+            "lightgbm": {
+              "mae": 26.09046409678458,
+              "rmse": 35.801886709581886,
+              "mape": 1.0846219732091722,
+              "directional_accuracy": 0.5201365187713309
+            }
+          },
+          "beats_previous_close_all_folds": false,
+          "beats_any_baseline_all_folds": false
+        }
+      }
+    }
+  ]
+}
