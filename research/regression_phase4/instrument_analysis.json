@@ -1,0 +1,523 @@
+{
+  "BHARTIARTL": [
+    {
+      "target": "close_1",
+      "horizon": 1,
+      "coverage": 0.9917830731306492,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "close_3",
+      "horizon": 3,
+      "coverage": 0.9909613804437141,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "close_5",
+      "horizon": 5,
+      "coverage": 0.990139687756779,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "open_1",
+      "horizon": 1,
+      "coverage": 0.9917830731306492,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "return_1",
+      "horizon": 1,
+      "coverage": 0.9917830731306492,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "return_3",
+      "horizon": 3,
+      "coverage": 0.9909613804437141,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "return_5",
+      "horizon": 5,
+      "coverage": 0.990139687756779,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "high_1",
+      "horizon": 1,
+      "coverage": 0.9917830731306492,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": true,
+        "exponential_smoothing": true,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "low_1",
+      "horizon": 1,
+      "coverage": 0.9917830731306492,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": true,
+        "exponential_smoothing": true,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    }
+  ],
+  "TCS": [
+    {
+      "target": "close_1",
+      "horizon": 1,
+      "coverage": 0.9917830731306492,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "close_3",
+      "horizon": 3,
+      "coverage": 0.9909613804437141,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "close_5",
+      "horizon": 5,
+      "coverage": 0.990139687756779,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "open_1",
+      "horizon": 1,
+      "coverage": 0.9917830731306492,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "return_1",
+      "horizon": 1,
+      "coverage": 0.9917830731306492,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "return_3",
+      "horizon": 3,
+      "coverage": 0.9909613804437141,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "return_5",
+      "horizon": 5,
+      "coverage": 0.990139687756779,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "high_1",
+      "horizon": 1,
+      "coverage": 0.9917830731306492,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": true,
+        "exponential_smoothing": true,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "low_1",
+      "horizon": 1,
+      "coverage": 0.9917830731306492,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": true,
+        "exponential_smoothing": true,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    }
+  ],
+  "NIFTY_50": [
+    {
+      "target": "close_1",
+      "horizon": 1,
+      "coverage": 0.9918166939443536,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "close_3",
+      "horizon": 3,
+      "coverage": 0.9909983633387889,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "close_5",
+      "horizon": 5,
+      "coverage": 0.9901800327332242,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "open_1",
+      "horizon": 1,
+      "coverage": 0.9918166939443536,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "return_1",
+      "horizon": 1,
+      "coverage": 0.9918166939443536,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "return_3",
+      "horizon": 3,
+      "coverage": 0.9909983633387889,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "return_5",
+      "horizon": 5,
+      "coverage": 0.9901800327332242,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "high_1",
+      "horizon": 1,
+      "coverage": 0.9918166939443536,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": true,
+        "exponential_smoothing": true,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "low_1",
+      "horizon": 1,
+      "coverage": 0.9918166939443536,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": true,
+        "exponential_smoothing": true,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    }
+  ],
+  "NIFTY_TELECOMMUNICATIONS": [
+    {
+      "target": "close_1",
+      "horizon": 1,
+      "coverage": 0.9918166939443536,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "close_3",
+      "horizon": 3,
+      "coverage": 0.9909983633387889,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "close_5",
+      "horizon": 5,
+      "coverage": 0.9901800327332242,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "open_1",
+      "horizon": 1,
+      "coverage": 0.0,
+      "acceptance": {}
+    },
+    {
+      "target": "return_1",
+      "horizon": 1,
+      "coverage": 0.9918166939443536,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "return_3",
+      "horizon": 3,
+      "coverage": 0.9909983633387889,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "return_5",
+      "horizon": 5,
+      "coverage": 0.9901800327332242,
+      "acceptance": {
+        "previous_close": false,
+        "sma_10": false,
+        "historical_return": false,
+        "exponential_smoothing": false,
+        "ridge": false,
+        "linear": false,
+        "xgboost": false,
+        "lightgbm": false
+      }
+    },
+    {
+      "target": "high_1",
+      "horizon": 1,
+      "coverage": 0.0,
+      "acceptance": {}
+    },
+    {
+      "target": "low_1",
+      "horizon": 1,
+      "coverage": 0.0,
+      "acceptance": {}
+    }
+  ]
+}

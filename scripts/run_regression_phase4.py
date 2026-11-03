@@ -78,11 +78,12 @@ def _flatten(results: list[dict]) -> tuple[list[dict], list[dict]]:
                 target_rows.append(row)
     by_horizon = {}
     for row in target_rows:
-        key = (row["symbol"], row["horizon"], row["model"])
+        key = (row["symbol"], row["target"], row["horizon"], row["model"])
         by_horizon.setdefault(key, []).append(row)
-    for (symbol, horizon, model), rows in by_horizon.items():
+    for (symbol, target, horizon, model), rows in by_horizon.items():
         horizon_rows.append({
             "symbol": symbol,
+            "target": target,
             "horizon": horizon,
             "model": model,
             "mean_mae": sum(r["mae"] for r in rows) / len(rows),
@@ -128,7 +129,12 @@ def _report(results: list[dict]) -> str:
         lines.append(
             f"| {symbol} | {best[1]} | {best[2]} | {best[3]} | {best[0]:.4f} | {best[4]:.4f} | {'PASS' if best[5] else 'REJECT'} |"
         )
-    lines.extend(["", "## Recommendations", "", "No target/horizon/model should be integrated into production unless it passes the all-fold MAE/RMSE gate and a separate production review."])
+    lines.extend([
+        "",
+        "## Recommendations",
+        "",
+        "No target/horizon/model should be integrated into production unless it passes the all-fold MAE/RMSE gate and a separate production review.",
+    ])
     return "\n".join(lines)
 
 
@@ -139,13 +145,18 @@ def main() -> None:
     results = []
     for symbol, dataset in datasets.items():
         for target_name in TARGETS:
-            if target_name == "open_1" and dataset.df["open"].notna().sum() == 0:
+            source_column = TARGETS[target_name][0]
+            unavailable_ohlc = (
+                source_column in {"open", "high", "low"}
+                and dataset.df[source_column].notna().sum() == 0
+            )
+            if unavailable_ohlc:
                 results.append({
                     "symbol": symbol, "target": target_name, "target_type": "price",
                     "horizon": 1, "rows": 0, "coverage": 0.0, "features": [],
                     "folds": {name: [] for name in ["previous_close", "sma_10", "historical_return", "exponential_smoothing", "ridge", "linear", "xgboost", "lightgbm"]},
                     "acceptance": {},
-                    "status": "unavailable_no_ohlc",
+                    "status": f"unavailable_no_{source_column}",
                 })
                 continue
             results.append(evaluate_phase4_target(
@@ -170,10 +181,43 @@ def main() -> None:
         for symbol in SYMBOLS
     }
     (OUTPUT / "instrument_analysis.json").write_text(json.dumps(analysis, indent=2), encoding="utf-8")
-    recommendations = {
-        symbol: {"recommendation": "REJECT", "reason": "No candidate passed every-fold MAE/RMSE acceptance."}
-        for symbol in SYMBOLS
-    }
+    recommendations = {}
+    for symbol in SYMBOLS:
+        candidates = []
+        for result in results:
+            if result["symbol"] != symbol or not result.get("rows"):
+                continue
+            baseline = sum(
+                f["metrics"]["previous_close"]["mae"]
+                for f in result["folds"]["previous_close"]
+            ) / len(result["folds"]["previous_close"])
+            model_candidates = [
+                (sum(f["metrics"][m]["mae"] for f in folds) / len(folds), m)
+                for m, folds in result["folds"].items()
+                if m not in {
+                    "previous_close", "sma_10", "historical_return",
+                    "exponential_smoothing",
+                }
+            ]
+            mae, model = min(model_candidates)
+            candidates.append({
+                "target": result["target"],
+                "horizon": result["horizon"],
+                "candidate": model,
+                "mean_mae": mae,
+                "baseline_mae": baseline,
+                "baseline_ratio": mae / baseline if baseline else None,
+                "consistent": result["acceptance"].get(model, False),
+            })
+        best = min(candidates, key=lambda item: item["baseline_ratio"])
+        recommendations[symbol] = {
+            "most_predictable_target": best["target"],
+            "best_horizon": best["horizon"],
+            "best_candidate": best["candidate"],
+            "comparison": best,
+            "recommendation": "REJECT",
+            "reason": "No candidate passed every-fold MAE/RMSE acceptance.",
+        }
     (OUTPUT / "recommendations.json").write_text(json.dumps(recommendations, indent=2), encoding="utf-8")
     (OUTPUT / "REPORT.md").write_text(_report([r for r in results if r.get("rows", 0)]), encoding="utf-8")
     print(json.dumps({"output": str(OUTPUT), "experiments": len(results)}, indent=2))

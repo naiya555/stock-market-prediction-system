@@ -1,0 +1,66 @@
+{
+  "BHARTIARTL": {
+    "most_predictable_target": "return_1",
+    "best_horizon": 1,
+    "best_candidate": "xgboost",
+    "comparison": {
+      "target": "return_1",
+      "horizon": 1,
+      "candidate": "xgboost",
+      "mean_mae": 0.010772958764268061,
+      "baseline_mae": 0.01059427921395195,
+      "baseline_ratio": 1.016865663695252,
+      "consistent": false
+    },
+    "recommendation": "REJECT",
+    "reason": "No candidate passed every-fold MAE/RMSE acceptance."
+  },
+  "TCS": {
+    "most_predictable_target": "return_3",
+    "best_horizon": 3,
+    "best_candidate": "xgboost",
+    "comparison": {
+      "target": "return_3",
+      "horizon": 3,
+      "candidate": "xgboost",
+      "mean_mae": 0.019411777656243155,
+      "baseline_mae": 0.018803432079332567,
+      "baseline_ratio": 1.0323529010206196,
+      "consistent": false
+    },
+    "recommendation": "REJECT",
+    "reason": "No candidate passed every-fold MAE/RMSE acceptance."
+  },
+  "NIFTY_50": {
+    "most_predictable_target": "return_1",
+    "best_horizon": 1,
+    "best_candidate": "xgboost",
+    "comparison": {
+      "target": "return_1",
+      "horizon": 1,
+      "candidate": "xgboost",
+      "mean_mae": 0.006718563906201148,
+      "baseline_mae": 0.006524141401229369,
+      "baseline_ratio": 1.0298004738117943,
+      "consistent": false
+    },
+    "recommendation": "REJECT",
+    "reason": "No candidate passed every-fold MAE/RMSE acceptance."
+  },
+  "NIFTY_TELECOMMUNICATIONS": {
+    "most_predictable_target": "return_1",
+    "best_horizon": 1,
+    "best_candidate": "ridge",
+    "comparison": {
+      "target": "return_1",
+      "horizon": 1,
+      "candidate": "ridge",
+      "mean_mae": 0.010815941115875579,
+      "baseline_mae": 0.01069365585144354,
+      "baseline_ratio": 1.0114353095078827,
+      "consistent": false
+    },
+    "recommendation": "REJECT",
+    "reason": "No candidate passed every-fold MAE/RMSE acceptance."
+  }
+}
