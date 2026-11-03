@@ -74,6 +74,7 @@ class BaseLLMClient(ABC):
         prompt: str,
         system: Optional[str] = None,
         format_json: bool = True,
+        max_tokens: Optional[int] = None,
     ) -> str:
         """Generate text from the model given a prompt and optional system instructions.
 
@@ -282,6 +283,7 @@ class OllamaLLMClient(BaseLLMClient):
         prompt: str,
         system: Optional[str] = None,
         format_json: bool = True,
+        max_tokens: Optional[int] = None,
     ) -> str:
         """Send completion request to Ollama `/api/generate` endpoint.
 
@@ -308,6 +310,8 @@ class OllamaLLMClient(BaseLLMClient):
                 "temperature": 0.1,  # Low temperature for factual, deterministic analysis
             },
         }
+        if max_tokens is not None:
+            payload["options"]["num_predict"] = max_tokens
 
         if system:
             payload["system"] = system

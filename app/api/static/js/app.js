@@ -22,6 +22,7 @@
     isPredicting: false,
     predictionRequestId: 0,
     activePredictionAbortController: null,
+    chatHistory: [],
     catalog: [],
     history: {
       items: [],
@@ -262,7 +263,7 @@
       return await res.json();
     },
 
-    async sendChatMessage(payload, timeoutMs = 45000) {
+    async sendChatMessage(payload, timeoutMs = 120000) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -1047,6 +1048,7 @@
           container.appendChild(typingEl);
           container.scrollTop = container.scrollHeight;
         }
+        AppState.chatHistory.push({ role: 'user', content: text });
 
         try {
           const activeSymbol = (AppState.prediction && AppState.prediction.symbol)
@@ -1056,6 +1058,7 @@
           const res = await ApiService.sendChatMessage({
             message: text,
             instrument: activeSymbol,
+            conversation_history: AppState.chatHistory.slice(-10),
             prediction_context: AppState.prediction ? {
               symbol: AppState.prediction.symbol,
               predicted_direction: AppState.prediction.predicted_direction,
@@ -1073,6 +1076,7 @@
           }
 
           appendChatMessage('assistant', res.reply || 'No response returned.');
+          AppState.chatHistory.push({ role: 'assistant', content: res.reply || 'No response returned.' });
         } catch (err) {
           if (typingEl && typingEl.parentNode) {
             typingEl.parentNode.removeChild(typingEl);

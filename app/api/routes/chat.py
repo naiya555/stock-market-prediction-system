@@ -72,13 +72,13 @@ def chat_assistant(
     now_iso = datetime.now(timezone.utc).isoformat()
     lowered_msg = user_msg.lower()
 
-    # 1. Determine target symbol
-    target_symbol = (payload.symbol or payload.instrument or "").strip().upper()
-    if not target_symbol:
-        for sym_cand in ("BHARTIARTL", "TCS", "RELIANCE", "NIFTY 50", "NIFTY_50", "NIFTY_TELECOMMUNICATIONS", "NIFTY TELECOM"):
-            if sym_cand.lower() in lowered_msg:
-                target_symbol = sym_cand
-                break
+    # 1. Determine the symbol explicitly mentioned by the user. The frontend
+    # also sends the currently selected instrument as passive UI context; that
+    # must not turn a general question into an instrument query.
+    symbol_candidates = ("BHARTIARTL", "TCS", "RELIANCE", "NIFTY 50", "NIFTY_50", "NIFTY_TELECOMMUNICATIONS", "NIFTY TELECOM")
+    explicit_symbol = next((sym for sym in symbol_candidates if sym.lower() in lowered_msg), None)
+    pc = payload.prediction_context if isinstance(payload.prediction_context, dict) else {}
+    target_symbol = explicit_symbol or (payload.symbol or payload.instrument or pc.get("symbol") or "").strip().upper()
 
     canon = None
     cap_status = None
@@ -86,7 +86,7 @@ def chat_assistant(
     prereq = None
     instrument_context_str = ""
 
-    if target_symbol:
+    if explicit_symbol or pc:
         canon, cap_status, reason, prereq = model_router.inspect_instrument(target_symbol)
         instrument_context_str = (
             f"Target Instrument: {canon}\n"
@@ -98,7 +98,6 @@ def chat_assistant(
 
     # 2. Check prediction context
     pred_context_str = ""
-    pc = payload.prediction_context if isinstance(payload.prediction_context, dict) else {}
     if pc:
         p_up = pc.get("probability_up")
         p_up_str = f"{round(p_up * 100, 1)}%" if isinstance(p_up, (int, float)) else "Uncalibrated"
@@ -181,7 +180,7 @@ def chat_assistant(
         )
 
     # Category 4: Instrument Availability & Training/Data Prerequisites
-    if any(q in lowered_msg for q in ("why is", "why blocked", "how to enable", "prerequisite", "support", "available", "unavailable", "capability")):
+    if explicit_symbol and any(q in lowered_msg for q in ("why is", "why blocked", "how to enable", "prerequisite", "support", "available", "unavailable", "capability")):
         if target_symbol:
             if cap_status and cap_status.value == "SUPPORTED_AND_READY":
                 reply_text = (
@@ -244,24 +243,31 @@ def chat_assistant(
         )
 
     # 5. Attempt generation with local Ollama Gemma 3 12B client
-    ollama_client = OllamaLLMClient()
+    ollama_client = OllamaLLMClient(timeout_seconds=90.0)
     if ollama_client.is_available():
         system_prompt = (
-            "You are the professional, friendly Market Analysis Assistant for the Indian Stock Market Prediction System. "
-            "You help users understand stock forecasts, market terminology, regulatory announcements, and system capabilities.\n\n"
-            "STRICT RULES:\n"
-            "1. Ground all responses in the provided platform facts and context.\n"
-            "2. Never fabricate live stock prices, upcoming earnings numbers, or future market moves.\n"
-            "3. Clearly state if information or model support is unavailable.\n"
-            "4. Keep explanations concise, clear, and easy to understand for beginners.\n"
-            "5. Never give direct investment or trading advice."
-        )
+        "You are a professional, friendly assistant for the Indian Stock Market Prediction System. "
+        "Answer general knowledge questions about science, technology, history, mathematics, and everyday reasoning directly "
+        "in simple language. Also help users understand stock forecasts, market terminology, regulatory announcements, and system capabilities.\n\n"
+        "STRICT RULES:\n"
+        "1. Use provided platform context as verified project evidence when it is present, and do not invent project facts.\n"
+        "2. For general knowledge, answer from your general knowledge without forcing stock-market context.\n"
+        "3. Do not fabricate live stock prices, upcoming earnings numbers, future market moves, historical facts, or sources.\n"
+        "4. Clearly distinguish verified platform information from general knowledge when relevant.\n"
+        "5. Keep explanations concise, clear, and easy to understand for beginners.\n"
+        "6. Never give direct investment or trading advice."
+    )
 
         user_content_parts = [f"User Question: {user_msg}\n"]
         if instrument_context_str:
             user_content_parts.append(f"\n--- Authoritative Instrument Context ---\n{instrument_context_str}")
         if pred_context_str:
             user_content_parts.append(f"\n--- Active Prediction Context ---\n{pred_context_str}")
+        if payload.conversation_history:
+            history_lines = []
+            for turn in payload.conversation_history[-10:]:
+                history_lines.append(f"{turn.role.title()}: {turn.content}")
+            user_content_parts.append("\n--- Recent Conversation ---\n" + "\n".join(history_lines))
 
         full_prompt = "\n".join(user_content_parts)
 
@@ -270,6 +276,7 @@ def chat_assistant(
                 prompt=full_prompt,
                 system=system_prompt,
                 format_json=False,
+                max_tokens=128,
             )
             sources.append(f"Local Ollama ({ollama_client.model_name})")
             return ChatResponse(
@@ -291,7 +298,7 @@ def chat_assistant(
             f"**Current Forecast Summary for {target_symbol or 'BHARTIARTL'}:**\n"
             f"The model predicts next-session direction as **{pc.get('predicted_direction', 'N/A')}** {prob_str}.\n"
         )
-    elif instrument_context_str:
+    elif explicit_symbol and instrument_context_str:
         fallback_parts.append(
             f"**{canon} Status:** {cap_status.value if cap_status else 'BLOCKED'}\n"
             f"- {reason}\n"
