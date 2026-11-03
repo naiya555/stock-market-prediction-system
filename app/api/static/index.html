@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Indian Stock Market Analysis & Prediction Platform</title>
   <meta name="description" content="Professional Indian stock market analysis platform combining quantitative gradient-boosted ML (XGBoost/LightGBM) with qualitative contextual AI reasoning (Gemma 3 12B) and macroeconomic event tracking.">
-  <link rel="stylesheet" href="/static/css/styles.css?v=20261101-refine">
+  <link rel="stylesheet" href="/static/css/styles.css?v=20261103-forward-forecast">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -223,19 +223,23 @@
               <div class="chart-tooltip-floating" id="chart-tooltip">
                 <div class="chart-tooltip-title" id="tooltip-instrument">BHARTIARTL</div>
                 <div class="chart-tooltip-row"><span>Time:</span> <strong id="tooltip-time" class="font-mono">--</strong></div>
+                <div class="chart-tooltip-row" id="tooltip-ohlc-row"><span>OHLC:</span> <strong id="tooltip-ohlc" class="font-mono">--</strong></div>
                 <div class="chart-tooltip-row"><span>Price:</span> <strong id="tooltip-price" class="font-mono">--</strong></div>
                 <div class="chart-tooltip-row"><span>Change:</span> <strong id="tooltip-change" class="font-mono">--</strong></div>
                 <div class="chart-tooltip-row" id="tooltip-vol-row"><span>Volume:</span> <strong id="tooltip-volume" class="font-mono">--</strong></div>
+                <div class="chart-tooltip-row" id="tooltip-forecast-row" style="display:none;"><span>Forecast:</span> <strong id="tooltip-forecast" class="font-mono">--</strong></div>
               </div>
             </div>
 
             <!-- Chart Footer Status & Legend -->
             <div class="chart-status-footer">
               <div class="chart-legend-row">
-                <span class="legend-item"><span class="legend-dot" style="background:#6366f1;"></span> Market Close</span>
-                <span class="legend-item"><span class="legend-dot" style="background:#f59e0b;"></span> Trend Moving Avg</span>
+                <span class="legend-item"><span class="legend-dot" style="background:#386d83;"></span> Historical Close</span>
+                <span class="legend-item"><span class="legend-dot" style="background:#386d83;"></span> Volume</span>
+                <span class="legend-item"><span class="legend-dot" style="background:#f59e0b;"></span> 20D Average</span>
+                <span class="legend-item"><span class="legend-dot" style="background:#8b5e3c;"></span> 50D Average</span>
                 <span class="legend-item"><span class="legend-dot" style="background:#10b981;"></span> Latest Confirmed</span>
-                <span class="legend-item"><span class="legend-dot" style="background:#a855f7; border: 1px dashed #fff;"></span> Forward Forecast</span>
+                <span class="legend-item"><span class="legend-dot" style="background:#b44942; border: 1px dashed #fff;"></span> Forecast Direction</span>
               </div>
               <div class="chart-connection-meta" id="chart-connection-status">
                 <span id="chart-last-updated-text">Last updated: Just now</span> &bull; <span id="chart-provider-note">yfinance (15m delayed)</span>
@@ -1102,6 +1106,6 @@
   </aside>
 
   <!-- JavaScript Entry Point -->
-  <script src="/static/js/app.js?v=20261103-chat-relevance-3"></script>
+  <script src="/static/js/app.js?v=20261103-forward-forecast"></script>
 </body>
 </html>

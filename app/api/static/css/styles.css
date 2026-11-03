@@ -3206,7 +3206,7 @@ code, .font-mono {
   fill: #b44942;
 }
 
-#dash-trend-svg line:not(#chart-crosshair-x) {
+.chart-grid-line {
   stroke: #d9d6ce;
 }
 

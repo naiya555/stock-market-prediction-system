@@ -263,6 +263,41 @@
       return await res.json();
     },
 
+    async fetchChartPrediction(symbol, timeoutMs = 90000) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch(`${API_BASE}/predict`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify({
+            symbol,
+            model_name: 'ensemble',
+            lookback_days: 1825,
+            max_stale_days: 7,
+            allow_stale_data: true,
+            persist: false,
+          }),
+          signal: controller.signal,
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data || typeof data !== 'object') {
+          throw new Error(`Prediction API error: status ${res.status}`);
+        }
+        return data;
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          throw new Error('Numerical forecast request timed out.');
+        }
+        throw err;
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+
     async sendChatMessage(payload, timeoutMs = 120000) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -376,6 +411,9 @@
     activeRange: '1m',
     zoomLevel: 1.0,
     data: null,
+    prediction: null,
+    predictionError: null,
+    predictionCache: {},
     refreshIntervalId: null,
   };
 
@@ -442,12 +480,27 @@
   }
 
   async function loadInteractiveChart() {
+    ChartState.error = null;
+    ChartState.prediction = null;
+    ChartState.predictionError = null;
     try {
       const chartData = await ApiService.fetchChartData(ChartState.activeSymbol, ChartState.activeRange);
       ChartState.data = chartData;
       renderInteractiveChart();
+      try {
+        const cachedPrediction = ChartState.predictionCache[ChartState.activeSymbol];
+        ChartState.prediction = cachedPrediction || await ApiService.fetchChartPrediction(ChartState.activeSymbol);
+        ChartState.predictionCache[ChartState.activeSymbol] = ChartState.prediction;
+      } catch (predictionError) {
+        ChartState.predictionError = predictionError.message || 'Numerical forecast unavailable.';
+        console.warn('Failed to load chart prediction:', predictionError);
+      }
+      renderInteractiveChart();
     } catch (e) {
+      ChartState.data = null;
+      ChartState.error = e.message || 'Chart data could not be loaded.';
       console.warn('Failed to load chart data:', e);
+      renderInteractiveChart();
     }
   }
 
@@ -460,8 +513,8 @@
 
     if (!ChartState.data || !ChartState.data.data_points || ChartState.data.data_points.length === 0) {
       svg.innerHTML = `
-        <text x="350" y="120" fill="#94a3b8" font-size="14" text-anchor="middle" font-family="Inter, sans-serif">
-          No market observations available for ${escapeHtml(ChartState.activeSymbol)} in range ${escapeHtml(ChartState.activeRange)}
+        <text x="350" y="112" fill="#34434c" font-size="14" text-anchor="middle" font-family="Inter, sans-serif">
+          ${escapeHtml(ChartState.error || `No market observations available for ${ChartState.activeSymbol} in range ${ChartState.activeRange}`)}
         </text>
       `;
       return;
@@ -470,6 +523,26 @@
     const data = ChartState.data;
     const pts = data.data_points;
     const count = pts.length;
+    const prediction = ChartState.prediction || {};
+    const forecast = ChartState.prediction && ChartState.prediction.predicted_direction
+      ? {
+        timestamp: data.forecast_point?.timestamp,
+        direction: prediction.predicted_direction,
+        reference_price: data.forecast_point?.reference_price,
+      }
+      : data.forecast_point;
+    const numericalPrediction = [forecast, prediction];
+    const forecastTarget = numericalPrediction.flatMap((source) => (
+      source ? ['predicted_price', 'target_price', 'forecast_price', 'predicted_close', 'predicted_closing_price']
+        .map((key) => source[key]) : []
+    ))
+      .find((value) => typeof value === 'number' && Number.isFinite(value));
+    const forecastOpen = ['predicted_open', 'predicted_opening_price']
+      .map((key) => prediction[key])
+      .find((value) => typeof value === 'number' && Number.isFinite(value));
+    const forecastClose = ['predicted_close', 'predicted_closing_price', 'target_price', 'forecast_price']
+      .map((key) => prediction[key])
+      .find((value) => typeof value === 'number' && Number.isFinite(value));
 
     if (updatedEl && data.last_updated) {
       updatedEl.textContent = `Last updated: ${formatDateTimeIST(data.last_updated)}`;
@@ -478,13 +551,27 @@
       noteEl.textContent = data.note;
     }
 
-    // Determine min and max price
+    const supportsDailyMovingAverages = !data.interval || data.interval === '1d';
+    const movingAverageAt = (index, window) => {
+      if (!supportsDailyMovingAverages) return null;
+      if (index < window - 1) return null;
+      let sum = 0;
+      for (let i = index - window + 1; i <= index; i++) {
+        sum += Number(pts[i].close);
+      }
+      return sum / window;
+    };
+    const sma20 = pts.map((_, index) => movingAverageAt(index, 20));
+    const sma50 = pts.map((_, index) => movingAverageAt(index, 50));
+
+    // Scale the price panel from actual closing prices and available averages.
     let minPrice = Infinity;
     let maxPrice = -Infinity;
     for (let i = 0; i < count; i++) {
-      const p = pts[i].close;
-      if (p < minPrice) minPrice = p;
-      if (p > maxPrice) maxPrice = p;
+      [pts[i].close, sma20[i], sma50[i], forecastTarget].forEach((value) => {
+        if (typeof value === 'number' && value < minPrice) minPrice = value;
+        if (typeof value === 'number' && value > maxPrice) maxPrice = value;
+      });
     }
     if (minPrice === maxPrice) {
       minPrice = minPrice * 0.98;
@@ -501,9 +588,13 @@
     const mLeft = 60;
     const mRight = 95;
     const mTop = 25;
-    const mBottom = 35;
-    const plotW = W - mLeft - mRight;
+    const mBottom = 55;
+    const forecastSpace = 72;
+    const plotW = W - mLeft - mRight - forecastSpace;
     const plotH = H - mTop - mBottom;
+    const volumePanelHeight = 32;
+    const panelGap = 10;
+    const pricePlotH = plotH - volumePanelHeight - panelGap;
 
     // Apply zoom
     const zoom = ChartState.zoomLevel;
@@ -514,8 +605,21 @@
 
     const coords = visiblePts.map((pt, i) => {
       const x = mLeft + (i / Math.max(1, visCount - 1)) * plotW;
-      const y = mTop + (1.0 - (pt.close - yMin) / priceSpan) * plotH;
+      const y = mTop + (1.0 - (pt.close - yMin) / priceSpan) * pricePlotH;
       return { x, y, pt, idx: startIdx + i };
+    });
+
+    const volumeWidth = Math.max(2, Math.min(10, (plotW / Math.max(1, visCount)) * 0.55));
+    const maxVolume = Math.max(...visiblePts.map((pt) => Number(pt.volume) || 0), 1);
+    const volumeBaseY = mTop + pricePlotH + panelGap + volumePanelHeight;
+    const volumeTopY = volumeBaseY - volumePanelHeight;
+    let volumeHtml = '';
+    coords.forEach((c) => {
+      const pt = c.pt;
+      if (Number(pt.volume) > 0) {
+        const volumeHeight = ((Number(pt.volume) / maxVolume) * (volumeBaseY - volumeTopY));
+        volumeHtml += `<rect x="${(c.x - volumeWidth / 2).toFixed(1)}" y="${(volumeBaseY - volumeHeight).toFixed(1)}" width="${volumeWidth.toFixed(1)}" height="${volumeHeight.toFixed(1)}" fill="#386d83" opacity="0.42"/>`;
+      }
     });
 
     let pathD = '';
@@ -532,40 +636,41 @@
 
     const lastCoord = coords[coords.length - 1];
     const firstCoord = coords[0];
-    const baselineY = mTop + plotH;
+    const baselineY = mTop + pricePlotH;
     areaD += ` L ${lastCoord.x.toFixed(1)},${baselineY} L ${firstCoord.x.toFixed(1)},${baselineY} Z`;
 
-    // Compute SMA-10 line
-    let smaD = '';
-    const smaWindow = 10;
-    let smaStarted = false;
-    coords.forEach((c) => {
-      const fullIdx = c.idx;
-      if (fullIdx >= smaWindow - 1) {
-        let sum = 0;
-        for (let k = fullIdx - smaWindow + 1; k <= fullIdx; k++) {
-          sum += pts[k].close;
-        }
-        const smaVal = sum / smaWindow;
-        const smaY = mTop + (1.0 - (smaVal - yMin) / priceSpan) * plotH;
-        if (!smaStarted) {
-          smaD += `M ${c.x.toFixed(1)},${smaY.toFixed(1)}`;
-          smaStarted = true;
-        } else {
-          smaD += ` L ${c.x.toFixed(1)},${smaY.toFixed(1)}`;
-        }
-      }
-    });
+    const buildMovingAveragePath = (values) => {
+      let path = '';
+      values.forEach((value, i) => {
+        if (typeof value !== 'number' || i < startIdx) return;
+        const c = coords[i - startIdx];
+        const y = mTop + (1.0 - (value - yMin) / priceSpan) * pricePlotH;
+        path += `${path ? ' L' : 'M'} ${c.x.toFixed(1)},${y.toFixed(1)}`;
+      });
+      return path;
+    };
+    const sma20D = buildMovingAveragePath(sma20);
+    const sma50D = buildMovingAveragePath(sma50);
 
+    // Price area ends before the aligned volume panel.
+    let volumePanelLabel = '';
+    if (visiblePts.some((pt) => Number(pt.volume) > 0)) {
+      volumePanelLabel = `<text x="${mLeft - 8}" y="${(volumeTopY + 10).toFixed(1)}" fill="#6f7a80" font-size="9" text-anchor="end" font-family="JetBrains Mono, monospace">VOL</text>`;
+    }
+
+    /*
+     * The API exposes direction and a reference price, not a future price.
+     * Keep the marker at the latest actual close instead of inventing a target.
+     */
     // Horizontal grid lines
     const gridRows = 4;
     let gridLinesHtml = '';
     for (let g = 0; g <= gridRows; g++) {
       const pRatio = g / gridRows;
-      const yPos = mTop + pRatio * plotH;
+      const yPos = mTop + pRatio * pricePlotH;
       const pVal = yMax - pRatio * priceSpan;
       gridLinesHtml += `
-        <line x1="${mLeft}" y1="${yPos.toFixed(1)}" x2="${W - 20}" y2="${yPos.toFixed(1)}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="2,2"/>
+        <line class="chart-grid-line" x1="${mLeft}" y1="${yPos.toFixed(1)}" x2="${W - 20}" y2="${yPos.toFixed(1)}" stroke="rgba(255,255,255,0.06)" stroke-dasharray="2,2"/>
         <text x="${mLeft - 8}" y="${(yPos + 4).toFixed(1)}" fill="#64748b" font-size="10" text-anchor="end" font-family="JetBrains Mono, monospace">
           ₹${pVal >= 1000 ? Math.round(pVal).toLocaleString('en-IN') : pVal.toFixed(1)}
         </text>
@@ -592,28 +697,37 @@
       }
     }
 
-    // Forward Forecast Point extension
+    // Reserve a right-side segment for the next-session forecast.
     let forecastHtml = '';
-    if (data.forecast_point && data.forecast_point.direction) {
-      const fc = data.forecast_point;
+    if (forecast && forecast.direction) {
+      const fc = forecast;
       const isUp = fc.direction === 'UP';
-      const fcColor = isUp ? '#10b981' : '#f43f5e';
-      const fcDelta = isUp ? 0.015 : -0.015;
-      const fcPrice = lastCoord.pt.close * (1.0 + fcDelta);
-      const fcX = Math.min(W - 25, lastCoord.x + 55);
-      const fcY = Math.max(mTop + 10, Math.min(H - mBottom - 10, mTop + (1.0 - (fcPrice - yMin) / priceSpan) * plotH));
+      const fcColor = isUp ? '#147d52' : '#b44942';
+      const fcX = lastCoord.x;
+      const fcY = lastCoord.y;
+      const futureX = Math.min(W - 20, fcX + forecastSpace);
+      const futureY = forecastTarget === undefined
+        ? fcY
+        : mTop + (1.0 - (forecastTarget - yMin) / priceSpan) * pricePlotH;
+      const forecastDate = fc.timestamp ? new Date(fc.timestamp).toLocaleDateString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        day: '2-digit',
+        month: 'short',
+      }) : 'Next session';
 
       forecastHtml = `
-        <!-- Dashed connector to forecast point -->
-        <line x1="${lastCoord.x.toFixed(1)}" y1="${lastCoord.y.toFixed(1)}" x2="${fcX.toFixed(1)}" y2="${fcY.toFixed(1)}" stroke="${fcColor}" stroke-width="2" stroke-dasharray="4,4" opacity="0.85"/>
-        <!-- Forward forecast node -->
-        <circle cx="${fcX.toFixed(1)}" cy="${fcY.toFixed(1)}" r="6" fill="${fcColor}" stroke="#ffffff" stroke-width="2"/>
-        <circle cx="${fcX.toFixed(1)}" cy="${fcY.toFixed(1)}" r="10" fill="none" stroke="${fcColor}" stroke-width="1.5" opacity="0.5" stroke-dasharray="2,2"/>
-        <!-- Forecast Badge Text -->
-        <rect x="${(fcX - 42).toFixed(1)}" y="${(fcY - 24).toFixed(1)}" width="84" height="18" rx="4" fill="rgba(15, 23, 42, 0.9)" stroke="${fcColor}" stroke-width="1"/>
-        <text x="${fcX.toFixed(1)}" y="${(fcY - 11).toFixed(1)}" fill="${fcColor}" font-size="9" font-weight="700" text-anchor="middle" font-family="Inter, sans-serif">
-          ${isUp ? '▲ FORECAST UP' : '▼ FORECAST DOWN'}
+        <line x1="${fcX.toFixed(1)}" y1="${mTop}" x2="${fcX.toFixed(1)}" y2="${baselineY}" stroke="${fcColor}" stroke-width="1.5" stroke-dasharray="4,4" opacity="0.7"/>
+        <circle cx="${fcX.toFixed(1)}" cy="${fcY.toFixed(1)}" r="6" fill="${fcColor}" stroke="#fffefa" stroke-width="2"/>
+        <line x1="${fcX.toFixed(1)}" y1="${fcY.toFixed(1)}" x2="${futureX.toFixed(1)}" y2="${futureY.toFixed(1)}" stroke="${fcColor}" stroke-width="2.4" stroke-dasharray="7,5"/>
+        <circle cx="${futureX.toFixed(1)}" cy="${futureY.toFixed(1)}" r="6" fill="#fffefa" stroke="${fcColor}" stroke-width="2.5"/>
+        <text x="${futureX.toFixed(1)}" y="${(futureY + 3).toFixed(1)}" fill="${fcColor}" font-size="10" font-weight="700" text-anchor="middle" font-family="Inter, sans-serif">
+          ${isUp ? '▲' : '▼'}
         </text>
+        <rect x="${Math.max(mLeft, Math.min(W - 124, futureX - 52)).toFixed(1)}" y="${Math.max(4, Math.min(baselineY - 20, futureY - 30)).toFixed(1)}" width="104" height="22" rx="4" fill="#fffefa" stroke="${fcColor}" stroke-width="1"/>
+        <text x="${Math.max(mLeft + 52, Math.min(W - 72, futureX)).toFixed(1)}" y="${Math.max(16, Math.min(baselineY - 9, futureY - 16)).toFixed(1)}" fill="${fcColor}" font-size="8.5" font-weight="700" text-anchor="middle" font-family="Inter, sans-serif">
+          ${isUp ? 'UP' : 'DOWN'} • ${forecastTarget === undefined ? 'DIRECTION ONLY' : forecastDate}
+        </text>
+        <text x="${futureX.toFixed(1)}" y="${(H - 12).toFixed(1)}" fill="${fcColor}" font-size="9" text-anchor="middle" font-family="Inter, sans-serif">${forecastDate}</text>
       `;
     }
 
@@ -626,9 +740,13 @@
       </defs>
       ${gridLinesHtml}
       ${xLabelsHtml}
+      <line class="chart-grid-line" x1="${mLeft}" y1="${volumeTopY.toFixed(1)}" x2="${W - 20}" y2="${volumeTopY.toFixed(1)}"/>
+      ${volumePanelLabel}
+      ${volumeHtml}
       <path d="${areaD}" fill="url(#chartGradient)"/>
-      <path d="${pathD}" fill="none" stroke="#6366f1" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-      ${smaD ? `<path d="${smaD}" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="4,4" opacity="0.8"/>` : ''}
+      <path d="${pathD}" fill="none" stroke="#386d83" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+      ${sma20D ? `<path d="${sma20D}" fill="none" stroke="#f59e0b" stroke-width="1.6" stroke-dasharray="4,3"/>` : ''}
+      ${sma50D ? `<path d="${sma50D}" fill="none" stroke="#8b5e3c" stroke-width="1.6" stroke-dasharray="7,3"/>` : ''}
       <circle cx="${lastCoord.x.toFixed(1)}" cy="${lastCoord.y.toFixed(1)}" r="4.5" fill="#10b981" stroke="#ffffff" stroke-width="1.5"/>
       ${forecastHtml}
       <line id="chart-crosshair-x" x1="0" y1="${mTop}" x2="0" y2="${baselineY}" stroke="rgba(255,255,255,0.25)" stroke-dasharray="2,2" style="display:none;"/>
@@ -677,13 +795,22 @@
 
         const instEl = document.getElementById('tooltip-instrument');
         const timeEl = document.getElementById('tooltip-time');
+        const ohlcEl = document.getElementById('tooltip-ohlc');
         const priceEl = document.getElementById('tooltip-price');
         const changeEl = document.getElementById('tooltip-change');
         const volEl = document.getElementById('tooltip-volume');
         const volRow = document.getElementById('tooltip-vol-row');
+        const forecastEl = document.getElementById('tooltip-forecast');
+        const forecastRow = document.getElementById('tooltip-forecast-row');
 
         if (instEl) instEl.textContent = `${ChartState.activeSymbol} (${data.instrument_name || 'NSE'})`;
         if (timeEl) timeEl.textContent = timeStr;
+        if (ohlcEl) {
+          const o = typeof pt.open === 'number' ? formatPriceINR(pt.open) : '--';
+          const h = typeof pt.high === 'number' ? formatPriceINR(pt.high) : '--';
+          const l = typeof pt.low === 'number' ? formatPriceINR(pt.low) : '--';
+          ohlcEl.textContent = `${o} / ${h} / ${l} / ${formatPriceINR(pt.close)}`;
+        }
         if (priceEl) priceEl.textContent = formatPriceINR(pt.close);
         if (changeEl) {
           const chg = pt.change || 0;
@@ -699,6 +826,22 @@
           } else {
             volRow.style.display = 'none';
           }
+        }
+        if (forecastEl && forecastRow && forecast && forecast.direction) {
+          const forecastDate = new Date(forecast.timestamp).toLocaleDateString('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+          });
+          if (forecastTarget === undefined) {
+            forecastEl.textContent = `${forecast.direction} • ${forecastDate} • Direction only`;
+          } else {
+            const openText = forecastOpen === undefined ? '' : ` • Open ${formatPriceINR(forecastOpen)}`;
+            const closeText = forecastClose === undefined ? ` • Close ${formatPriceINR(forecastTarget)}` : ` • Close ${formatPriceINR(forecastClose)}`;
+            forecastEl.textContent = `${forecast.direction} • ${forecastDate}${openText}${closeText}`;
+          }
+          forecastRow.style.display = 'flex';
         }
 
         const wrapRect = svg.parentElement.getBoundingClientRect();
