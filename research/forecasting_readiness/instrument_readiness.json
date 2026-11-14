@@ -1,0 +1,26 @@
+{
+  "criteria": {
+    "NOT_READY": "A material unresolved data or validation blocker prevents controlled numerical research.",
+    "PARTIALLY_READY": "Core data is usable for audit/research preparation, but at least one material verification blocker remains.",
+    "RESEARCH_READY": "Coverage, target, session evidence, provenance, leakage audit, and reproducible baseline gates pass.",
+    "PRODUCTION_READY": "Research-ready plus independently reviewed model superiority, calibrated uncertainty, operational monitoring, and explicit approval."
+  },
+  "instruments": {
+    "BHARTIARTL": {
+      "readiness": "NOT_READY",
+      "reason": "Quality monitor has warnings and unverified calendar gaps; independent price reconciliation and complete corporate-action coverage are unavailable."
+    },
+    "TCS": {
+      "readiness": "NOT_READY",
+      "reason": "Quality monitor has warnings and unverified calendar gaps; independent price reconciliation and complete corporate-action coverage are unavailable."
+    },
+    "NIFTY_50": {
+      "readiness": "PARTIALLY_READY",
+      "reason": "2465 comparable rows match independently, but six calendar dates remain UNVERIFIED and 14 unmatched dates require separate treatment."
+    },
+    "NIFTY_TELECOMMUNICATIONS": {
+      "readiness": "NOT_READY",
+      "reason": "No independent equivalent historical series was obtained; the source is close-only and calendar findings remain UNVERIFIED."
+    }
+  }
+}

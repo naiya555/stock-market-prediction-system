@@ -1,0 +1,11 @@
+instrument,blocker,status,minimum_acceptance_condition,production_prevention
+BHARTIARTL,Independent price reconciliation,UNVERIFIED,Obtain a comparable independent OHLCV series or document why unavailable,No production numerical forecast
+BHARTIARTL,Corporate-action completeness,PARTIALLY_RESOLVED,Verify full event history or explicitly scope adjusted/unadjusted target,No production numerical forecast
+BHARTIARTL,Calendar classification,UNVERIFIED,Resolve six dates or exclude them with reproducible point-in-time rules,No production numerical forecast
+TCS,Independent price reconciliation,UNVERIFIED,Obtain a comparable independent OHLCV series or document why unavailable,No production numerical forecast
+TCS,Corporate-action completeness,PARTIALLY_RESOLVED,Verify full event history or explicitly scope adjusted/unadjusted target,No production numerical forecast
+TCS,Calendar classification,UNVERIFIED,Resolve six dates or exclude them with reproducible point-in-time rules,No production numerical forecast
+NIFTY_50,Unresolved calendar dates,UNVERIFIED,Resolve six dates and retain eight verified special sessions,No production numerical forecast
+NIFTY_50,Unmatched reconciliation dates,PARTIALLY_RESOLVED,Explain all 14 dates without fabricating index values,No production numerical forecast
+NIFTY_TELECOMMUNICATIONS,Independent equivalent series,UNVERIFIED,Obtain exact comparable index series or formally limit scope,No production numerical forecast
+NIFTY_TELECOMMUNICATIONS,Close-only schema,KNOWN_LIMITATION,Define close/return targets only; do not require unavailable OHLC,No OHLC-based production forecast

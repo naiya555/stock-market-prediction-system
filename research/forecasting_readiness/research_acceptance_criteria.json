@@ -1,0 +1,26 @@
+{
+  "baseline": {
+    "close_prediction": "previous available trading-session close",
+    "return_prediction": "0 percent",
+    "same_validation_dates_required": true
+  },
+  "required_gates": [
+    "sufficient clean observations",
+    "defensible session classification",
+    "documented corporate-action and adjustment treatment where applicable",
+    "provider provenance recorded",
+    "chronological walk-forward validation with embargo where needed",
+    "leakage audit passes",
+    "fold-level reproducible metrics",
+    "candidate improves consistently over baseline across prespecified metrics",
+    "no material deterioration in other important metrics",
+    "uncertainty intervals evaluated for coverage and width"
+  ],
+  "production_requires": [
+    "independent review and explicit approval",
+    "calibrated uncertainty evidence",
+    "operational monitoring and failure visibility",
+    "no unresolved critical data-integrity blocker"
+  ],
+  "rejection_rule": "If a candidate does not reliably beat the benchmark, retain the previous-close baseline and document rejection."
+}

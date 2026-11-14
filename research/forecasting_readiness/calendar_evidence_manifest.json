@@ -1,0 +1,25 @@
+{
+  "source_type_policy": "Only official NSE evidence is VERIFIED; missing or secondary evidence remains UNVERIFIED.",
+  "retrieval_date": "2026-11-14",
+  "dates": 14,
+  "verified_special_sessions": 8,
+  "verified_regular_sessions": 0,
+  "verified_holidays": 0,
+  "unresolved": 6,
+  "official_urls": [
+    "https://nsearchives.nseindia.com/content/circulars/CMTR42483.pdf",
+    "https://nsearchives.nseindia.com/content/circulars/FAOP43291.pdf",
+    "https://nsearchives.nseindia.com/content/circulars/CMTR46230.pdf",
+    "https://nsearchives.nseindia.com/content/circulars/CMTR59124.pdf",
+    "https://nsearchives.nseindia.com/content/circulars/MSD59999.pdf",
+    "https://nsearchives.nseindia.com/content/circulars/MSD60677.pdf?0",
+    "https://nsearchives.nseindia.com/content/circulars/MSD62061.pdf",
+    "https://nsearchives.nseindia.com/content/circulars/CMTR76941.pdf",
+    "https://nsearchives.nseindia.com/content/circulars/CMTR36475.pdf",
+    "https://nsearchives.nseindia.com/content/circulars/CMTR39612.pdf"
+  ],
+  "limitations": [
+    "Six dates remain unresolved because retrieved official material does not explicitly classify them.",
+    "No classifications were inferred from weekday, weekend, or holiday-list omission."
+  ]
+}

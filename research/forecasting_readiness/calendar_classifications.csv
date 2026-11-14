@@ -1,0 +1,15 @@
+date,weekday,exchange,classification,verification_status,source_url,circular_or_calendar_reference,evidence_description,retrieval_date,source_type
+2016-11-16,Wednesday,NSE,UNVERIFIED,UNVERIFIED,,,No retrieved official source establishes this date.,2026-11-14,unverified
+2018-01-01,Monday,NSE,UNVERIFIED,UNVERIFIED,https://nsearchives.nseindia.com/content/circulars/CMTR36475.pdf,2018 holiday circular,Holiday-list omission is not proof of a regular session.,2026-11-14,official_nse
+2019-01-01,Tuesday,NSE,UNVERIFIED,UNVERIFIED,https://nsearchives.nseindia.com/content/circulars/CMTR39612.pdf,2019 holiday circular,Holiday-list omission is not proof of a regular session.,2026-11-14,official_nse
+2019-02-13,Wednesday,NSE,UNVERIFIED,UNVERIFIED,,,No retrieved official capital-market evidence establishes this date.,2026-11-14,unverified
+2019-03-29,Friday,NSE,UNVERIFIED,UNVERIFIED,,,No retrieved official capital-market evidence establishes this date.,2026-11-14,unverified
+2019-10-27,Sunday,NSE,SPECIAL_SESSION,VERIFIED,https://nsearchives.nseindia.com/content/circulars/CMTR42483.pdf,NSE/CMTR/42483,Official Diwali Muhurat special session.,2026-11-14,official_nse
+2020-02-01,Saturday,NSE,SPECIAL_SESSION,VERIFIED,https://nsearchives.nseindia.com/content/circulars/FAOP43291.pdf,NSE/FAOP/43291,Official Union Budget live session.,2026-11-14,official_nse
+2020-11-14,Saturday,NSE,SPECIAL_SESSION,VERIFIED,https://nsearchives.nseindia.com/content/circulars/CMTR46230.pdf,NSE/CMTR/46230,Official Diwali Muhurat special session.,2026-11-14,official_nse
+2023-11-12,Sunday,NSE,SPECIAL_SESSION,VERIFIED,https://nsearchives.nseindia.com/content/circulars/CMTR59124.pdf,NSE/CMTR/59124,Official Diwali Muhurat special session.,2026-11-14,official_nse
+2024-01-20,Saturday,NSE,SPECIAL_SESSION,VERIFIED,https://nsearchives.nseindia.com/content/circulars/MSD59999.pdf,NSE/MSD/59999,Official special session with DR-site switch.,2026-11-14,official_nse
+2024-03-02,Saturday,NSE,SPECIAL_SESSION,VERIFIED,https://nsearchives.nseindia.com/content/circulars/MSD60677.pdf?0,NSE/MSD/60677,Official special session with DR-site switch.,2026-11-14,official_nse
+2024-05-18,Saturday,NSE,SPECIAL_SESSION,VERIFIED,https://nsearchives.nseindia.com/content/circulars/MSD62061.pdf,NSE/MSD/62061,Official special trading session.,2026-11-14,official_nse
+2026-02-01,Sunday,NSE,UNVERIFIED,UNVERIFIED,,,Retrieved evidence did not establish the equity/index session classification.,2026-11-14,unverified
+2026-11-08,Sunday,NSE,SPECIAL_SESSION,VERIFIED,https://nsearchives.nseindia.com/content/circulars/CMTR76941.pdf,NSE/CMTR/76941,Official Diwali Muhurat special session.,2026-11-14,official_nse

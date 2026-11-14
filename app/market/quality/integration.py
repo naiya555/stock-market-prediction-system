@@ -9,9 +9,11 @@ from typing import Any, Sequence
 from app.core.logging_config import get_logger, sanitize_log_field
 from app.core.schemas import MarketOHLCV
 from app.market.quality.monitor import monitor_records
+from app.market.quality.nse_calendar import load_calendar_evidence
 
 logger = get_logger(__name__)
 REPORT_PATH = Path("research/data_quality_monitoring/baseline_quality_report.json")
+CALENDAR_PATH = Path("research/data_quality_monitoring/integration_phase/calendar_verification.csv")
 
 
 def run_advisory_monitor(
@@ -28,6 +30,7 @@ def run_advisory_monitor(
             records,
             provider=provider,
             retrieved_at=retrieved_at,
+            calendar_evidence=load_calendar_evidence(CALENDAR_PATH) if CALENDAR_PATH.exists() else None,
         )
     except Exception as exc:
         logger.error(

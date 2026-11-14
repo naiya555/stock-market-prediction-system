@@ -10,6 +10,7 @@ from typing import Any, Iterable, Sequence
 
 from app.core.schemas import MarketOHLCV
 from app.market.instruments import get_instrument
+from app.market.quality.nse_calendar import NSECalendarEvidence
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,7 @@ def monitor_records(
     stale_after_days: int = 3,
     price_jump_warning: float = 0.20,
     volume_ratio_warning: float = 10.0,
+    calendar_evidence: dict[Any, NSECalendarEvidence] | None = None,
 ) -> dict[str, Any]:
     """Validate records without modifying, sorting, deduplicating, or repairing them."""
     now = datetime.now(timezone.utc)
@@ -110,10 +112,17 @@ def monitor_records(
                     findings.append(_finding(canonical, date, "volume_change", "WARNING", f"{ratio:.6g}x",
                                              f"volume ratio within {1 / volume_ratio_warning:.2g}x to {volume_ratio_warning:.2g}x",
                                              "Unusual volume change requires review.", source, detected_at))
-        if record.timestamp.weekday() >= 5:
-            findings.append(_finding(canonical, date, "session_calendar", "UNVERIFIED", record.timestamp,
+        calendar = calendar_evidence.get(record.timestamp.date()) if calendar_evidence else None
+        if calendar and calendar.verification_status == "VERIFIED":
+            calendar_status = "PASS" if calendar.classification in {"REGULAR_SESSION", "SPECIAL_SESSION"} else "WARNING"
+            calendar_explanation = calendar.evidence_description
+        else:
+            calendar_status = "UNVERIFIED"
+            calendar_explanation = "No verified official NSE evidence was supplied for this date."
+        if record.timestamp.weekday() >= 5 or calendar_evidence is not None:
+            findings.append(_finding(canonical, date, "session_calendar", calendar_status, record.timestamp,
                                      "session classification is supported by an exchange calendar",
-                                     "Weekend observation requires calendar evidence; no calendar was supplied to this monitor.", source, detected_at))
+                                     calendar_explanation, source, detected_at))
         previous = record
     if not ordered:
         findings.append(_finding(canonical, "", "empty_response", "FAIL", 0,
