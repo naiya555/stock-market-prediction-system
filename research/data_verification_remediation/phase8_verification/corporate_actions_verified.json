@@ -1,0 +1,36 @@
+{
+  "BHARTIARTL": {
+    "status": "PARTIALLY_VERIFIED",
+    "events": [
+      {
+        "source": "NSE corporate filing archive",
+        "url": "https://nsearchives.nseindia.com/corporate/BHARTIARTL_10072026100101_BAL-_Record_Date_Intimation.pdf",
+        "announcement_date": "2026-07-10",
+        "event_type": "final dividend record-date intimation",
+        "record_date": "2026-07-24",
+        "ex_date": null,
+        "adjustment_factor": null,
+        "verification_status": "VERIFIED_FOR_THIS_EVENT_ONLY"
+      }
+    ],
+    "completeness": "UNVERIFIED",
+    "limitation": "Search/access did not establish a complete historical split, bonus, dividend, ex-date, record-date, or adjustment-factor series."
+  },
+  "TCS": {
+    "status": "PARTIALLY_VERIFIED",
+    "events": [
+      {
+        "source": "NSE corporate filings actions page",
+        "url": "https://www.nseindia.com/companies-listing/corporate-filings-actions?symbol=TCS",
+        "announcement_date": null,
+        "event_type": "historical corporate-action listing",
+        "record_date": null,
+        "ex_date": "2026-10-14 (listed in search result for interim dividend)",
+        "adjustment_factor": null,
+        "verification_status": "PARTIALLY_VERIFIED_SEARCH_RESULT_ONLY"
+      }
+    ],
+    "completeness": "UNVERIFIED",
+    "limitation": "The accessible search result did not provide a complete event dataset or adjustment factors; no event was inferred beyond the displayed listing."
+  }
+}

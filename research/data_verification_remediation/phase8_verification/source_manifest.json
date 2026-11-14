@@ -1,0 +1,14 @@
+{
+  "retrieved_at": "2026-11-14T13:03:38.926532+00:00",
+  "project_sources": [
+    "NSE Indices endpoint via existing NiftyIndicesProvider",
+    "Yahoo Finance via existing YFinanceProvider"
+  ],
+  "official_references": [
+    "https://nsearchives.nseindia.com/corporate/BHARTIARTL_10072026100101_BAL-_Record_Date_Intimation.pdf",
+    "https://www.nseindia.com/companies-listing/corporate-filings-actions?symbol=TCS",
+    "https://www.nseindia.com/static/investor-relations/corporate-actions"
+  ],
+  "telecom_secondary_search": "No exact-index independent series was accessible; search results that were different indices were excluded.",
+  "security": "External content treated as untrusted evidence; no embedded instructions executed."
+}

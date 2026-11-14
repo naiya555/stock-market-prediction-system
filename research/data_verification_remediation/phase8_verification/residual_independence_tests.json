@@ -1,0 +1,366 @@
+{
+  "method": "Ljung-Box Q(h)=n(n+2) sum_{k=1..h} r_k^2/(n-k); chi-square degrees of freedom h; p-values from scipy.stats.chi2.sf.",
+  "assumptions": [
+    "Residuals are ordered within each instrument.",
+    "The test evaluates autocorrelation, not all forms of dependence.",
+    "Overlapping fold boundaries are chronological; observations are not treated as independent evidence for conclusions."
+  ],
+  "dependencies": {
+    "statsmodels": "unavailable",
+    "scipy": "available"
+  },
+  "instruments": {
+    "BHARTIARTL": {
+      "status": "PARTIALLY_VERIFIED",
+      "population": "Phase 6-style genuinely out-of-sample previous-close residuals",
+      "samples": 1482,
+      "date_start": "2020-11-14 00:00:00+05:30",
+      "date_end": "2026-11-13 00:00:00+05:30",
+      "acf": {
+        "1": -0.03735549650209932,
+        "2": -0.028197796295467526,
+        "5": 0.014319287278428858,
+        "10": 0.05406333286145302,
+        "20": 0.022353365464184292
+      },
+      "ljung_box": {
+        "5": {
+          "status": "AVAILABLE",
+          "n": 1482,
+          "statistic": 5.426340705888189,
+          "degrees_of_freedom": 5,
+          "p_value": 0.3660905071851848,
+          "reject_at_0_05": false
+        },
+        "10": {
+          "status": "AVAILABLE",
+          "n": 1482,
+          "statistic": 17.520225387907242,
+          "degrees_of_freedom": 10,
+          "p_value": 0.06361652811473069,
+          "reject_at_0_05": false
+        },
+        "20": {
+          "status": "AVAILABLE",
+          "n": 1482,
+          "statistic": 37.6067315588434,
+          "degrees_of_freedom": 20,
+          "p_value": 0.009887580057705842,
+          "reject_at_0_05": true
+        }
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "samples": 296,
+          "mae": 7.765797898576066,
+          "rmse": 10.382927587553048,
+          "mean_residual": 0.75310011167784,
+          "residual_std": 10.373116418931387,
+          "acf_lag_1": -0.011906543910646706
+        },
+        {
+          "fold": 2,
+          "samples": 296,
+          "mae": 8.005912780761719,
+          "rmse": 10.381102886356215,
+          "mean_residual": 0.2484796884897593,
+          "residual_std": 10.39570385100162,
+          "acf_lag_1": -0.10063246489632105
+        },
+        {
+          "fold": 3,
+          "samples": 296,
+          "mae": 9.620605262550148,
+          "rmse": 14.351561894438317,
+          "mean_residual": 2.204729853449641,
+          "residual_std": 14.20521777431403,
+          "acf_lag_1": -0.04634838329120914
+        },
+        {
+          "fold": 4,
+          "samples": 296,
+          "mae": 16.8961181640625,
+          "rmse": 23.03470305442255,
+          "mean_residual": 1.5971283783783783,
+          "residual_std": 23.01818226205632,
+          "acf_lag_1": -0.023781098057997517
+        },
+        {
+          "fold": 5,
+          "samples": 298,
+          "mae": 19.190607467753775,
+          "rmse": 25.391771668804942,
+          "mean_residual": 0.7288588965499161,
+          "residual_std": 25.42400230557838,
+          "acf_lag_1": -0.04330831042711648
+        }
+      ],
+      "interpretation": "Rejecting Ljung-Box indicates serial dependence inconsistent with white noise; failing to reject does not prove independence. Fold residuals are temporally ordered and not independent observations for all purposes."
+    },
+    "TCS": {
+      "status": "PARTIALLY_VERIFIED",
+      "population": "Phase 6-style genuinely out-of-sample previous-close residuals",
+      "samples": 1482,
+      "date_start": "2020-11-14 00:00:00+05:30",
+      "date_end": "2026-11-13 00:00:00+05:30",
+      "acf": {
+        "1": 0.015364820870872391,
+        "2": -0.015361973359941203,
+        "5": -0.013084470866505443,
+        "10": 0.017712280940093153,
+        "20": 0.03919506999922284
+      },
+      "ljung_box": {
+        "5": {
+          "status": "AVAILABLE",
+          "n": 1482,
+          "statistic": 1.7371287774690738,
+          "degrees_of_freedom": 5,
+          "p_value": 0.8841893631004919,
+          "reject_at_0_05": false
+        },
+        "10": {
+          "status": "AVAILABLE",
+          "n": 1482,
+          "statistic": 5.67211764818002,
+          "degrees_of_freedom": 10,
+          "p_value": 0.842017312692062,
+          "reject_at_0_05": false
+        },
+        "20": {
+          "status": "AVAILABLE",
+          "n": 1482,
+          "statistic": 11.211374448198422,
+          "degrees_of_freedom": 20,
+          "p_value": 0.9405555985587781,
+          "reject_at_0_05": false
+        }
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "samples": 296,
+          "mae": 32.68446143897804,
+          "rmse": 44.12582943263869,
+          "mean_residual": 3.7652027027027026,
+          "residual_std": 44.03934963230972,
+          "acf_lag_1": 0.021597439105388045
+        },
+        {
+          "fold": 2,
+          "samples": 296,
+          "mae": 35.2589581463788,
+          "rmse": 47.74807527799218,
+          "mean_residual": -1.7957771919869088,
+          "residual_std": 47.79509752892172,
+          "acf_lag_1": -0.008286227109349068
+        },
+        {
+          "fold": 3,
+          "samples": 296,
+          "mae": 32.43056921056799,
+          "rmse": 43.74770017194125,
+          "mean_residual": 1.9288849701752533,
+          "residual_std": 43.779170003953624,
+          "acf_lag_1": 0.022210236619746675
+        },
+        {
+          "fold": 4,
+          "samples": 296,
+          "mae": 35.69612492741765,
+          "rmse": 51.98138434182074,
+          "mean_residual": -2.4528717865815035,
+          "residual_std": 52.01141108416078,
+          "acf_lag_1": 0.058157973429295844
+        },
+        {
+          "fold": 5,
+          "samples": 298,
+          "mae": 32.42550188102978,
+          "rmse": 45.31807665136487,
+          "mean_residual": -2.2724830576237416,
+          "residual_std": 45.33719679969334,
+          "acf_lag_1": -0.041164066462445414
+        }
+      ],
+      "interpretation": "Rejecting Ljung-Box indicates serial dependence inconsistent with white noise; failing to reject does not prove independence. Fold residuals are temporally ordered and not independent observations for all purposes."
+    },
+    "NIFTY_50": {
+      "status": "PARTIALLY_VERIFIED",
+      "population": "Phase 6-style genuinely out-of-sample previous-close residuals",
+      "samples": 1486,
+      "date_start": "2020-11-17 05:30:00+05:30",
+      "date_end": "2026-11-13 05:30:00+05:30",
+      "acf": {
+        "1": -0.00654064720725196,
+        "2": 0.009307558709121514,
+        "5": -0.014988016617611087,
+        "10": -0.012431132815528793,
+        "20": 0.009345782288274106
+      },
+      "ljung_box": {
+        "5": {
+          "status": "AVAILABLE",
+          "n": 1486,
+          "statistic": 6.736014270443906,
+          "degrees_of_freedom": 5,
+          "p_value": 0.24102510708778793,
+          "reject_at_0_05": false
+        },
+        "10": {
+          "status": "AVAILABLE",
+          "n": 1486,
+          "statistic": 10.932390295867835,
+          "degrees_of_freedom": 10,
+          "p_value": 0.3628096563969424,
+          "reject_at_0_05": false
+        },
+        "20": {
+          "status": "AVAILABLE",
+          "n": 1486,
+          "statistic": 19.644486988181438,
+          "degrees_of_freedom": 20,
+          "p_value": 0.48035689770795387,
+          "reject_at_0_05": false
+        }
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "samples": 297,
+          "mae": 115.99730639730633,
+          "rmse": 152.92782380237188,
+          "mean_residual": 14.578787878787884,
+          "residual_std": 152.48826202459833,
+          "acf_lag_1": 0.10508529229802228
+        },
+        {
+          "fold": 2,
+          "samples": 297,
+          "mae": 132.59343434343435,
+          "rmse": 173.7042278202412,
+          "mean_residual": 2.061111111111104,
+          "residual_std": 173.98515045494204,
+          "acf_lag_1": 0.003649443167900658
+        },
+        {
+          "fold": 3,
+          "samples": 297,
+          "mae": 110.78013468013467,
+          "rmse": 165.0148558764716,
+          "mean_residual": 19.457239057239054,
+          "residual_std": 164.14028275253216,
+          "acf_lag_1": -0.20242054840947948
+        },
+        {
+          "fold": 4,
+          "samples": 297,
+          "mae": 143.97828282828294,
+          "rmse": 195.75060898374863,
+          "mean_residual": 3.784343434343437,
+          "residual_std": 196.044344470776,
+          "acf_lag_1": 0.021516917240521533
+        },
+        {
+          "fold": 5,
+          "samples": 298,
+          "mae": 152.60352348993294,
+          "rmse": 203.90592870259346,
+          "mean_residual": 1.7424496644295302,
+          "residual_std": 204.24145862001544,
+          "acf_lag_1": 0.018075540316224943
+        }
+      ],
+      "interpretation": "Rejecting Ljung-Box indicates serial dependence inconsistent with white noise; failing to reject does not prove independence. Fold residuals are temporally ordered and not independent observations for all purposes."
+    },
+    "NIFTY_TELECOMMUNICATIONS": {
+      "status": "PARTIALLY_VERIFIED",
+      "population": "Phase 6-style genuinely out-of-sample previous-close residuals",
+      "samples": 1486,
+      "date_start": "2020-11-17 05:30:00+05:30",
+      "date_end": "2026-11-13 05:30:00+05:30",
+      "acf": {
+        "1": -0.04377574722796111,
+        "2": -0.004873931504726409,
+        "5": -0.027930194711195212,
+        "10": 0.028610805234654004,
+        "20": 0.0014680072540647993
+      },
+      "ljung_box": {
+        "5": {
+          "status": "AVAILABLE",
+          "n": 1486,
+          "statistic": 6.292065030611336,
+          "degrees_of_freedom": 5,
+          "p_value": 0.2788280108897749,
+          "reject_at_0_05": false
+        },
+        "10": {
+          "status": "AVAILABLE",
+          "n": 1486,
+          "statistic": 12.030989059655436,
+          "degrees_of_freedom": 10,
+          "p_value": 0.2829878728055585,
+          "reject_at_0_05": false
+        },
+        "20": {
+          "status": "AVAILABLE",
+          "n": 1486,
+          "statistic": 19.60399439520076,
+          "degrees_of_freedom": 20,
+          "p_value": 0.48293380023137034,
+          "reject_at_0_05": false
+        }
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "samples": 297,
+          "mae": 21.57279461279461,
+          "rmse": 28.675736995862753,
+          "mean_residual": 2.5635016835016837,
+          "residual_std": 28.60912762813178,
+          "acf_lag_1": -0.013253431133061579
+        },
+        {
+          "fold": 2,
+          "samples": 297,
+          "mae": 18.640505050505066,
+          "rmse": 26.35720086378176,
+          "mean_residual": -1.281717171717172,
+          "residual_std": 26.370450409722437,
+          "acf_lag_1": -0.021005057406329766
+        },
+        {
+          "fold": 3,
+          "samples": 297,
+          "mae": 24.00383838383838,
+          "rmse": 38.4164092324686,
+          "mean_residual": 5.000673400673401,
+          "residual_std": 38.153835478325924,
+          "acf_lag_1": -0.15381322786279722
+        },
+        {
+          "fold": 4,
+          "samples": 297,
+          "mae": 31.66013468013469,
+          "rmse": 41.403229367045775,
+          "mean_residual": -1.7177777777777772,
+          "residual_std": 41.437398344147184,
+          "acf_lag_1": -0.04151134569027912
+        },
+        {
+          "fold": 5,
+          "samples": 298,
+          "mae": 33.041040268456385,
+          "rmse": 42.07203108556122,
+          "mean_residual": 3.979630872483221,
+          "residual_std": 41.95384126433458,
+          "acf_lag_1": -0.0006273672226713587
+        }
+      ],
+      "interpretation": "Rejecting Ljung-Box indicates serial dependence inconsistent with white noise; failing to reject does not prove independence. Fold residuals are temporally ordered and not independent observations for all purposes."
+    }
+  }
+}

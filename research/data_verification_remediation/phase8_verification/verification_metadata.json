@@ -1,0 +1,16 @@
+{
+  "generated_at": "2026-11-14T13:03:38.927103+00:00",
+  "range_requested": {
+    "start": "2016-11-16T13:03:29.704751+00:00",
+    "end": "2026-11-14T13:03:29.704766+00:00"
+  },
+  "no_models_trained": true,
+  "packages_installed": false,
+  "instrument_status": {
+    "BHARTIARTL": "PARTIALLY VERIFIED",
+    "TCS": "PARTIALLY VERIFIED",
+    "NIFTY_50": "PARTIALLY VERIFIED",
+    "NIFTY_TELECOMMUNICATIONS": "PARTIALLY VERIFIED"
+  },
+  "prior_artifacts_preserved": true
+}
