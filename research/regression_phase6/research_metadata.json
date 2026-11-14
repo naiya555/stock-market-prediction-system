@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-11-14T10:31:44.594382+00:00",
+  "symbols": [
+    "BHARTIARTL",
+    "TCS",
+    "NIFTY_50",
+    "NIFTY_TELECOMMUNICATIONS"
+  ],
+  "source": "existing Phase 5 market providers and pipeline",
+  "python": "3.14.7",
+  "pandas": "3.0.6",
+  "gpu": {
+    "available": true,
+    "used": false,
+    "reason": "baseline residual statistics do not benefit from GPU"
+  },
+  "methodology": "five chronological folds, one-session embargo, prior-residual empirical intervals, no model training"
+}

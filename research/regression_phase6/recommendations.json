@@ -1,0 +1,7 @@
+{
+  "production_integration": "REJECT",
+  "volatility_regimes_explain_error": "High-volatility residual MAE/RMSE is higher than low-volatility for all four instruments in the out-of-sample aggregates; this explains error variation but does not prove a usable forecast signal.",
+  "trend_regimes_explain_error": "Trend groups differ by instrument and are sometimes imbalanced; treat as diagnostic, not evidence of improved forecasting.",
+  "interval_status": "WALK_FORWARD_EMPIRICAL, not calibrated confidence.",
+  "next_step": "Use regime-stratified residual diagnostics to design a prespecified, separately validated uncertainty model; do not integrate intervals yet."
+}
