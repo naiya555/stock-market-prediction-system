@@ -1,0 +1,114 @@
+{
+  "BHARTIARTL": {
+    "samples": 2470,
+    "mean_return": 0.0009825942122445044,
+    "median_return": 6.702655588408657e-05,
+    "return_std": 0.01817317714034548,
+    "return_min": -0.11952875427003606,
+    "return_max": 0.11290771057091264,
+    "return_autocorrelation_lag1": -0.03773357351525738,
+    "directional_persistence": 0.469420818144998,
+    "previous_close_mae": 9.831898863016352,
+    "previous_close_rmse": 14.985068947946202,
+    "previous_close_error_by_volatility_regime": {
+      "high_volatility": {
+        "samples": 613,
+        "mae": 8.764981990148348
+      },
+      "low_volatility": {
+        "samples": 613,
+        "mae": 9.64298177348848
+      },
+      "normal_volatility": {
+        "samples": 1244,
+        "mae": 10.45073022873072
+      }
+    },
+    "volatility_clustering_proxy": 0.14838961245898782,
+    "interpretation": "Descriptive statistics only; predictability is not established by autocorrelation alone."
+  },
+  "TCS": {
+    "samples": 2470,
+    "mean_return": 0.00043692368830680416,
+    "median_return": 4.057702877424685e-05,
+    "return_std": 0.015359614619761642,
+    "return_min": -0.09410348578637162,
+    "return_max": 0.0984508069725436,
+    "return_autocorrelation_lag1": -0.024142381535509946,
+    "directional_persistence": 0.5123531794248684,
+    "previous_close_mae": 28.85002273374241,
+    "previous_close_rmse": 41.32278686222436,
+    "previous_close_error_by_volatility_regime": {
+      "high_volatility": {
+        "samples": 613,
+        "mae": 36.89274360694076
+      },
+      "low_volatility": {
+        "samples": 613,
+        "mae": 21.27952667783952
+      },
+      "normal_volatility": {
+        "samples": 1244,
+        "mae": 28.61732674258315
+      }
+    },
+    "volatility_clustering_proxy": 0.1221369536210616,
+    "interpretation": "Descriptive statistics only; predictability is not established by autocorrelation alone."
+  },
+  "NIFTY_50": {
+    "samples": 2477,
+    "mean_return": 0.0005108324865190144,
+    "median_return": 0.0006649795004520787,
+    "return_std": 0.010200138964882685,
+    "return_min": -0.12980464127060365,
+    "return_max": 0.08763205423192066,
+    "return_autocorrelation_lag1": -0.03878551989090042,
+    "directional_persistence": 0.5420032310177706,
+    "previous_close_mae": 109.29432781590636,
+    "previous_close_rmse": 157.54485475761342,
+    "previous_close_error_by_volatility_regime": {
+      "high_volatility": {
+        "samples": 615,
+        "mae": 166.12406504065044
+      },
+      "low_volatility": {
+        "samples": 615,
+        "mae": 71.76650406504066
+      },
+      "normal_volatility": {
+        "samples": 1247,
+        "mae": 99.77493985565357
+      }
+    },
+    "volatility_clustering_proxy": 0.2995793570557045,
+    "interpretation": "Descriptive statistics only; predictability is not established by autocorrelation alone."
+  },
+  "NIFTY_TELECOMMUNICATIONS": {
+    "samples": 2477,
+    "mean_return": 0.0005562684489709191,
+    "median_return": 0.0007698902906336791,
+    "return_std": 0.01578295695449664,
+    "return_min": -0.13622984774524893,
+    "return_max": 0.08893033507831216,
+    "return_autocorrelation_lag1": -0.0018411378925026452,
+    "directional_persistence": 0.5137318255250404,
+    "previous_close_mae": 21.33765442067017,
+    "previous_close_rmse": 30.583329129278816,
+    "previous_close_error_by_volatility_regime": {
+      "high_volatility": {
+        "samples": 615,
+        "mae": 26.713967479674803
+      },
+      "low_volatility": {
+        "samples": 615,
+        "mae": 14.607772357723581
+      },
+      "normal_volatility": {
+        "samples": 1247,
+        "mae": 22.005212510024062
+      }
+    },
+    "volatility_clustering_proxy": 0.22300059132082792,
+    "interpretation": "Descriptive statistics only; predictability is not established by autocorrelation alone."
+  }
+}

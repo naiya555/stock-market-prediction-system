@@ -1,0 +1,9 @@
+{
+  "production_integration": "REJECT",
+  "reason": "Phase 5 audits do not establish a validated model improvement; previous-close remains a strong short-horizon comparator.",
+  "next_steps": [
+    "Cross-check equity adjusted/unadjusted series and corporate-action metadata with an independent source.",
+    "Keep close-to-close targets separate from same-session open targets.",
+    "Use regime-stratified walk-forward residuals before claiming uncertainty intervals."
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "generated_at": "2026-11-14T10:15:29.146379+00:00",
+  "data_end": "2026-11-14T10:15:14.756616+00:00",
+  "symbols": [
+    "BHARTIARTL",
+    "TCS",
+    "NIFTY_50",
+    "NIFTY_TELECOMMUNICATIONS"
+  ],
+  "source": "existing YFinanceProvider and NiftyIndicesProvider via market pipeline",
+  "python": "3.14.7",
+  "pandas": "3.0.6",
+  "gpu": {
+    "available": true,
+    "used": false,
+    "reason": "statistical audit does not benefit from GPU"
+  },
+  "methodology": "fresh pipeline output; chronological observations; no random split; no database writes"
+}

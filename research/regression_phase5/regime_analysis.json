@@ -1,0 +1,98 @@
+{
+  "BHARTIARTL": {
+    "definitions": {
+      "volatility": "20-session return standard deviation; low/high are <=25th/>=75th percentile.",
+      "trend": "20-session close return: trending_up >=5%, trending_down <=-5%, else sideways.",
+      "stress": "drawdown <=-15% correction; >=-3% recovery_or_high; otherwise neutral."
+    },
+    "counts": {
+      "volatility_regime": {
+        "normal_volatility": 1245,
+        "high_volatility": 613,
+        "low_volatility": 613
+      },
+      "trend_regime": {
+        "sideways": 1375,
+        "trending_up": 741,
+        "trending_down": 355
+      },
+      "stress_regime": {
+        "neutral": 1217,
+        "recovery_or_high": 652,
+        "correction": 602
+      }
+    }
+  },
+  "TCS": {
+    "definitions": {
+      "volatility": "20-session return standard deviation; low/high are <=25th/>=75th percentile.",
+      "trend": "20-session close return: trending_up >=5%, trending_down <=-5%, else sideways.",
+      "stress": "drawdown <=-15% correction; >=-3% recovery_or_high; otherwise neutral."
+    },
+    "counts": {
+      "volatility_regime": {
+        "normal_volatility": 1245,
+        "low_volatility": 613,
+        "high_volatility": 613
+      },
+      "trend_regime": {
+        "sideways": 1358,
+        "trending_up": 664,
+        "trending_down": 449
+      },
+      "stress_regime": {
+        "neutral": 1134,
+        "correction": 813,
+        "recovery_or_high": 524
+      }
+    }
+  },
+  "NIFTY_50": {
+    "definitions": {
+      "volatility": "20-session return standard deviation; low/high are <=25th/>=75th percentile.",
+      "trend": "20-session close return: trending_up >=5%, trending_down <=-5%, else sideways.",
+      "stress": "drawdown <=-15% correction; >=-3% recovery_or_high; otherwise neutral."
+    },
+    "counts": {
+      "volatility_regime": {
+        "normal_volatility": 1248,
+        "low_volatility": 615,
+        "high_volatility": 615
+      },
+      "trend_regime": {
+        "sideways": 1945,
+        "trending_up": 376,
+        "trending_down": 157
+      },
+      "stress_regime": {
+        "neutral": 1253,
+        "recovery_or_high": 1134,
+        "correction": 91
+      }
+    }
+  },
+  "NIFTY_TELECOMMUNICATIONS": {
+    "definitions": {
+      "volatility": "20-session return standard deviation; low/high are <=25th/>=75th percentile.",
+      "trend": "20-session close return: trending_up >=5%, trending_down <=-5%, else sideways.",
+      "stress": "drawdown <=-15% correction; >=-3% recovery_or_high; otherwise neutral."
+    },
+    "counts": {
+      "volatility_regime": {
+        "normal_volatility": 1248,
+        "low_volatility": 615,
+        "high_volatility": 615
+      },
+      "trend_regime": {
+        "sideways": 1385,
+        "trending_up": 632,
+        "trending_down": 461
+      },
+      "stress_regime": {
+        "correction": 1254,
+        "neutral": 732,
+        "recovery_or_high": 492
+      }
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "BHARTIARTL": {
+    "status": "DESCRIPTIVE_BASELINE_ONLY",
+    "residual_source": "previous-close baseline, not a fitted model",
+    "nominal_interval": "empirical 90 percent central residual interval",
+    "residual_q05": -21.927517700195313,
+    "residual_q95": 25.4000244140625,
+    "interval_width": 47.32754211425781,
+    "empirical_coverage": 1.0,
+    "warning": "Coverage is descriptive and not evidence for model confidence or future calibration."
+  },
+  "TCS": {
+    "status": "DESCRIPTIVE_BASELINE_ONLY",
+    "residual_source": "previous-close baseline, not a fitted model",
+    "nominal_interval": "empirical 90 percent central residual interval",
+    "residual_q05": -64.60997314453125,
+    "residual_q95": 65.72008056640614,
+    "interval_width": 130.3300537109374,
+    "empirical_coverage": 1.0,
+    "warning": "Coverage is descriptive and not evidence for model confidence or future calibration."
+  },
+  "NIFTY_50": {
+    "status": "DESCRIPTIVE_BASELINE_ONLY",
+    "residual_source": "previous-close baseline, not a fitted model",
+    "nominal_interval": "empirical 90 percent central residual interval",
+    "residual_q05": -247.15999999999767,
+    "residual_q95": 237.16999999999993,
+    "interval_width": 484.3299999999976,
+    "empirical_coverage": 1.0,
+    "warning": "Coverage is descriptive and not evidence for model confidence or future calibration."
+  },
+  "NIFTY_TELECOMMUNICATIONS": {
+    "status": "DESCRIPTIVE_BASELINE_ONLY",
+    "residual_source": "previous-close baseline, not a fitted model",
+    "nominal_interval": "empirical 90 percent central residual interval",
+    "residual_q05": -45.74799999999986,
+    "residual_q95": 46.97600000000001,
+    "interval_width": 92.72399999999988,
+    "empirical_coverage": 1.0,
+    "warning": "Coverage is descriptive and not evidence for model confidence or future calibration."
+  }
+}

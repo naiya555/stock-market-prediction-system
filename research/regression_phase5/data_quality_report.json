@@ -1,0 +1,142 @@
+[
+  {
+    "symbol": "BHARTIARTL",
+    "raw_rows": 2471,
+    "cleaned_rows": 2471,
+    "rejected_rows": 0,
+    "cleaning_summary": {
+      "input_count": 2471,
+      "output_count": 2471,
+      "missing_records_count": 0,
+      "identical_duplicates_count": 0,
+      "conflicting_duplicates_count": 0,
+      "invalid_records_count": 0,
+      "rejected_count": 0,
+      "is_sorted": true,
+      "rejection_reasons": []
+    },
+    "date_start": "2016-11-16",
+    "date_end": "2026-11-13",
+    "duplicate_timestamps": 0,
+    "duplicate_session_dates": 0,
+    "chronological": true,
+    "timezone_values": [
+      "Asia/Kolkata"
+    ],
+    "weekend_records": 3,
+    "gaps_over_four_days": 2,
+    "gap_days_max": 5,
+    "invalid_ohlc_relationships": 0,
+    "missing_ohlc_fields": 0,
+    "invalid_or_nonpositive_prices": 0,
+    "invalid_volume_values": 0,
+    "suspicious_abs_return_over_20pct": 0,
+    "corporate_action_review": "UNVERIFIABLE from provider-normalized series; adjusted equity data may embed actions.",
+    "source_limitation": "Provider output was audited; no independent vendor cross-check was performed."
+  },
+  {
+    "symbol": "TCS",
+    "raw_rows": 2471,
+    "cleaned_rows": 2471,
+    "rejected_rows": 0,
+    "cleaning_summary": {
+      "input_count": 2471,
+      "output_count": 2471,
+      "missing_records_count": 0,
+      "identical_duplicates_count": 0,
+      "conflicting_duplicates_count": 0,
+      "invalid_records_count": 0,
+      "rejected_count": 0,
+      "is_sorted": true,
+      "rejection_reasons": []
+    },
+    "date_start": "2016-11-16",
+    "date_end": "2026-11-13",
+    "duplicate_timestamps": 0,
+    "duplicate_session_dates": 0,
+    "chronological": true,
+    "timezone_values": [
+      "Asia/Kolkata"
+    ],
+    "weekend_records": 3,
+    "gaps_over_four_days": 2,
+    "gap_days_max": 5,
+    "invalid_ohlc_relationships": 0,
+    "missing_ohlc_fields": 0,
+    "invalid_or_nonpositive_prices": 0,
+    "invalid_volume_values": 0,
+    "suspicious_abs_return_over_20pct": 0,
+    "corporate_action_review": "UNVERIFIABLE from provider-normalized series; adjusted equity data may embed actions.",
+    "source_limitation": "Provider output was audited; no independent vendor cross-check was performed."
+  },
+  {
+    "symbol": "NIFTY_50",
+    "raw_rows": 2478,
+    "cleaned_rows": 2478,
+    "rejected_rows": 0,
+    "cleaning_summary": {
+      "input_count": 2478,
+      "output_count": 2478,
+      "missing_records_count": 0,
+      "identical_duplicates_count": 0,
+      "conflicting_duplicates_count": 0,
+      "invalid_records_count": 0,
+      "rejected_count": 0,
+      "is_sorted": true,
+      "rejection_reasons": []
+    },
+    "date_start": "2016-11-17",
+    "date_end": "2026-11-13",
+    "duplicate_timestamps": 0,
+    "duplicate_session_dates": 0,
+    "chronological": true,
+    "timezone_values": [
+      "Asia/Kolkata"
+    ],
+    "weekend_records": 10,
+    "gaps_over_four_days": 2,
+    "gap_days_max": 5,
+    "invalid_ohlc_relationships": 0,
+    "missing_ohlc_fields": 0,
+    "invalid_or_nonpositive_prices": 0,
+    "invalid_volume_values": 0,
+    "suspicious_abs_return_over_20pct": 0,
+    "corporate_action_review": "Not applicable to index series.",
+    "source_limitation": "Provider output was audited; no independent vendor cross-check was performed."
+  },
+  {
+    "symbol": "NIFTY_TELECOMMUNICATIONS",
+    "raw_rows": 2478,
+    "cleaned_rows": 2478,
+    "rejected_rows": 0,
+    "cleaning_summary": {
+      "input_count": 2478,
+      "output_count": 2478,
+      "missing_records_count": 0,
+      "identical_duplicates_count": 0,
+      "conflicting_duplicates_count": 0,
+      "invalid_records_count": 0,
+      "rejected_count": 0,
+      "is_sorted": true,
+      "rejection_reasons": []
+    },
+    "date_start": "2016-11-17",
+    "date_end": "2026-11-13",
+    "duplicate_timestamps": 0,
+    "duplicate_session_dates": 0,
+    "chronological": true,
+    "timezone_values": [
+      "Asia/Kolkata"
+    ],
+    "weekend_records": 10,
+    "gaps_over_four_days": 2,
+    "gap_days_max": 5,
+    "invalid_ohlc_relationships": 0,
+    "missing_ohlc_fields": 2478,
+    "invalid_or_nonpositive_prices": 0,
+    "invalid_volume_values": 0,
+    "suspicious_abs_return_over_20pct": 0,
+    "corporate_action_review": "Not applicable to index series.",
+    "source_limitation": "Provider output was audited; no independent vendor cross-check was performed."
+  }
+]
