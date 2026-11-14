@@ -1,0 +1,50 @@
+{
+  "retrieval_date": "2026-11-14",
+  "sources": [
+    {
+      "name": "NSE corporate filing archive",
+      "type": "official exchange filing",
+      "urls": [
+        "https://nsearchives.nseindia.com/corporate/BHARTIARTL_16062025105119_Record_Date_Intimation_BAL.pdf",
+        "https://nsearchives.nseindia.com/corporate/BHARTIARTL_10072026100101_BAL-_Record_Date_Intimation.pdf",
+        "https://nsearchives.nseindia.com/corporate/TCS_06052024182259_SEInt06052024signed.pdf",
+        "https://nsearchives.nseindia.com/corporate/TCS_CORPCS_30042025212952_Record_Date_Intimation_signed.pdf",
+        "https://nsearchives.nseindia.com/corporate/TCS_CORPCS_05052026173649_SEInt05052026.pdf"
+      ]
+    },
+    {
+      "name": "NSE trading circular archive",
+      "type": "official exchange circular",
+      "urls": [
+        "https://nsearchives.nseindia.com/content/circulars/CMTR42483.pdf",
+        "https://nsearchives.nseindia.com/content/circulars/FAOP43291.pdf",
+        "https://nsearchives.nseindia.com/content/circulars/CMTR46230.pdf",
+        "https://nsearchives.nseindia.com/content/circulars/CMTR59124.pdf",
+        "https://nsearchives.nseindia.com/content/circulars/MSD59999.pdf",
+        "https://nsearchives.nseindia.com/content/circulars/MSD60677.pdf?0",
+          "https://nsearchives.nseindia.com/content/circulars/MSD62061.pdf",
+          "https://nsearchives.nseindia.com/content/circulars/CMTR76941.pdf"
+      ]
+    },
+    {
+      "name": "NSE Indices historical data",
+      "type": "official index provider",
+      "url": "https://www.niftyindices.com/reports/historical-data",
+      "role": "project primary; no independent equivalent found"
+    },
+    {
+      "name": "Yahoo Finance via project adapter",
+      "type": "secondary provider",
+      "role": "NIFTY_50 cross-check; auto_adjust=False"
+    },
+    {
+      "name": "NSE equity/BSE/company historical action records",
+      "type": "official sources",
+      "status": "PARTIAL_ONLY",
+      "limitation": "Complete accessible event ledgers were not obtained; event rows are explicitly separated into official partial evidence, secondary corroboration, and unresolved coverage."
+    },
+    {"name": "BSE Bharti Airtel corporate actions", "type": "secondary exchange webpage", "url": "https://beta.bseindia.com/stock-share-price/bharti-airtel-ltd/bhartiartl/532454/corp-actions/", "role": "secondary corroboration only"},
+    {"name": "Trendlyne TCS corporate actions", "type": "secondary market-data provider", "url": "https://trendlyne.com/equity/corporate-actions/TCS/1372/tata-consultancy-services-ltd/", "role": "secondary corroboration only"}
+  ],
+  "security": "External content was treated as untrusted evidence; no embedded instructions were executed."
+}

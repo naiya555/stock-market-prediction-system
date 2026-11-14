@@ -1,0 +1,316 @@
+{
+  "status": "VERIFIED",
+  "method": "same fresh cleaned provider frame passed to Phase 6 evaluate_walk_forward and Phase 8 oos_residuals",
+  "parameters": {
+    "n_splits": 5,
+    "min_train_ratio": 0.4,
+    "embargo": 1
+  },
+  "instruments": {
+    "BHARTIARTL": {
+      "exact_residual_population": true,
+      "phase6_fold_boundaries": [
+        {
+          "fold": 1,
+          "train_end": "2020-11-12 00:00:00+05:30",
+          "validation_start": "2020-11-14 00:00:00+05:30",
+          "validation_end": "2022-01-24 00:00:00+05:30",
+          "samples": 296
+        },
+        {
+          "fold": 2,
+          "train_end": "2022-01-21 00:00:00+05:30",
+          "validation_start": "2022-01-25 00:00:00+05:30",
+          "validation_end": "2023-04-05 00:00:00+05:30",
+          "samples": 296
+        },
+        {
+          "fold": 3,
+          "train_end": "2023-04-03 00:00:00+05:30",
+          "validation_start": "2023-04-06 00:00:00+05:30",
+          "validation_end": "2024-06-21 00:00:00+05:30",
+          "samples": 296
+        },
+        {
+          "fold": 4,
+          "train_end": "2024-06-20 00:00:00+05:30",
+          "validation_start": "2024-06-24 00:00:00+05:30",
+          "validation_end": "2025-08-29 00:00:00+05:30",
+          "samples": 296
+        },
+        {
+          "fold": 5,
+          "train_end": "2025-08-28 00:00:00+05:30",
+          "validation_start": "2025-09-01 00:00:00+05:30",
+          "validation_end": "2026-11-13 00:00:00+05:30",
+          "samples": 298
+        }
+      ],
+      "phase8_fold_boundaries": [
+        {
+          "fold": 1,
+          "validation_start": "2020-11-14 00:00:00+05:30",
+          "validation_end": "2022-01-24 00:00:00+05:30",
+          "samples": 296
+        },
+        {
+          "fold": 2,
+          "validation_start": "2022-01-25 00:00:00+05:30",
+          "validation_end": "2023-04-05 00:00:00+05:30",
+          "samples": 296
+        },
+        {
+          "fold": 3,
+          "validation_start": "2023-04-06 00:00:00+05:30",
+          "validation_end": "2024-06-21 00:00:00+05:30",
+          "samples": 296
+        },
+        {
+          "fold": 4,
+          "validation_start": "2024-06-24 00:00:00+05:30",
+          "validation_end": "2025-08-29 00:00:00+05:30",
+          "samples": 296
+        },
+        {
+          "fold": 5,
+          "validation_start": "2025-09-01 00:00:00+05:30",
+          "validation_end": "2026-11-13 00:00:00+05:30",
+          "samples": 298
+        }
+      ],
+      "phase6_samples": 1482,
+      "phase8_samples": 1482,
+      "chronological_phase6": true,
+      "duplicate_phase6_dates": false
+    },
+    "TCS": {
+      "exact_residual_population": true,
+      "phase6_fold_boundaries": [
+        {
+          "fold": 1,
+          "train_end": "2020-11-12 00:00:00+05:30",
+          "validation_start": "2020-11-14 00:00:00+05:30",
+          "validation_end": "2022-01-24 00:00:00+05:30",
+          "samples": 296
+        },
+        {
+          "fold": 2,
+          "train_end": "2022-01-21 00:00:00+05:30",
+          "validation_start": "2022-01-25 00:00:00+05:30",
+          "validation_end": "2023-04-05 00:00:00+05:30",
+          "samples": 296
+        },
+        {
+          "fold": 3,
+          "train_end": "2023-04-03 00:00:00+05:30",
+          "validation_start": "2023-04-06 00:00:00+05:30",
+          "validation_end": "2024-06-21 00:00:00+05:30",
+          "samples": 296
+        },
+        {
+          "fold": 4,
+          "train_end": "2024-06-20 00:00:00+05:30",
+          "validation_start": "2024-06-24 00:00:00+05:30",
+          "validation_end": "2025-08-29 00:00:00+05:30",
+          "samples": 296
+        },
+        {
+          "fold": 5,
+          "train_end": "2025-08-28 00:00:00+05:30",
+          "validation_start": "2025-09-01 00:00:00+05:30",
+          "validation_end": "2026-11-13 00:00:00+05:30",
+          "samples": 298
+        }
+      ],
+      "phase8_fold_boundaries": [
+        {
+          "fold": 1,
+          "validation_start": "2020-11-14 00:00:00+05:30",
+          "validation_end": "2022-01-24 00:00:00+05:30",
+          "samples": 296
+        },
+        {
+          "fold": 2,
+          "validation_start": "2022-01-25 00:00:00+05:30",
+          "validation_end": "2023-04-05 00:00:00+05:30",
+          "samples": 296
+        },
+        {
+          "fold": 3,
+          "validation_start": "2023-04-06 00:00:00+05:30",
+          "validation_end": "2024-06-21 00:00:00+05:30",
+          "samples": 296
+        },
+        {
+          "fold": 4,
+          "validation_start": "2024-06-24 00:00:00+05:30",
+          "validation_end": "2025-08-29 00:00:00+05:30",
+          "samples": 296
+        },
+        {
+          "fold": 5,
+          "validation_start": "2025-09-01 00:00:00+05:30",
+          "validation_end": "2026-11-13 00:00:00+05:30",
+          "samples": 298
+        }
+      ],
+      "phase6_samples": 1482,
+      "phase8_samples": 1482,
+      "chronological_phase6": true,
+      "duplicate_phase6_dates": false
+    },
+    "NIFTY_50": {
+      "exact_residual_population": true,
+      "phase6_fold_boundaries": [
+        {
+          "fold": 1,
+          "train_end": "2020-11-13 05:30:00+05:30",
+          "validation_start": "2020-11-17 05:30:00+05:30",
+          "validation_end": "2022-01-27 05:30:00+05:30",
+          "samples": 297
+        },
+        {
+          "fold": 2,
+          "train_end": "2022-01-25 05:30:00+05:30",
+          "validation_start": "2022-01-28 05:30:00+05:30",
+          "validation_end": "2023-04-11 05:30:00+05:30",
+          "samples": 297
+        },
+        {
+          "fold": 3,
+          "train_end": "2023-04-10 05:30:00+05:30",
+          "validation_start": "2023-04-12 05:30:00+05:30",
+          "validation_end": "2024-06-21 05:30:00+05:30",
+          "samples": 297
+        },
+        {
+          "fold": 4,
+          "train_end": "2024-06-20 05:30:00+05:30",
+          "validation_start": "2024-06-24 05:30:00+05:30",
+          "validation_end": "2025-09-01 05:30:00+05:30",
+          "samples": 297
+        },
+        {
+          "fold": 5,
+          "train_end": "2025-08-29 05:30:00+05:30",
+          "validation_start": "2025-09-02 05:30:00+05:30",
+          "validation_end": "2026-11-13 05:30:00+05:30",
+          "samples": 298
+        }
+      ],
+      "phase8_fold_boundaries": [
+        {
+          "fold": 1,
+          "validation_start": "2020-11-17 05:30:00+05:30",
+          "validation_end": "2022-01-27 05:30:00+05:30",
+          "samples": 297
+        },
+        {
+          "fold": 2,
+          "validation_start": "2022-01-28 05:30:00+05:30",
+          "validation_end": "2023-04-11 05:30:00+05:30",
+          "samples": 297
+        },
+        {
+          "fold": 3,
+          "validation_start": "2023-04-12 05:30:00+05:30",
+          "validation_end": "2024-06-21 05:30:00+05:30",
+          "samples": 297
+        },
+        {
+          "fold": 4,
+          "validation_start": "2024-06-24 05:30:00+05:30",
+          "validation_end": "2025-09-01 05:30:00+05:30",
+          "samples": 297
+        },
+        {
+          "fold": 5,
+          "validation_start": "2025-09-02 05:30:00+05:30",
+          "validation_end": "2026-11-13 05:30:00+05:30",
+          "samples": 298
+        }
+      ],
+      "phase6_samples": 1486,
+      "phase8_samples": 1486,
+      "chronological_phase6": true,
+      "duplicate_phase6_dates": false
+    },
+    "NIFTY_TELECOMMUNICATIONS": {
+      "exact_residual_population": true,
+      "phase6_fold_boundaries": [
+        {
+          "fold": 1,
+          "train_end": "2020-11-13 05:30:00+05:30",
+          "validation_start": "2020-11-17 05:30:00+05:30",
+          "validation_end": "2022-01-27 05:30:00+05:30",
+          "samples": 297
+        },
+        {
+          "fold": 2,
+          "train_end": "2022-01-25 05:30:00+05:30",
+          "validation_start": "2022-01-28 05:30:00+05:30",
+          "validation_end": "2023-04-11 05:30:00+05:30",
+          "samples": 297
+        },
+        {
+          "fold": 3,
+          "train_end": "2023-04-10 05:30:00+05:30",
+          "validation_start": "2023-04-12 05:30:00+05:30",
+          "validation_end": "2024-06-21 05:30:00+05:30",
+          "samples": 297
+        },
+        {
+          "fold": 4,
+          "train_end": "2024-06-20 05:30:00+05:30",
+          "validation_start": "2024-06-24 05:30:00+05:30",
+          "validation_end": "2025-09-01 05:30:00+05:30",
+          "samples": 297
+        },
+        {
+          "fold": 5,
+          "train_end": "2025-08-29 05:30:00+05:30",
+          "validation_start": "2025-09-02 05:30:00+05:30",
+          "validation_end": "2026-11-13 05:30:00+05:30",
+          "samples": 298
+        }
+      ],
+      "phase8_fold_boundaries": [
+        {
+          "fold": 1,
+          "validation_start": "2020-11-17 05:30:00+05:30",
+          "validation_end": "2022-01-27 05:30:00+05:30",
+          "samples": 297
+        },
+        {
+          "fold": 2,
+          "validation_start": "2022-01-28 05:30:00+05:30",
+          "validation_end": "2023-04-11 05:30:00+05:30",
+          "samples": 297
+        },
+        {
+          "fold": 3,
+          "validation_start": "2023-04-12 05:30:00+05:30",
+          "validation_end": "2024-06-21 05:30:00+05:30",
+          "samples": 297
+        },
+        {
+          "fold": 4,
+          "validation_start": "2024-06-24 05:30:00+05:30",
+          "validation_end": "2025-09-01 05:30:00+05:30",
+          "samples": 297
+        },
+        {
+          "fold": 5,
+          "validation_start": "2025-09-02 05:30:00+05:30",
+          "validation_end": "2026-11-13 05:30:00+05:30",
+          "samples": 298
+        }
+      ],
+      "phase6_samples": 1486,
+      "phase8_samples": 1486,
+      "chronological_phase6": true,
+      "duplicate_phase6_dates": false
+    }
+  },
+  "pooling": "A fixed previous-close baseline permits descriptive pooling, but pooled residuals mix regimes and changing price scales; fold and regime stratification remain necessary."
+}

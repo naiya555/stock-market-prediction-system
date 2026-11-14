@@ -1,0 +1,21 @@
+{
+  "BHARTIARTL": {
+    "status": "PARTIALLY_VERIFIED",
+    "reason": "Two official dividend record-date filings verified; complete corporate-action history and independent price series unavailable."
+  },
+  "TCS": {
+    "status": "PARTIALLY_VERIFIED",
+    "reason": "Three official dividend record-date filings verified; complete corporate-action history and independent price series unavailable."
+  },
+  "NIFTY_50": {
+    "status": "PARTIALLY_VERIFIED",
+    "reason": "2465 comparable rows matched; eight unmatched dates are verified NSE special sessions and six dates remain unverified.",
+    "total_unmatched_dates": 14,
+    "verified_special_sessions": 8,
+    "unresolved_dates": 6
+  },
+  "NIFTY_TELECOMMUNICATIONS": {
+    "status": "UNVERIFIED",
+    "reason": "No independent equivalent historical series was obtained."
+  }
+}

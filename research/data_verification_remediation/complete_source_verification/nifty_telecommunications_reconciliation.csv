@@ -1,0 +1,2 @@
+date,project_source,independent_source,project_close,independent_close,absolute_difference,percentage_difference,status,coverage,source_url,limitation
+,NSE Indices official Nifty Telecommunications endpoint,,,,,,UNVERIFIED,No independent equivalent historical series obtained,https://www.niftyindices.com/reports/historical-data,Search results identified only the same official endpoint or different indices; no comparable independent rows were used.

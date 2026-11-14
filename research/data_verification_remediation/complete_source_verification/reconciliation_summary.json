@@ -1,0 +1,42 @@
+{
+  "tolerance": {
+    "absolute": 0.01,
+    "relative": 0.0001
+  },
+  "BHARTIARTL": {
+    "comparable": 0,
+    "matched": 0,
+    "mismatched": 0,
+    "missing": "independent series unavailable",
+    "coverage_percent": null,
+    "status": "UNVERIFIED"
+  },
+  "TCS": {
+    "comparable": 0,
+    "matched": 0,
+    "mismatched": 0,
+    "missing": "independent series unavailable",
+    "coverage_percent": null,
+    "status": "UNVERIFIED"
+  },
+  "NIFTY_50": {
+    "comparable": 2465,
+    "matched": 2465,
+    "mismatched": 0,
+    "missing": 14,
+    "total_unmatched_dates": 14,
+    "verified_special_sessions": 8,
+    "unresolved_dates": 6,
+    "coverage_percent": 100.0,
+    "status": "PARTIALLY_VERIFIED",
+    "note": "100% is among comparable rows; unmatched dates remain separate from comparable matches. Eight are now verified NSE special sessions and six remain unresolved."
+  },
+  "NIFTY_TELECOMMUNICATIONS": {
+    "comparable": 0,
+    "matched": 0,
+    "mismatched": 0,
+    "missing": "independent equivalent series unavailable",
+    "coverage_percent": null,
+    "status": "UNVERIFIED"
+  }
+}

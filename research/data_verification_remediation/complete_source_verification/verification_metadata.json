@@ -1,0 +1,24 @@
+{
+  "generated_at": "2026-11-14T13:14:48.014472+00:00",
+  "historical_range": {
+    "start": "2016-11-16",
+    "end": "2026-11-14"
+  },
+  "packages_installed": false,
+  "models_trained": false,
+  "forecasting_run": false,
+  "prior_artifacts_modified": false,
+  "production_modified": false,
+  "database_modified": false,
+  "nifty50_unmatched_dates": {
+    "total_unmatched_dates": 14,
+    "verified_special_sessions": 8,
+    "unresolved_dates": 6,
+    "unresolved": ["2016-11-16", "2018-01-01", "2019-01-01", "2019-02-13", "2019-03-29", "2026-02-01"]
+  },
+  "limitations": [
+    "Corporate-action CSVs contain partial event evidence, not complete ledgers.",
+    "Official complete corporate-action ledgers and adjustment factors were not accessible.",
+    "No independent exact NIFTY Telecommunications series was accessible."
+  ]
+}

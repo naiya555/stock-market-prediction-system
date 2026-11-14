@@ -1,0 +1,88 @@
+{
+  "implementation": "Q(h)=n(n+2) sum(r_k^2/(n-k)); r_k uses centered dot-product autocorrelation; p=chi2.sf(Q,h).",
+  "known_example": {
+    "values": [
+      1.0,
+      2.0,
+      3.0,
+      4.0,
+      5.0
+    ],
+    "lag": 3,
+    "acf": {
+      "1": 0.4,
+      "2": -0.1,
+      "3": -0.4
+    },
+    "expected_q": 4.316666666666667,
+    "expected_p_value": 0.2292378217841052,
+    "observed_q": 4.316666666666667,
+    "observed_p_value": 0.2292378217841052,
+    "phase8_q": 4.316666666666667,
+    "phase8_p_value": 0.2292378217841052,
+    "passed": true
+  },
+  "phase8_values": {
+    "BHARTIARTL": {
+      "5": {
+        "q": 5.426340705888189,
+        "p_value": 0.3660905071851848
+      },
+      "10": {
+        "q": 17.520225387907242,
+        "p_value": 0.06361652811473069
+      },
+      "20": {
+        "q": 37.6067315588434,
+        "p_value": 0.009887580057705842
+      }
+    },
+    "TCS": {
+      "5": {
+        "q": 1.7371287774690738,
+        "p_value": 0.8841893631004919
+      },
+      "10": {
+        "q": 5.67211764818002,
+        "p_value": 0.842017312692062
+      },
+      "20": {
+        "q": 11.211374448198422,
+        "p_value": 0.9405555985587781
+      }
+    },
+    "NIFTY_50": {
+      "5": {
+        "q": 6.736014270443906,
+        "p_value": 0.24102510708778793
+      },
+      "10": {
+        "q": 10.932390295867835,
+        "p_value": 0.3628096563969424
+      },
+      "20": {
+        "q": 19.644486988181438,
+        "p_value": 0.48035689770795387
+      }
+    },
+    "NIFTY_TELECOMMUNICATIONS": {
+      "5": {
+        "q": 6.292065030611336,
+        "p_value": 0.2788280108897749
+      },
+      "10": {
+        "q": 12.030989059655436,
+        "p_value": 0.2829878728055585
+      },
+      "20": {
+        "q": 19.60399439520076,
+        "p_value": 0.48293380023137034
+      }
+    }
+  },
+  "limitations": [
+    "Chi-square approximation assumes suitable residual behavior.",
+    "The test detects autocorrelation, not all dependence or heteroscedasticity.",
+    "Pooled chronological residuals are not independent observations."
+  ]
+}
