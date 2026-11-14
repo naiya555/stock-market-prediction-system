@@ -1,0 +1,126 @@
+{
+  "BHARTIARTL": {
+    "instrument": "BHARTIARTL",
+    "instrument_type": "EQUITY",
+    "provider": "yfinance",
+    "retrieved_at": "2026-11-14T15:33:12.536166+00:00",
+    "record_count": 2471,
+    "date_range": {
+      "start": "2016-11-16T00:00:00+05:30",
+      "end": "2026-11-13T00:00:00+05:30"
+    },
+    "schema": [
+      "close",
+      "high",
+      "is_close_only",
+      "low",
+      "open",
+      "source",
+      "symbol",
+      "timestamp",
+      "volume",
+      "volume_reported"
+    ],
+    "close_only": false,
+    "overall_status": "WARNING",
+    "finding_counts": {
+      "PASS": 0,
+      "WARNING": 23,
+      "FAIL": 0,
+      "UNVERIFIED": 65
+    }
+  },
+  "TCS": {
+    "instrument": "TCS",
+    "instrument_type": "EQUITY",
+    "provider": "yfinance",
+    "retrieved_at": "2026-11-14T15:33:12.536166+00:00",
+    "record_count": 2471,
+    "date_range": {
+      "start": "2016-11-16T00:00:00+05:30",
+      "end": "2026-11-13T00:00:00+05:30"
+    },
+    "schema": [
+      "close",
+      "high",
+      "is_close_only",
+      "low",
+      "open",
+      "source",
+      "symbol",
+      "timestamp",
+      "volume",
+      "volume_reported"
+    ],
+    "close_only": false,
+    "overall_status": "WARNING",
+    "finding_counts": {
+      "PASS": 0,
+      "WARNING": 15,
+      "FAIL": 0,
+      "UNVERIFIED": 65
+    }
+  },
+  "NIFTY_50": {
+    "instrument": "NIFTY_50",
+    "instrument_type": "INDEX",
+    "provider": "nifty_indices",
+    "retrieved_at": "2026-11-14T15:33:12.536166+00:00",
+    "record_count": 2478,
+    "date_range": {
+      "start": "2016-11-17T00:00:00+00:00",
+      "end": "2026-11-13T00:00:00+00:00"
+    },
+    "schema": [
+      "close",
+      "high",
+      "is_close_only",
+      "low",
+      "open",
+      "source",
+      "symbol",
+      "timestamp",
+      "volume",
+      "volume_reported"
+    ],
+    "close_only": false,
+    "overall_status": "UNVERIFIED",
+    "finding_counts": {
+      "PASS": 0,
+      "WARNING": 0,
+      "FAIL": 0,
+      "UNVERIFIED": 69
+    }
+  },
+  "NIFTY_TELECOMMUNICATIONS": {
+    "instrument": "NIFTY_TELECOMMUNICATIONS",
+    "instrument_type": "INDEX",
+    "provider": "nifty_indices",
+    "retrieved_at": "2026-11-14T15:33:12.536166+00:00",
+    "record_count": 2478,
+    "date_range": {
+      "start": "2016-11-17T00:00:00+00:00",
+      "end": "2026-11-13T00:00:00+00:00"
+    },
+    "schema": [
+      "close",
+      "high",
+      "is_close_only",
+      "low",
+      "open",
+      "source",
+      "symbol",
+      "timestamp",
+      "volume",
+      "volume_reported"
+    ],
+    "close_only": true,
+    "overall_status": "UNVERIFIED",
+    "finding_counts": {
+      "PASS": 0,
+      "WARNING": 0,
+      "FAIL": 0,
+      "UNVERIFIED": 69
+    }
+  }
+}

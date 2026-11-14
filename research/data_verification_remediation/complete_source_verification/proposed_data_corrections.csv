@@ -1,3 +1,10 @@
 instrument,date,proposed_action,reason,before,after,status
 NIFTY_50,2016-11-16,No correction,"Likely range-start/source coverage issue, but official session evidence unavailable.",,,UNVERIFIED
-NIFTY_50,2019-10-27;2020-02-01;2020-11-14;2023-11-12;2024-01-20;2024-03-02;2024-05-18;2026-11-08,No correction,Official NSE circulars verify special sessions; retain source-specific presence/absence rather than fabricate values.,,,DOCUMENT_ONLY
+NIFTY_50,2019-10-27,No correction,Official NSE circular verifies special session; retain source-specific presence/absence rather than fabricate values.,,,DOCUMENT_ONLY
+NIFTY_50,2020-02-01,No correction,Official NSE circular verifies special session; retain source-specific presence/absence rather than fabricate values.,,,DOCUMENT_ONLY
+NIFTY_50,2020-11-14,No correction,Official NSE circular verifies special session; retain source-specific presence/absence rather than fabricate values.,,,DOCUMENT_ONLY
+NIFTY_50,2023-11-12,No correction,Official NSE circular verifies special session; retain source-specific presence/absence rather than fabricate values.,,,DOCUMENT_ONLY
+NIFTY_50,2024-01-20,No correction,Official NSE circular verifies special session; retain source-specific presence/absence rather than fabricate values.,,,DOCUMENT_ONLY
+NIFTY_50,2024-03-02,No correction,Official NSE circular verifies special session; retain source-specific presence/absence rather than fabricate values.,,,DOCUMENT_ONLY
+NIFTY_50,2024-05-18,No correction,Official NSE circular verifies special session; retain source-specific presence/absence rather than fabricate values.,,,DOCUMENT_ONLY
+NIFTY_50,2026-11-08,No correction,Official NSE circular verifies special session; retain source-specific presence/absence rather than fabricate values.,,,DOCUMENT_ONLY

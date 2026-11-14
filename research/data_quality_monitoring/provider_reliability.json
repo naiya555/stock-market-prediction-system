@@ -1,0 +1,26 @@
+{
+  "BHARTIARTL": {
+    "provider": "yfinance",
+    "retrieved_at": "2026-11-14T15:33:12.536166+00:00",
+    "records_returned": 2471,
+    "status": "AVAILABLE"
+  },
+  "TCS": {
+    "provider": "yfinance",
+    "retrieved_at": "2026-11-14T15:33:12.536166+00:00",
+    "records_returned": 2471,
+    "status": "AVAILABLE"
+  },
+  "NIFTY_50": {
+    "provider": "nifty_indices",
+    "retrieved_at": "2026-11-14T15:33:12.536166+00:00",
+    "records_returned": 2478,
+    "status": "AVAILABLE"
+  },
+  "NIFTY_TELECOMMUNICATIONS": {
+    "provider": "nifty_indices",
+    "retrieved_at": "2026-11-14T15:33:12.536166+00:00",
+    "records_returned": 2478,
+    "status": "AVAILABLE"
+  }
+}

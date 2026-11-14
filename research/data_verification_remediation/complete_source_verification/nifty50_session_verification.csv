@@ -1,15 +1,15 @@
 date,weekday,missing_from,other_source,classification,primary_status,secondary_status,source_name,source_url,retrieval_date,evidence,verification_status
-2016-11-16,Wednesday,NSE Indices,NSE Indices,UNVERIFIED,MISSING,PRESENT,Not obtained,,2026-11-14,Project range-start/source coverage discrepancy; official session evidence not retrieved.,UNVERIFIED
-2018-01-01,Monday,Yahoo Finance,Yahoo Finance,UNVERIFIED,PRESENT,MISSING,Not obtained,,2026-11-14,Weekday gap; official calendar evidence not retrieved.,UNVERIFIED
-2019-01-01,Tuesday,Yahoo Finance,Yahoo Finance,UNVERIFIED,PRESENT,MISSING,Not obtained,,2026-11-14,Weekday gap; official calendar evidence not retrieved.,UNVERIFIED
-2019-02-13,Wednesday,Yahoo Finance,Yahoo Finance,UNVERIFIED,PRESENT,MISSING,Not obtained,,2026-11-14,Weekday gap; official calendar evidence not retrieved.,UNVERIFIED
-2019-03-29,Friday,Yahoo Finance,Yahoo Finance,UNVERIFIED,PRESENT,MISSING,Not obtained,,2026-11-14,Weekday gap; official calendar evidence not retrieved.,UNVERIFIED
-2019-10-27,Sunday,Yahoo Finance,Yahoo Finance,SPECIAL_SESSION_VERIFIED,PRESENT,MISSING,NSE trading circular,https://nsearchives.nseindia.com/content/circulars/CMTR42483.pdf,2026-11-14,Diwali Muhurat capital-market session.,VERIFIED
-2020-02-01,Saturday,Yahoo Finance,Yahoo Finance,SPECIAL_SESSION_VERIFIED,PRESENT,MISSING,NSE trading circular,https://nsearchives.nseindia.com/content/circulars/FAOP43291.pdf,2026-11-14,Live trading session for Union Budget.,VERIFIED
-2020-11-14,Saturday,Yahoo Finance,Yahoo Finance,SPECIAL_SESSION_VERIFIED,PRESENT,MISSING,NSE trading circular,https://nsearchives.nseindia.com/content/circulars/CMTR46230.pdf,2026-11-14,Diwali Muhurat capital-market session.,VERIFIED
-2023-11-12,Sunday,Yahoo Finance,Yahoo Finance,SPECIAL_SESSION_VERIFIED,PRESENT,MISSING,NSE trading circular,https://nsearchives.nseindia.com/content/circulars/CMTR59124.pdf,2026-11-14,Diwali Muhurat capital-market session.,VERIFIED
-2024-01-20,Saturday,Yahoo Finance,Yahoo Finance,SPECIAL_SESSION_VERIFIED,PRESENT,MISSING,NSE trading circular,https://nsearchives.nseindia.com/content/circulars/MSD59999.pdf,2026-11-14,Special live session with DR-site switch.,VERIFIED
-2024-03-02,Saturday,Yahoo Finance,Yahoo Finance,SPECIAL_SESSION_VERIFIED,PRESENT,MISSING,NSE trading circular,https://nsearchives.nseindia.com/content/circulars/MSD60677.pdf?0,2026-11-14,Special live session with DR-site switch.,VERIFIED
-2024-05-18,Saturday,Yahoo Finance,Yahoo Finance,SPECIAL_SESSION_VERIFIED,PRESENT,MISSING,NSE trading circular,https://nsearchives.nseindia.com/content/circulars/MSD62061.pdf,2026-11-14,Special live trading session.,VERIFIED
-2026-02-01,Sunday,Yahoo Finance,Yahoo Finance,UNVERIFIED,PRESENT,MISSING,Not obtained,,2026-11-14,No official historical calendar/special-session evidence retrieved.,UNVERIFIED
-2026-11-08,Sunday,Yahoo Finance,Yahoo Finance,SPECIAL_SESSION_VERIFIED,PRESENT,MISSING,NSE trading circular,https://nsearchives.nseindia.com/content/circulars/CMTR76941.pdf,2026-11-14,Diwali Muhurat special live trading session.,VERIFIED
+2016-11-16,Wednesday,NSE Indices,Yahoo Finance,UNVERIFIED,MISSING,PRESENT,Not obtained,,2026-11-14,Project range-start/source coverage discrepancy; official session evidence not retrieved.,UNVERIFIED
+2018-01-01,Monday,Yahoo Finance,NSE Indices,UNVERIFIED,PRESENT,MISSING,Not obtained,,2026-11-14,Weekday gap; official calendar evidence not retrieved.,UNVERIFIED
+2019-01-01,Tuesday,Yahoo Finance,NSE Indices,UNVERIFIED,PRESENT,MISSING,Not obtained,,2026-11-14,Weekday gap; official calendar evidence not retrieved.,UNVERIFIED
+2019-02-13,Wednesday,Yahoo Finance,NSE Indices,UNVERIFIED,PRESENT,MISSING,Not obtained,,2026-11-14,Weekday gap; official calendar evidence not retrieved.,UNVERIFIED
+2019-03-29,Friday,Yahoo Finance,NSE Indices,UNVERIFIED,PRESENT,MISSING,Not obtained,,2026-11-14,Weekday gap; official calendar evidence not retrieved.,UNVERIFIED
+2019-10-27,Sunday,Yahoo Finance,NSE Indices,SPECIAL_SESSION_VERIFIED,PRESENT,MISSING,NSE trading circular,https://nsearchives.nseindia.com/content/circulars/CMTR42483.pdf,2026-11-14,Diwali Muhurat capital-market session.,VERIFIED
+2020-02-01,Saturday,Yahoo Finance,NSE Indices,SPECIAL_SESSION_VERIFIED,PRESENT,MISSING,NSE trading circular,https://nsearchives.nseindia.com/content/circulars/FAOP43291.pdf,2026-11-14,Live trading session for Union Budget.,VERIFIED
+2020-11-14,Saturday,Yahoo Finance,NSE Indices,SPECIAL_SESSION_VERIFIED,PRESENT,MISSING,NSE trading circular,https://nsearchives.nseindia.com/content/circulars/CMTR46230.pdf,2026-11-14,Diwali Muhurat capital-market session.,VERIFIED
+2023-11-12,Sunday,Yahoo Finance,NSE Indices,SPECIAL_SESSION_VERIFIED,PRESENT,MISSING,NSE trading circular,https://nsearchives.nseindia.com/content/circulars/CMTR59124.pdf,2026-11-14,Diwali Muhurat capital-market session.,VERIFIED
+2024-01-20,Saturday,Yahoo Finance,NSE Indices,SPECIAL_SESSION_VERIFIED,PRESENT,MISSING,NSE trading circular,https://nsearchives.nseindia.com/content/circulars/MSD59999.pdf,2026-11-14,Special live session with DR-site switch.,VERIFIED
+2024-03-02,Saturday,Yahoo Finance,NSE Indices,SPECIAL_SESSION_VERIFIED,PRESENT,MISSING,NSE trading circular,https://nsearchives.nseindia.com/content/circulars/MSD60677.pdf?0,2026-11-14,Special live session with DR-site switch.,VERIFIED
+2024-05-18,Saturday,Yahoo Finance,NSE Indices,SPECIAL_SESSION_VERIFIED,PRESENT,MISSING,NSE trading circular,https://nsearchives.nseindia.com/content/circulars/MSD62061.pdf,2026-11-14,Special live trading session.,VERIFIED
+2026-02-01,Sunday,Yahoo Finance,NSE Indices,UNVERIFIED,PRESENT,MISSING,Not obtained,,2026-11-14,No official historical calendar/special-session evidence retrieved.,UNVERIFIED
+2026-11-08,Sunday,Yahoo Finance,NSE Indices,SPECIAL_SESSION_VERIFIED,PRESENT,MISSING,NSE trading circular,https://nsearchives.nseindia.com/content/circulars/CMTR76941.pdf,2026-11-14,Diwali Muhurat special live trading session.,VERIFIED

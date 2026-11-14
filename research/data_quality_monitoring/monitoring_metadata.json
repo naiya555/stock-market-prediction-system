@@ -1,0 +1,16 @@
+{
+  "generated_at": "2026-11-14T15:33:12.536166+00:00",
+  "read_only": true,
+  "symbols": [
+    "BHARTIARTL",
+    "TCS",
+    "NIFTY_50",
+    "NIFTY_TELECOMMUNICATIONS"
+  ],
+  "stale_after_days": 3,
+  "price_jump_warning": 0.2,
+  "volume_ratio_warning": 10.0,
+  "errors": [],
+  "source_data_modified": false,
+  "database_modified": false
+}
