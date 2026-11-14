@@ -1,0 +1,15 @@
+date,weekday,exchange,classification,source_url,circular_or_calendar_reference,evidence_description,verification_status
+2016-11-16,Wednesday,NSE,UNVERIFIED,,,No retrieved official source established whether this project range-start date was a session or source-coverage gap.,UNVERIFIED
+2018-01-01,Monday,NSE,UNVERIFIED,https://nsearchives.nseindia.com/content/circulars/CMTR36475.pdf,2018 trading-holiday circular,The retrieved 2018 capital-market holiday list did not list January 1; that omission alone does not establish a regular session for this reconciliation.,UNVERIFIED
+2019-01-01,Tuesday,NSE,UNVERIFIED,https://nsearchives.nseindia.com/content/circulars/CMTR39612.pdf,2019 trading-holiday circular,The retrieved 2019 capital-market holiday list did not list January 1; that omission alone does not establish a regular session for this reconciliation.,UNVERIFIED
+2019-02-13,Wednesday,NSE,UNVERIFIED,,,No retrieved official capital-market calendar or circular established the date classification.,UNVERIFIED
+2019-03-29,Friday,NSE,UNVERIFIED,,,No retrieved official capital-market calendar or circular established the date classification.,UNVERIFIED
+2019-10-27,Sunday,NSE,SPECIAL_SESSION,https://nsearchives.nseindia.com/content/circulars/CMTR42483.pdf,NSE/CMTR/42483,Diwali Muhurat special live capital-market session.,VERIFIED
+2020-02-01,Saturday,NSE,SPECIAL_SESSION,https://nsearchives.nseindia.com/content/circulars/FAOP43291.pdf,NSE/FAOP/43291,Live trading session for the Union Budget.,VERIFIED
+2020-11-14,Saturday,NSE,SPECIAL_SESSION,https://nsearchives.nseindia.com/content/circulars/CMTR46230.pdf,NSE/CMTR/46230,Diwali Muhurat special live capital-market session.,VERIFIED
+2023-11-12,Sunday,NSE,SPECIAL_SESSION,https://nsearchives.nseindia.com/content/circulars/CMTR59124.pdf,NSE/CMTR/59124,Diwali Muhurat special live capital-market session.,VERIFIED
+2024-01-20,Saturday,NSE,SPECIAL_SESSION,https://nsearchives.nseindia.com/content/circulars/MSD59999.pdf,NSE/MSD/59999,Special live session with intra-day DR-site switch.,VERIFIED
+2024-03-02,Saturday,NSE,SPECIAL_SESSION,https://nsearchives.nseindia.com/content/circulars/MSD60677.pdf?0,NSE/MSD/60677,Special live session with intra-day DR-site switch.,VERIFIED
+2024-05-18,Saturday,NSE,SPECIAL_SESSION,https://nsearchives.nseindia.com/content/circulars/MSD62061.pdf,NSE/MSD/62061,Special live trading session.,VERIFIED
+2026-02-01,Sunday,NSE,UNVERIFIED,,,The retrieved 2026 official evidence did not establish the equity/index session classification for this date.,UNVERIFIED
+2026-11-08,Sunday,NSE,SPECIAL_SESSION,https://nsearchives.nseindia.com/content/circulars/CMTR76941.pdf,NSE/CMTR/76941,Diwali Muhurat special live trading session.,VERIFIED

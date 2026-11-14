@@ -36,6 +36,7 @@ from app.market.instruments import get_instrument, is_index
 from app.market.pipeline import run_market_data_pipeline
 from app.market.providers.nifty_indices_provider import NiftyIndicesProvider
 from app.market.providers.yfinance_provider import YFinanceProvider
+from app.market.quality.integration import run_advisory_monitor
 from app.prediction.contract import PredictionRequest, PredictionStatus
 from app.prediction.service import PredictionService
 from app.training.feature_matrix import (
@@ -183,6 +184,12 @@ def train_models_pipeline(
             start_date=start_time,
             end_date=cutoff_time,
             provider=provider,
+        )
+        run_advisory_monitor(
+            symbol,
+            pipeline_result.raw_records,
+            provider=getattr(provider, "name", type(provider).__name__),
+            retrieved_at=cutoff_time,
         )
     except Exception as exc:
         print(f"ERROR: Market data pipeline failed for {clean_sym}: {exc}", file=sys.stderr)

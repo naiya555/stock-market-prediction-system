@@ -16,6 +16,7 @@ from app.market.instruments import is_index
 from app.market.pipeline import run_market_data_pipeline
 from app.market.providers.nifty_indices_provider import NiftyIndicesProvider
 from app.market.providers.yfinance_provider import YFinanceProvider
+from app.market.quality.integration import run_advisory_monitor
 from app.training.feature_matrix import INDEX_FEATURE_COLUMNS, assemble_feature_matrix
 from app.training.regression_phase5 import (
     audit_data,
@@ -32,6 +33,12 @@ SYMBOLS = ["BHARTIARTL", "TCS", "NIFTY_50", "NIFTY_TELECOMMUNICATIONS"]
 def load(symbol: str, end: datetime):
     provider = NiftyIndicesProvider() if is_index(symbol) else YFinanceProvider()
     pipeline = run_market_data_pipeline(symbol, end - timedelta(days=3650), end, provider=provider)
+    run_advisory_monitor(
+        symbol,
+        pipeline.raw_records,
+        provider=provider.name,
+        retrieved_at=end,
+    )
     dataset = assemble_feature_matrix(
         pipeline,
         feature_columns=INDEX_FEATURE_COLUMNS if symbol == "NIFTY_TELECOMMUNICATIONS" else None,

@@ -1,0 +1,27 @@
+{
+  "retrieval_date": "2026-11-14",
+  "official_sources": [
+    "https://nsearchives.nseindia.com/content/circulars/CMTR42483.pdf",
+    "https://nsearchives.nseindia.com/content/circulars/FAOP43291.pdf",
+    "https://nsearchives.nseindia.com/content/circulars/CMTR46230.pdf",
+    "https://nsearchives.nseindia.com/content/circulars/CMTR59124.pdf",
+    "https://nsearchives.nseindia.com/content/circulars/MSD59999.pdf",
+    "https://nsearchives.nseindia.com/content/circulars/MSD60677.pdf?0",
+    "https://nsearchives.nseindia.com/content/circulars/MSD62061.pdf",
+    "https://nsearchives.nseindia.com/content/circulars/CMTR76941.pdf",
+    "https://nsearchives.nseindia.com/content/circulars/CMTR36475.pdf",
+    "https://nsearchives.nseindia.com/content/circulars/CMTR39612.pdf"
+  ],
+  "limitations": [
+    "No retrieved official source established the six unresolved dates as regular sessions, holidays, or source-coverage gaps.",
+    "BSE calendars were not needed to classify the NSE index dates and were not substituted for NSE evidence.",
+    "No OHLCV records were modified."
+  ],
+  "counts": {
+    "total_dates": 14,
+    "verified_regular_sessions": 0,
+    "verified_special_sessions": 8,
+    "verified_holidays": 0,
+    "unresolved_dates": 6
+  }
+}

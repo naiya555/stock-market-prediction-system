@@ -24,6 +24,7 @@ from app.market.instruments import INSTRUMENT_REGISTRY, is_equity, is_index, res
 from app.market.providers.base import BaseMarketDataProvider
 from app.market.providers.nifty_indices_provider import NiftyIndicesProvider
 from app.market.providers.yfinance_provider import YFinanceProvider
+from app.market.quality.integration import run_advisory_monitor
 from app.prediction.contract import (
     PredictionDataQuality,
     PredictionRequest,
@@ -438,6 +439,12 @@ class PredictionService:
                 quote_context=quote_context,
             )
 
+        run_advisory_monitor(
+            clean_symbol,
+            pipeline_result.raw_records,
+            provider=getattr(active_provider, "name", type(active_provider).__name__),
+            retrieved_at=ref_time,
+        )
         cleaned_records = pipeline_result.cleaned_records
         n_cleaned = len(cleaned_records)
         raw_count = (
