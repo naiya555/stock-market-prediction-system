@@ -1,0 +1,44 @@
+{
+  "status": "NO_CORRECTION_REQUIRED_OR_AUTHORIZED",
+  "isolated_normalization": "Dates were normalized and duplicate dates excluded only in the in-memory comparison copy.",
+  "before_after": {
+    "BHARTIARTL": {
+      "status": "STRUCTURALLY_VERIFIED_ONLY",
+      "rows": 2471,
+      "date_start": "2016-11-16",
+      "date_end": "2026-11-13",
+      "duplicate_dates": 0,
+      "missing_close": 0,
+      "source": "Yahoo Finance"
+    },
+    "TCS": {
+      "status": "STRUCTURALLY_VERIFIED_ONLY",
+      "rows": 2471,
+      "date_start": "2016-11-16",
+      "date_end": "2026-11-13",
+      "duplicate_dates": 0,
+      "missing_close": 0,
+      "source": "Yahoo Finance"
+    },
+    "NIFTY_50": {
+      "status": "STRUCTURALLY_VERIFIED_ONLY",
+      "rows": 2478,
+      "date_start": "2016-11-17",
+      "date_end": "2026-11-13",
+      "duplicate_dates": 0,
+      "missing_close": 0,
+      "source": "NSE Indices"
+    },
+    "NIFTY_TELECOMMUNICATIONS": {
+      "status": "STRUCTURALLY_VERIFIED_ONLY",
+      "rows": 2478,
+      "date_start": "2016-11-17",
+      "date_end": "2026-11-13",
+      "duplicate_dates": 0,
+      "missing_close": 0,
+      "source": "NSE Indices"
+    }
+  },
+  "production_data_modified": false,
+  "confirmed_discrepancies": []
+}

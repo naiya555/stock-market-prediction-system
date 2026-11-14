@@ -1,0 +1,13 @@
+symbol,population,regime_definition,regime,samples,mae,rmse
+BHARTIARTL,Phase 6 comparable OOS,fold-training volatility quartiles,high_volatility,15,21.854768880208333,27.979411048394713
+BHARTIARTL,Phase 6 comparable OOS,fold-training volatility quartiles,low_volatility,822,9.997100533070066,14.177427681317212
+BHARTIARTL,Phase 6 comparable OOS,fold-training volatility quartiles,normal_volatility,645,15.024402092039123,21.458506186563895
+TCS,Phase 6 comparable OOS,fold-training volatility quartiles,high_volatility,299,42.89599037808319,61.44816274578827
+TCS,Phase 6 comparable OOS,fold-training volatility quartiles,low_volatility,523,26.391301871713672,34.9094956992039
+TCS,Phase 6 comparable OOS,fold-training volatility quartiles,normal_volatility,660,35.31969881924716,47.0839718585101
+NIFTY_50,Phase 6 comparable OOS,fold-training volatility quartiles,high_volatility,359,183.68370473537607,247.943873419561
+NIFTY_50,Phase 6 comparable OOS,fold-training volatility quartiles,low_volatility,405,91.50197530864193,115.43978361888631
+NIFTY_50,Phase 6 comparable OOS,fold-training volatility quartiles,normal_volatility,722,127.38199445983382,167.67177298424053
+NIFTY_TELECOMMUNICATIONS,Phase 6 comparable OOS,fold-training volatility quartiles,high_volatility,291,33.07127147766324,48.4281739020935
+NIFTY_TELECOMMUNICATIONS,Phase 6 comparable OOS,fold-training volatility quartiles,low_volatility,384,17.352630208333338,22.746507922233917
+NIFTY_TELECOMMUNICATIONS,Phase 6 comparable OOS,fold-training volatility quartiles,normal_volatility,811,27.16970406905056,35.88425059911965

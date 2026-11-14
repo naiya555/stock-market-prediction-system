@@ -1,0 +1,44 @@
+{
+  "overall_status": "PARTIALLY VERIFIED",
+  "findings": [
+    {
+      "check": "chronological train/validation separation",
+      "status": "VERIFIED",
+      "evidence": "Phase 2-6 used chronological folds; Phase 6 uses five folds and a one-session embargo."
+    },
+    {
+      "check": "target shifting",
+      "status": "VERIFIED",
+      "evidence": "Canonical target uses close[t+1]/close[t]-1 on the next available trading observation."
+    },
+    {
+      "check": "feature availability and leakage",
+      "status": "PARTIALLY VERIFIED",
+      "evidence": "131 audited feature rows were classified SAFE with future_information_detected=False; this is source inspection, not formal proof."
+    },
+    {
+      "check": "preprocessing contamination",
+      "status": "PARTIALLY VERIFIED",
+      "evidence": "No contamination was identified in the inspected research paths; full symbolic proof was not performed."
+    },
+    {
+      "check": "baseline alignment",
+      "status": "VERIFIED",
+      "evidence": "Models and previous-close baselines were compared on the same chronological validation observations within each experiment."
+    },
+    {
+      "check": "metric consistency",
+      "status": "VERIFIED",
+      "evidence": "MAE, RMSE, MAPE where meaningful, and directional accuracy were reported; Phase 6 residual metrics use out-of-sample rows."
+    },
+    {
+      "check": "walk-forward residual independence",
+      "status": "PARTIALLY VERIFIED",
+      "evidence": "Phase 6 intervals use only prior out-of-sample residuals, but residual dependence and statistical significance were not tested."
+    }
+  ],
+  "discrepancies": [
+    "Phase 5 baseline statistics use the full audited series, while Phase 6 uses five-fold out-of-sample rows; differing MAE/RMSE values are expected, not silently reconciled.",
+    "Phase 2-4 model summaries use their own experiment windows and feature sets; their aggregate metrics are not directly interchangeable."
+  ]
+}

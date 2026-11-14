@@ -1,0 +1,10 @@
+{
+  "status": "UNVERIFIED_FOR_EQUITIES",
+  "tolerance": {
+    "absolute_price_units": 0.01,
+    "relative_fraction": 0.0001
+  },
+  "Yahoo_series": "Project adapter requests auto_adjust=False.",
+  "NSE_BSE_series": "Unavailable for independent retrieval in this run.",
+  "index_series": "Official index close; no adjusted/unadjusted equity comparison applies."
+}

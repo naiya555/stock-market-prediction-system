@@ -1,0 +1,12 @@
+{
+  "status": "NO_CONFIRMED_PRICE_DISCREPANCY",
+  "unverified": [
+    "Equity row-level comparison unavailable.",
+    "Telecom independent comparison unavailable.",
+    "Corporate-action records unavailable."
+  ],
+  "comparable_rows": 2465,
+  "matched_rows": 2465,
+  "match_percentage_of_comparable_rows": 100.0,
+  "method": "UNVERIFIED rows are not counted as matches."
+}

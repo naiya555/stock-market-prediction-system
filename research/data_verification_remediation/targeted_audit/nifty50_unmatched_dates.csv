@@ -1,0 +1,15 @@
+date,weekday,missing_from,other_source,classification,status,evidence_limit
+2016-11-16,Wednesday,NSE Indices,Yahoo Finance,SOURCE_COVERAGE_OR_START_DATE_GAP,UNVERIFIED,No independent NSE trading-calendar record was retrieved in this audit.
+2018-01-01,Monday,Yahoo Finance,NSE Indices,WEEKDAY_SOURCE_GAP_OR_UNVERIFIED_SPECIAL_SESSION,UNVERIFIED,No independent NSE trading-calendar record was retrieved in this audit.
+2019-01-01,Tuesday,Yahoo Finance,NSE Indices,WEEKDAY_SOURCE_GAP_OR_UNVERIFIED_SPECIAL_SESSION,UNVERIFIED,No independent NSE trading-calendar record was retrieved in this audit.
+2019-02-13,Wednesday,Yahoo Finance,NSE Indices,WEEKDAY_SOURCE_GAP_OR_UNVERIFIED_SPECIAL_SESSION,UNVERIFIED,No independent NSE trading-calendar record was retrieved in this audit.
+2019-03-29,Friday,Yahoo Finance,NSE Indices,WEEKDAY_SOURCE_GAP_OR_UNVERIFIED_SPECIAL_SESSION,UNVERIFIED,No independent NSE trading-calendar record was retrieved in this audit.
+2019-10-27,Sunday,Yahoo Finance,NSE Indices,NON_WEEKDAY_SESSION; official special-session status not independently checked,PARTIALLY_VERIFIED,No independent NSE trading-calendar record was retrieved in this audit.
+2020-02-01,Saturday,Yahoo Finance,NSE Indices,NON_WEEKDAY_SESSION; official special-session status not independently checked,PARTIALLY_VERIFIED,No independent NSE trading-calendar record was retrieved in this audit.
+2020-11-14,Saturday,Yahoo Finance,NSE Indices,NON_WEEKDAY_SESSION; official special-session status not independently checked,PARTIALLY_VERIFIED,No independent NSE trading-calendar record was retrieved in this audit.
+2023-11-12,Sunday,Yahoo Finance,NSE Indices,NON_WEEKDAY_SESSION; official special-session status not independently checked,PARTIALLY_VERIFIED,No independent NSE trading-calendar record was retrieved in this audit.
+2024-01-20,Saturday,Yahoo Finance,NSE Indices,NON_WEEKDAY_SESSION; official special-session status not independently checked,PARTIALLY_VERIFIED,No independent NSE trading-calendar record was retrieved in this audit.
+2024-03-02,Saturday,Yahoo Finance,NSE Indices,NON_WEEKDAY_SESSION; official special-session status not independently checked,PARTIALLY_VERIFIED,No independent NSE trading-calendar record was retrieved in this audit.
+2024-05-18,Saturday,Yahoo Finance,NSE Indices,NON_WEEKDAY_SESSION; official special-session status not independently checked,PARTIALLY_VERIFIED,No independent NSE trading-calendar record was retrieved in this audit.
+2026-02-01,Sunday,Yahoo Finance,NSE Indices,NON_WEEKDAY_SESSION; official special-session status not independently checked,PARTIALLY_VERIFIED,No independent NSE trading-calendar record was retrieved in this audit.
+2026-11-08,Sunday,Yahoo Finance,NSE Indices,NON_WEEKDAY_SESSION; official special-session status not independently checked,PARTIALLY_VERIFIED,No independent NSE trading-calendar record was retrieved in this audit.

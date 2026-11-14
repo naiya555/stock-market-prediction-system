@@ -1,0 +1,10 @@
+{
+  "overall": "D",
+  "decision": "Continue using the previous-close baseline until independently verified data and a consistently superior out-of-sample candidate are available.",
+  "by_instrument": {
+    "BHARTIARTL": "D: Continue previous-close baseline; resolve independent data and corporate-action verification before another model experiment.",
+    "TCS": "D: Continue previous-close baseline; resolve independent data and corporate-action verification before another model experiment.",
+    "NIFTY_50": "D: Continue previous-close baseline; resolve independent data and corporate-action verification before another model experiment.",
+    "NIFTY_TELECOMMUNICATIONS": "D: Continue previous-close baseline; resolve independent data and corporate-action verification before another model experiment."
+  }
+}

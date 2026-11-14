@@ -1,0 +1,200 @@
+{
+  "remediation_diagnostics": {
+    "source_file": "research/data_verification_remediation/run_remediation.py",
+    "input": "fresh provider pipeline cleaned close series",
+    "prediction": "close[t-1] for actual close[t]",
+    "population": "full chronological series, 2470 or 2477 residuals",
+    "out_of_sample": false,
+    "calculation": "actual_close[t] - close[t-1]"
+  },
+  "phase5_baseline": {
+    "source_file": "research/regression_phase5/baseline_analysis.json",
+    "population": "full cleaned series",
+    "out_of_sample": false,
+    "calculation": "previous-close error over all available consecutive observations"
+  },
+  "phase6": {
+    "source_file": "app/training/regression_phase6.py",
+    "input": "five chronological folds from fresh cleaned provider data",
+    "prediction": "immediately preceding close, including last training close for fold first row",
+    "population": "1482 or 1486 validation residuals",
+    "out_of_sample": true,
+    "embargo_sessions": 1,
+    "regime_thresholds": "per-fold training-history volatility 25th/75th percentiles; trend thresholds +/-5% over 20 sessions",
+    "calculation": "actual_close[t] - previous_close_prediction[t]"
+  },
+  "phase6_residual_rows": 5936,
+  "phase6_date_ranges": {
+    "BHARTIARTL": {
+      "start": "2020-11-14 00:00:00+05:30",
+      "end": "2026-11-13 00:00:00+05:30",
+      "samples": 1482
+    },
+    "TCS": {
+      "start": "2020-11-14 00:00:00+05:30",
+      "end": "2026-11-13 00:00:00+05:30",
+      "samples": 1482
+    },
+    "NIFTY_50": {
+      "start": "2020-11-17 05:30:00+05:30",
+      "end": "2026-11-13 05:30:00+05:30",
+      "samples": 1486
+    },
+    "NIFTY_TELECOMMUNICATIONS": {
+      "start": "2020-11-17 05:30:00+05:30",
+      "end": "2026-11-13 05:30:00+05:30",
+      "samples": 1486
+    }
+  },
+  "phase6_fold_date_ranges": {
+    "BHARTIARTL": [
+      {
+        "fold": 1,
+        "train_end": "2020-11-12 00:00:00+05:30",
+        "validation_start": "2020-11-14 00:00:00+05:30",
+        "validation_end": "2022-01-24 00:00:00+05:30",
+        "samples": 296
+      },
+      {
+        "fold": 2,
+        "train_end": "2022-01-21 00:00:00+05:30",
+        "validation_start": "2022-01-25 00:00:00+05:30",
+        "validation_end": "2023-04-05 00:00:00+05:30",
+        "samples": 296
+      },
+      {
+        "fold": 3,
+        "train_end": "2023-04-03 00:00:00+05:30",
+        "validation_start": "2023-04-06 00:00:00+05:30",
+        "validation_end": "2024-06-21 00:00:00+05:30",
+        "samples": 296
+      },
+      {
+        "fold": 4,
+        "train_end": "2024-06-20 00:00:00+05:30",
+        "validation_start": "2024-06-24 00:00:00+05:30",
+        "validation_end": "2025-08-29 00:00:00+05:30",
+        "samples": 296
+      },
+      {
+        "fold": 5,
+        "train_end": "2025-08-28 00:00:00+05:30",
+        "validation_start": "2025-09-01 00:00:00+05:30",
+        "validation_end": "2026-11-13 00:00:00+05:30",
+        "samples": 298
+      }
+    ],
+    "TCS": [
+      {
+        "fold": 1,
+        "train_end": "2020-11-12 00:00:00+05:30",
+        "validation_start": "2020-11-14 00:00:00+05:30",
+        "validation_end": "2022-01-24 00:00:00+05:30",
+        "samples": 296
+      },
+      {
+        "fold": 2,
+        "train_end": "2022-01-21 00:00:00+05:30",
+        "validation_start": "2022-01-25 00:00:00+05:30",
+        "validation_end": "2023-04-05 00:00:00+05:30",
+        "samples": 296
+      },
+      {
+        "fold": 3,
+        "train_end": "2023-04-03 00:00:00+05:30",
+        "validation_start": "2023-04-06 00:00:00+05:30",
+        "validation_end": "2024-06-21 00:00:00+05:30",
+        "samples": 296
+      },
+      {
+        "fold": 4,
+        "train_end": "2024-06-20 00:00:00+05:30",
+        "validation_start": "2024-06-24 00:00:00+05:30",
+        "validation_end": "2025-08-29 00:00:00+05:30",
+        "samples": 296
+      },
+      {
+        "fold": 5,
+        "train_end": "2025-08-28 00:00:00+05:30",
+        "validation_start": "2025-09-01 00:00:00+05:30",
+        "validation_end": "2026-11-13 00:00:00+05:30",
+        "samples": 298
+      }
+    ],
+    "NIFTY_50": [
+      {
+        "fold": 1,
+        "train_end": "2020-11-13 05:30:00+05:30",
+        "validation_start": "2020-11-17 05:30:00+05:30",
+        "validation_end": "2022-01-27 05:30:00+05:30",
+        "samples": 297
+      },
+      {
+        "fold": 2,
+        "train_end": "2022-01-25 05:30:00+05:30",
+        "validation_start": "2022-01-28 05:30:00+05:30",
+        "validation_end": "2023-04-11 05:30:00+05:30",
+        "samples": 297
+      },
+      {
+        "fold": 3,
+        "train_end": "2023-04-10 05:30:00+05:30",
+        "validation_start": "2023-04-12 05:30:00+05:30",
+        "validation_end": "2024-06-21 05:30:00+05:30",
+        "samples": 297
+      },
+      {
+        "fold": 4,
+        "train_end": "2024-06-20 05:30:00+05:30",
+        "validation_start": "2024-06-24 05:30:00+05:30",
+        "validation_end": "2025-09-01 05:30:00+05:30",
+        "samples": 297
+      },
+      {
+        "fold": 5,
+        "train_end": "2025-08-29 05:30:00+05:30",
+        "validation_start": "2025-09-02 05:30:00+05:30",
+        "validation_end": "2026-11-13 05:30:00+05:30",
+        "samples": 298
+      }
+    ],
+    "NIFTY_TELECOMMUNICATIONS": [
+      {
+        "fold": 1,
+        "train_end": "2020-11-13 05:30:00+05:30",
+        "validation_start": "2020-11-17 05:30:00+05:30",
+        "validation_end": "2022-01-27 05:30:00+05:30",
+        "samples": 297
+      },
+      {
+        "fold": 2,
+        "train_end": "2022-01-25 05:30:00+05:30",
+        "validation_start": "2022-01-28 05:30:00+05:30",
+        "validation_end": "2023-04-11 05:30:00+05:30",
+        "samples": 297
+      },
+      {
+        "fold": 3,
+        "train_end": "2023-04-10 05:30:00+05:30",
+        "validation_start": "2023-04-12 05:30:00+05:30",
+        "validation_end": "2024-06-21 05:30:00+05:30",
+        "samples": 297
+      },
+      {
+        "fold": 4,
+        "train_end": "2024-06-20 05:30:00+05:30",
+        "validation_start": "2024-06-24 05:30:00+05:30",
+        "validation_end": "2025-09-01 05:30:00+05:30",
+        "samples": 297
+      },
+      {
+        "fold": 5,
+        "train_end": "2025-08-29 05:30:00+05:30",
+        "validation_start": "2025-09-02 05:30:00+05:30",
+        "validation_end": "2026-11-13 05:30:00+05:30",
+        "samples": 298
+      }
+    ]
+  },
+  "residual_row_schema": "actual_close - prediction_previous_close; no target or future rows are used"
+}

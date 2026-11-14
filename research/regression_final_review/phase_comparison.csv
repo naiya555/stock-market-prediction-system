@@ -1,0 +1,21 @@
+phase,instrument,scope,best_candidate,acceptance,evidence
+2,BHARTIARTL,next-session return,NONE,REJECT,No candidate beat previous-close on MAE and RMSE in every chronological fold.
+2,TCS,next-session return,NONE,REJECT,No candidate beat previous-close on MAE and RMSE in every chronological fold.
+2,NIFTY_50,next-session return,NONE,REJECT,No candidate beat previous-close on MAE and RMSE in every chronological fold.
+2,NIFTY_TELECOMMUNICATIONS,next-session return,NONE,REJECT,No candidate beat previous-close on MAE and RMSE in every chronological fold.
+3,BHARTIARTL,alternative models/features,NONE,REJECT,No candidate beat previous-close on MAE and RMSE in every chronological fold.
+3,TCS,alternative models/features,NONE,REJECT,No candidate beat previous-close on MAE and RMSE in every chronological fold.
+3,NIFTY_50,alternative models/features,NONE,REJECT,No candidate beat previous-close on MAE and RMSE in every chronological fold.
+3,NIFTY_TELECOMMUNICATIONS,alternative models/features,NONE,REJECT,No candidate beat previous-close on MAE and RMSE in every chronological fold.
+4,BHARTIARTL,target/horizon candidates,NONE,REJECT,All target/horizon candidates failed the all-fold MAE/RMSE gate.
+4,TCS,target/horizon candidates,NONE,REJECT,All target/horizon candidates failed the all-fold MAE/RMSE gate.
+4,NIFTY_50,target/horizon candidates,NONE,REJECT,All target/horizon candidates failed the all-fold MAE/RMSE gate.
+4,NIFTY_TELECOMMUNICATIONS,target/horizon candidates,NONE,REJECT,All target/horizon candidates failed the all-fold MAE/RMSE gate.
+5,BHARTIARTL,"data quality, feature validity, regimes",N/A,DIAGNOSTIC,Structurally usable provider output; independent corporate-action and vendor agreement checks remained unresolved.
+6,BHARTIARTL,out-of-sample baseline residuals,previous-close diagnostic,DIAGNOSTIC,High-volatility errors were larger; empirical intervals were not uniformly calibrated.
+5,TCS,"data quality, feature validity, regimes",N/A,DIAGNOSTIC,Structurally usable provider output; independent corporate-action and vendor agreement checks remained unresolved.
+6,TCS,out-of-sample baseline residuals,previous-close diagnostic,DIAGNOSTIC,High-volatility errors were larger; empirical intervals were not uniformly calibrated.
+5,NIFTY_50,"data quality, feature validity, regimes",N/A,DIAGNOSTIC,Structurally usable provider output; independent corporate-action and vendor agreement checks remained unresolved.
+6,NIFTY_50,out-of-sample baseline residuals,previous-close diagnostic,DIAGNOSTIC,High-volatility errors were larger; empirical intervals were not uniformly calibrated.
+5,NIFTY_TELECOMMUNICATIONS,"data quality, feature validity, regimes",N/A,DIAGNOSTIC,Structurally usable provider output; independent corporate-action and vendor agreement checks remained unresolved.
+6,NIFTY_TELECOMMUNICATIONS,out-of-sample baseline residuals,previous-close diagnostic,DIAGNOSTIC,High-volatility errors were larger; empirical intervals were not uniformly calibrated.

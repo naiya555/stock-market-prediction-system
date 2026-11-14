@@ -1,0 +1,48 @@
+{
+  "BHARTIARTL": {
+    "status": "UNVERIFIED",
+    "sources_attempted": [
+      {
+        "name": "NSE equity public page",
+        "reference": "https://www.nseindia.com/get-quotes/equity?symbol=BHARTIARTL",
+        "status": "UNVERIFIED",
+        "limitation": "request unavailable in execution environment"
+      },
+      {
+        "name": "BSE India",
+        "reference": "https://www.bseindia.com/",
+        "status": "UNVERIFIED",
+        "limitation": "not retrieved"
+      }
+    ],
+    "missing_evidence": [
+      "official split/bonus records",
+      "dividend ex-dates and record dates",
+      "adjustment factors",
+      "independent adjusted/unadjusted row comparison"
+    ]
+  },
+  "TCS": {
+    "status": "UNVERIFIED",
+    "sources_attempted": [
+      {
+        "name": "NSE equity public page",
+        "reference": "https://www.nseindia.com/get-quotes/equity?symbol=TCS",
+        "status": "UNVERIFIED",
+        "limitation": "request unavailable in execution environment"
+      },
+      {
+        "name": "BSE India",
+        "reference": "https://www.bseindia.com/",
+        "status": "UNVERIFIED",
+        "limitation": "not retrieved"
+      }
+    ],
+    "missing_evidence": [
+      "official split/bonus records",
+      "dividend ex-dates and record dates",
+      "adjustment factors",
+      "independent adjusted/unadjusted row comparison"
+    ]
+  }
+}

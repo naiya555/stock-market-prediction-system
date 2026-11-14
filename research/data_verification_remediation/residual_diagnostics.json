@@ -1,0 +1,158 @@
+{
+  "BHARTIARTL": {
+    "samples": 2470,
+    "lags": {
+      "1": -0.03716663278640904,
+      "2": -0.027864621068135507,
+      "5": 0.018252893731058588,
+      "10": 0.05394303854139187,
+      "20": 0.022533260392643122
+    },
+    "ljung_box": "UNAVAILABLE: statsmodels is not installed.",
+    "mean_residual": 0.7396460282175165,
+    "median_residual": 0.050048828125,
+    "residual_std": 14.969834408895805,
+    "mean_absolute_error": 9.831898863016352,
+    "return_autocorrelation_lag1": -0.03773357351525738,
+    "absolute_residual_vs_rolling_volatility_correlation": -0.004375992453678631,
+    "rolling_window_stability": {
+      "window": 250,
+      "windows": 2221,
+      "mean_mae_std": 4.405279239569898
+    },
+    "volatility_regimes": {
+      "low": {
+        "samples": 613,
+        "mae": 9.64298177348848,
+        "residual_std": 9.980511625517199
+      },
+      "normal": {
+        "samples": 1225,
+        "mae": 10.550470917370854,
+        "residual_std": 12.865150368917925
+      },
+      "high": {
+        "samples": 613,
+        "mae": 8.764981990148348,
+        "residual_std": 9.041978205700293
+      }
+    }
+  },
+  "TCS": {
+    "samples": 2470,
+    "lags": {
+      "1": 0.0008790265615117135,
+      "2": -0.01536729935927044,
+      "5": 0.00805755566745834,
+      "10": 0.027505702431266925,
+      "20": 0.0484151721009079
+    },
+    "ljung_box": "UNAVAILABLE: statsmodels is not installed.",
+    "mean_residual": 0.5314574701100708,
+    "median_residual": 0.125,
+    "residual_std": 41.32773593615324,
+    "mean_absolute_error": 28.85002273374241,
+    "return_autocorrelation_lag1": -0.024142381535509946,
+    "absolute_residual_vs_rolling_volatility_correlation": 0.2079917268754987,
+    "rolling_window_stability": {
+      "window": 250,
+      "windows": 2221,
+      "mean_mae_std": 7.257641987031845
+    },
+    "volatility_regimes": {
+      "low": {
+        "samples": 613,
+        "mae": 21.27952667783952,
+        "residual_std": 20.602868185372433
+      },
+      "normal": {
+        "samples": 1225,
+        "mae": 28.86506497130102,
+        "residual_std": 27.209551869700935
+      },
+      "high": {
+        "samples": 613,
+        "mae": 36.89274360694076,
+        "residual_std": 38.627600412951054
+      }
+    }
+  },
+  "NIFTY_50": {
+    "samples": 2477,
+    "lags": {
+      "1": -0.014939234177747432,
+      "2": 0.026113583914801324,
+      "5": 0.020404114600026706,
+      "10": 0.020399207075316353,
+      "20": 0.0182045823846614
+    },
+    "ljung_box": "UNAVAILABLE: statsmodels is not installed.",
+    "mean_residual": 6.889119903108599,
+    "median_residual": 10.25,
+    "residual_std": 157.42593975000378,
+    "mean_absolute_error": 109.29432781590636,
+    "return_autocorrelation_lag1": -0.03878551989090042,
+    "absolute_residual_vs_rolling_volatility_correlation": 0.31025648425551305,
+    "rolling_window_stability": {
+      "window": 250,
+      "windows": 2228,
+      "mean_mae_std": 32.40247920042313
+    },
+    "volatility_regimes": {
+      "low": {
+        "samples": 615,
+        "mae": 71.76650406504066,
+        "residual_std": 61.85586534961263
+      },
+      "normal": {
+        "samples": 1228,
+        "mae": 100.37569218241043,
+        "residual_std": 92.75980344094273
+      },
+      "high": {
+        "samples": 615,
+        "mae": 166.12406504065044,
+        "residual_std": 161.17545714750082
+      }
+    }
+  },
+  "NIFTY_TELECOMMUNICATIONS": {
+    "samples": 2477,
+    "lags": {
+      "1": -0.02673653592517447,
+      "2": -0.006660859991246158,
+      "5": -0.018551951458228067,
+      "10": 0.03129688769194086,
+      "20": 0.006559056911391928
+    },
+    "ljung_box": "UNAVAILABLE: statsmodels is not installed.",
+    "mean_residual": 1.0045256358498182,
+    "median_residual": 1.3099999999999454,
+    "residual_std": 30.57299958892069,
+    "mean_absolute_error": 21.33765442067017,
+    "return_autocorrelation_lag1": -0.001841137892502645,
+    "absolute_residual_vs_rolling_volatility_correlation": 0.16040691340883298,
+    "rolling_window_stability": {
+      "window": 250,
+      "windows": 2228,
+      "mean_mae_std": 6.91126902484033
+    },
+    "volatility_regimes": {
+      "low": {
+        "samples": 615,
+        "mae": 14.607772357723581,
+        "residual_std": 13.01170470621646
+      },
+      "normal": {
+        "samples": 1228,
+        "mae": 22.175830618892512,
+        "residual_std": 20.943113225283586
+      },
+      "high": {
+        "samples": 615,
+        "mae": 26.713967479674803,
+        "residual_std": 28.450056167956028
+      }
+    }
+  }
+}

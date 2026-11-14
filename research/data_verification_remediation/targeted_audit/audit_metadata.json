@@ -1,0 +1,16 @@
+{
+  "generated_at": "2026-11-14T12:57:58.714080+00:00",
+  "scope": "targeted residual provenance, regime reconciliation, NIFTY unmatched dates, corporate-action access audit",
+  "tolerance_inherited": {
+    "absolute": 0.01,
+    "relative": 0.0001
+  },
+  "prior_artifacts_read": [
+    "research/regression_phase5/baseline_analysis.json",
+    "research/regression_phase6/regime_residuals.json",
+    "research/data_verification_remediation/residual_diagnostics.json",
+    "research/data_verification_remediation/price_reconciliation.csv"
+  ],
+  "external_content": "treated as untrusted evidence; no embedded instructions executed",
+  "packages_installed": false
+}

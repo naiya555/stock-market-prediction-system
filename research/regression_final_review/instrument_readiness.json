@@ -1,0 +1,70 @@
+{
+  "BHARTIARTL": {
+    "data_reliability": "PARTIALLY VERIFIED",
+    "corporate_action_verification": "UNVERIFIED",
+    "feature_validity": "PARTIALLY VERIFIED",
+    "baseline_difficulty": "VERIFIED: previous-close errors rise with volatility and short-horizon return dependence is weak.",
+    "best_historical_research_candidate": "NONE ACCEPTED",
+    "beat_baseline": false,
+    "oos_residual_std": 16.695040416820618,
+    "regime_sensitivity": "VERIFIED: high-volatility aggregate errors exceed low-volatility errors.",
+    "interval_reliability": "UNVERIFIED AS CALIBRATED",
+    "remaining_blockers": [
+      "independent price reconciliation",
+      "equity corporate-action metadata",
+      "validated model improvement"
+    ],
+    "recommendation": "D: Continue using previous-close baseline until better evidence is available."
+  },
+  "TCS": {
+    "data_reliability": "PARTIALLY VERIFIED",
+    "corporate_action_verification": "UNVERIFIED",
+    "feature_validity": "PARTIALLY VERIFIED",
+    "baseline_difficulty": "VERIFIED: previous-close errors rise with volatility and short-horizon return dependence is weak.",
+    "best_historical_research_candidate": "NONE ACCEPTED",
+    "beat_baseline": false,
+    "oos_residual_std": 46.59075101762144,
+    "regime_sensitivity": "VERIFIED: high-volatility aggregate errors exceed low-volatility errors.",
+    "interval_reliability": "UNVERIFIED AS CALIBRATED",
+    "remaining_blockers": [
+      "independent price reconciliation",
+      "equity corporate-action metadata",
+      "validated model improvement"
+    ],
+    "recommendation": "D: Continue using previous-close baseline until better evidence is available."
+  },
+  "NIFTY_50": {
+    "data_reliability": "PARTIALLY VERIFIED",
+    "corporate_action_verification": "NOT_APPLICABLE_TO_SINGLE_STOCK",
+    "feature_validity": "PARTIALLY VERIFIED",
+    "baseline_difficulty": "VERIFIED: previous-close errors rise with volatility and short-horizon return dependence is weak.",
+    "best_historical_research_candidate": "NONE ACCEPTED",
+    "beat_baseline": false,
+    "oos_residual_std": 178.19743772578101,
+    "regime_sensitivity": "VERIFIED: high-volatility aggregate errors exceed low-volatility errors.",
+    "interval_reliability": "UNVERIFIED AS CALIBRATED",
+    "remaining_blockers": [
+      "independent price reconciliation",
+      "equity corporate-action metadata",
+      "validated model improvement"
+    ],
+    "recommendation": "D: Continue using previous-close baseline until better evidence is available."
+  },
+  "NIFTY_TELECOMMUNICATIONS": {
+    "data_reliability": "PARTIALLY VERIFIED",
+    "corporate_action_verification": "NOT_APPLICABLE_TO_SINGLE_STOCK",
+    "feature_validity": "PARTIALLY VERIFIED",
+    "baseline_difficulty": "VERIFIED: previous-close errors rise with volatility and short-horizon return dependence is weak.",
+    "best_historical_research_candidate": "NONE ACCEPTED",
+    "beat_baseline": false,
+    "oos_residual_std": 35.309404992792004,
+    "regime_sensitivity": "VERIFIED: high-volatility aggregate errors exceed low-volatility errors.",
+    "interval_reliability": "UNVERIFIED AS CALIBRATED",
+    "remaining_blockers": [
+      "independent price reconciliation",
+      "equity corporate-action metadata",
+      "validated model improvement"
+    ],
+    "recommendation": "D: Continue using previous-close baseline until better evidence is available."
+  }
+}

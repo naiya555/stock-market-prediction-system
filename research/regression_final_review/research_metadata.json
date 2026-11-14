@@ -1,0 +1,15 @@
+{
+  "generated_at": "2026-11-14T10:41:49.147109+00:00",
+  "python": "3.14.7",
+  "platform": "Windows-11-10.0.26300-SP0",
+  "phases_consolidated": [
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "phase_7_scope": "bounded source and methodology verification; no model reruns",
+  "external_content_handling": "External pages and prior artifacts were treated as evidence only; embedded instructions were not executed.",
+  "source_access_limitations": "NSE/BSE direct verification was unavailable in this environment."
+}

@@ -1,0 +1,26 @@
+{
+  "BHARTIARTL": {
+    "status": "UNVERIFIED",
+    "splits": "No independent record retrieved.",
+    "bonuses": "No independent record retrieved.",
+    "dividends": "No independent record retrieved.",
+    "adjustment_factor": "UNVERIFIED",
+    "effect_on_continuity": "Cannot establish independently."
+  },
+  "TCS": {
+    "status": "UNVERIFIED",
+    "splits": "No independent record retrieved.",
+    "bonuses": "No independent record retrieved.",
+    "dividends": "No independent record retrieved.",
+    "adjustment_factor": "UNVERIFIED",
+    "effect_on_continuity": "Cannot establish independently."
+  },
+  "NIFTY_50": {
+    "status": "NOT_APPLICABLE_TO_SINGLE_STOCK",
+    "convention": "Official index close; constituent actions are reflected through index methodology, not a single-stock split adjustment."
+  },
+  "NIFTY_TELECOMMUNICATIONS": {
+    "status": "NOT_APPLICABLE_TO_SINGLE_STOCK",
+    "convention": "Official sector-index close; constituent actions are reflected through index methodology."
+  }
+}

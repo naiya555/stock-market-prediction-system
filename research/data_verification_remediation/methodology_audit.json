@@ -1,0 +1,58 @@
+{
+  "status": "PARTIALLY_VERIFIED",
+  "files_ast_parsed": {
+    "target.py": "syntax parsed",
+    "regression_phase3.py": "syntax parsed",
+    "regression_phase4.py": "syntax parsed",
+    "regression_phase6.py": "syntax parsed"
+  },
+  "findings": [
+    {
+      "check": "chronological separation",
+      "status": "VERIFIED",
+      "evidence": "Fold builders slice train before validation and preserve order."
+    },
+    {
+      "check": "target shift",
+      "status": "VERIFIED",
+      "evidence": "target.py uses the next available observation; phase 4 uses shift(-horizon)."
+    },
+    {
+      "check": "preprocessing fit scope",
+      "status": "VERIFIED_FOR_INSPECTED_CODE",
+      "evidence": "Phase 3 Ridge mean/std are computed from X_train only; no scaler or imputer fit on full data was found in inspected research files."
+    },
+    {
+      "check": "rolling boundaries",
+      "status": "VERIFIED_FOR_INSPECTED_CODE",
+      "evidence": "Rolling and pct_change features are backward-looking; phase 6 regime thresholds use training signals."
+    },
+    {
+      "check": "opening-target same-day close",
+      "status": "PARTIALLY_VERIFIED",
+      "evidence": "Feature audit marks close-derived features unavailable at open; Phase 4 results mark unavailable OHLC targets where source fields are absent."
+    },
+    {
+      "check": "embargo",
+      "status": "VERIFIED",
+      "evidence": "Phase 2-6 fold starts add the configured embargo and training ends before validation."
+    },
+    {
+      "check": "identical dates and units",
+      "status": "VERIFIED_WITHIN_EXPERIMENT",
+      "evidence": "Model and baseline arrays are formed from the same validation rows; Phase 2-4 aggregate experiments remain separate populations."
+    },
+    {
+      "check": "out-of-sample residuals",
+      "status": "VERIFIED_FOR_PHASE6",
+      "evidence": "Phase 6 interval history is extended only after each validation fold."
+    },
+    {
+      "check": "residual independence",
+      "status": "UNAVAILABLE",
+      "evidence": "No formal Ljung-Box dependency was installed; this remediation reports transparent ACF instead."
+    }
+  ],
+  "defects_found": [],
+  "isolated_corrections": []
+}

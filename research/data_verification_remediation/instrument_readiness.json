@@ -1,0 +1,50 @@
+{
+  "BHARTIARTL": {
+    "status": "PARTIALLY_VERIFIED",
+    "historical_price_reconciliation": "UNVERIFIED",
+    "corporate_actions": "UNVERIFIED",
+    "methodology": "PARTIALLY_VERIFIED",
+    "residual_dependence": "ACF reported; independence not established.",
+    "ready_for_new_experiment": false,
+    "blockers": [
+      "independent row-level source reconciliation",
+      "corporate-action verification"
+    ]
+  },
+  "TCS": {
+    "status": "PARTIALLY_VERIFIED",
+    "historical_price_reconciliation": "UNVERIFIED",
+    "corporate_actions": "UNVERIFIED",
+    "methodology": "PARTIALLY_VERIFIED",
+    "residual_dependence": "ACF reported; independence not established.",
+    "ready_for_new_experiment": false,
+    "blockers": [
+      "independent row-level source reconciliation",
+      "corporate-action verification"
+    ]
+  },
+  "NIFTY_50": {
+    "status": "PARTIALLY_VERIFIED",
+    "historical_price_reconciliation": "PARTIALLY_VERIFIED",
+    "corporate_actions": "NOT_APPLICABLE_TO_SINGLE_STOCK",
+    "methodology": "PARTIALLY_VERIFIED",
+    "residual_dependence": "ACF reported; independence not established.",
+    "ready_for_new_experiment": false,
+    "blockers": [
+      "independent row-level source reconciliation",
+      "independent index cross-check"
+    ]
+  },
+  "NIFTY_TELECOMMUNICATIONS": {
+    "status": "PARTIALLY_VERIFIED",
+    "historical_price_reconciliation": "UNVERIFIED",
+    "corporate_actions": "NOT_APPLICABLE_TO_SINGLE_STOCK",
+    "methodology": "PARTIALLY_VERIFIED",
+    "residual_dependence": "ACF reported; independence not established.",
+    "ready_for_new_experiment": false,
+    "blockers": [
+      "independent row-level source reconciliation",
+      "independent index cross-check"
+    ]
+  }
+}

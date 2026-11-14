@@ -1,0 +1,93 @@
+{
+  "status": "PARTIALLY VERIFIED",
+  "verification_scope": "Source identity, local structural checks, and endpoint availability; not a full price-by-price independent reconciliation.",
+  "sources_accessed": [
+    {
+      "name": "Yahoo Finance via existing YFinanceProvider",
+      "url": "https://finance.yahoo.com/",
+      "symbols": [
+        "BHARTIARTL.NS",
+        "TCS.NS"
+      ],
+      "status": "PARTIALLY VERIFIED",
+      "finding": "The project provider explicitly uses raw unadjusted Yahoo series (auto_adjust=False); no independent NSE/BSE price reconciliation was completed."
+    },
+    {
+      "name": "NSE Indices historical-data endpoint via existing NiftyIndicesProvider",
+      "url": "https://www.niftyindices.com/reports/historical-data",
+      "status": "PARTIALLY VERIFIED",
+      "finding": "Phase 5/6 runs received official endpoint responses and normalized 2,478 rows per index; exact values were not independently cross-checked against a second source."
+    },
+    {
+      "name": "NSE equity pages",
+      "url": "https://www.nseindia.com/get-quotes/equity",
+      "status": "UNVERIFIED",
+      "finding": "Direct verification attempts timed out or were blocked by the execution environment."
+    },
+    {
+      "name": "BSE India",
+      "url": "https://www.bseindia.com/",
+      "status": "UNVERIFIED",
+      "finding": "No independent BSE series was retrieved."
+    }
+  ],
+  "instruments": {
+    "BHARTIARTL": {
+      "local_structural_status": "VERIFIED",
+      "rows": 2471,
+      "date_start": "2016-11-16",
+      "date_end": "2026-11-13",
+      "duplicates": 0,
+      "chronological": true,
+      "timezone_values": [
+        "Asia/Kolkata"
+      ],
+      "price_value_cross_check": "UNVERIFIED",
+      "corporate_actions": "UNVERIFIED"
+    },
+    "TCS": {
+      "local_structural_status": "VERIFIED",
+      "rows": 2471,
+      "date_start": "2016-11-16",
+      "date_end": "2026-11-13",
+      "duplicates": 0,
+      "chronological": true,
+      "timezone_values": [
+        "Asia/Kolkata"
+      ],
+      "price_value_cross_check": "UNVERIFIED",
+      "corporate_actions": "UNVERIFIED"
+    },
+    "NIFTY_50": {
+      "local_structural_status": "VERIFIED",
+      "rows": 2478,
+      "date_start": "2016-11-17",
+      "date_end": "2026-11-13",
+      "duplicates": 0,
+      "chronological": true,
+      "timezone_values": [
+        "Asia/Kolkata"
+      ],
+      "price_value_cross_check": "UNVERIFIED",
+      "corporate_actions": "NOT_APPLICABLE_TO_SINGLE_STOCK"
+    },
+    "NIFTY_TELECOMMUNICATIONS": {
+      "local_structural_status": "VERIFIED",
+      "rows": 2478,
+      "date_start": "2016-11-17",
+      "date_end": "2026-11-13",
+      "duplicates": 0,
+      "chronological": true,
+      "timezone_values": [
+        "Asia/Kolkata"
+      ],
+      "price_value_cross_check": "UNVERIFIED",
+      "corporate_actions": "NOT_APPLICABLE_TO_SINGLE_STOCK"
+    }
+  },
+  "limitations": [
+    "No independent vendor matched closing prices row by row.",
+    "Corporate-action metadata and adjusted/unadjusted equivalence remain unresolved for equities.",
+    "The telecom index source has no OHLC fields by design; only its reported close series was audited."
+  ]
+}
