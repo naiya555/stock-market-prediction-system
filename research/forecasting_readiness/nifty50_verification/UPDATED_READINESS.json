@@ -1,0 +1,29 @@
+{
+  "instrument": "NIFTY_50",
+  "readiness": "PARTIALLY_READY",
+  "previous_readiness": "PARTIALLY_READY",
+  "decision": "UNCHANGED",
+  "evidence": {
+    "current_nse_indices_records": 2489,
+    "current_yahoo_records": 2476,
+    "overlapping_dates": 2476,
+    "matched_within_tolerance": 2476,
+    "mismatched_overlaps": 0,
+    "current_nse_only_dates": 13,
+    "verified_special_sessions": 9,
+    "verified_regular_sessions": 0,
+    "verified_holidays": 0,
+    "unresolved_dates": 5
+  },
+  "blockers": [
+    "Five dates remain UNVERIFIED for official capital-market calendar classification.",
+    "Yahoo Finance lacks observations for 13 current NSE-only dates, including special sessions.",
+    "The earlier 2465/14 unmatched result came from a prior provider snapshot and must not be silently rewritten."
+  ],
+  "minimum_research_entry_conditions": [
+    "Resolve or explicitly exclude the five unverified dates using a reproducible documented rule.",
+    "Retain exact source snapshot dates and provenance for every reconciliation.",
+    "Use only comparable dates for any controlled research and disclose NSE-only special sessions.",
+    "Re-run leakage, chronological validation, and previous-close baseline gates on the final frozen dataset."
+  ]
+}

@@ -11,5 +11,5 @@ date,weekday,exchange,classification,verification_status,source_url,circular_or_
 2024-01-20,Saturday,NSE,SPECIAL_SESSION,VERIFIED,https://nsearchives.nseindia.com/content/circulars/MSD59999.pdf,NSE/MSD/59999,Official special session with DR-site switch.,2026-11-14,official_nse
 2024-03-02,Saturday,NSE,SPECIAL_SESSION,VERIFIED,https://nsearchives.nseindia.com/content/circulars/MSD60677.pdf?0,NSE/MSD/60677,Official special session with DR-site switch.,2026-11-14,official_nse
 2024-05-18,Saturday,NSE,SPECIAL_SESSION,VERIFIED,https://nsearchives.nseindia.com/content/circulars/MSD62061.pdf,NSE/MSD/62061,Official special trading session.,2026-11-14,official_nse
-2026-02-01,Sunday,NSE,UNVERIFIED,UNVERIFIED,,,Retrieved evidence did not establish the equity/index session classification.,2026-11-14,unverified
+2026-02-01,Sunday,NSE,SPECIAL_SESSION,VERIFIED,https://nsearchives.nseindia.com/content/circulars/CMTR72349.pdf,NSE/CMTR/72349,Official circular documents a live trading session for the Union Budget with standard market timings.,2026-11-15,official_nse
 2026-11-08,Sunday,NSE,SPECIAL_SESSION,VERIFIED,https://nsearchives.nseindia.com/content/circulars/CMTR76941.pdf,NSE/CMTR/76941,Official Diwali Muhurat special session.,2026-11-14,official_nse

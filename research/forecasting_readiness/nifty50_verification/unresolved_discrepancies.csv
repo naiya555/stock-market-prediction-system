@@ -1,0 +1,15 @@
+date,discrepancy_type,current_finding,official_status,remaining_action
+2016-11-16,prior_snapshot_source_coverage,current NSE and Yahoo observations now overlap; prior snapshot had NSE missing,UNVERIFIED,Preserve snapshot distinction and obtain explicit official session evidence if required
+2018-01-01,source_coverage,NSE-only observation; Yahoo missing,UNVERIFIED,Obtain explicit official capital-market session evidence
+2019-01-01,source_coverage,NSE-only observation; Yahoo missing,UNVERIFIED,Obtain explicit official capital-market session evidence
+2019-02-13,source_coverage,NSE-only observation; Yahoo missing,UNVERIFIED,Obtain explicit official capital-market session evidence
+2019-03-29,source_coverage,NSE-only observation; Yahoo missing,UNVERIFIED,Obtain explicit official capital-market session evidence
+2019-10-27,special_session_source_coverage,NSE-only observation; official special session verified,VERIFIED,No calendar action; Yahoo coverage remains absent
+2020-02-01,special_session_source_coverage,NSE-only observation; official special session verified,VERIFIED,No calendar action; Yahoo coverage remains absent
+2020-11-14,special_session_source_coverage,NSE-only observation; official special session verified,VERIFIED,No calendar action; Yahoo coverage remains absent
+2023-11-12,special_session_source_coverage,NSE-only observation; official special session verified,VERIFIED,No calendar action; Yahoo coverage remains absent
+2024-01-20,special_session_source_coverage,NSE-only observation; official special session verified,VERIFIED,No calendar action; Yahoo coverage remains absent
+2024-03-02,special_session_source_coverage,NSE-only observation; official special session verified,VERIFIED,No calendar action; Yahoo coverage remains absent
+2024-05-18,special_session_source_coverage,NSE-only observation; official special session verified,VERIFIED,No calendar action; Yahoo coverage remains absent
+2026-02-01,special_session_source_coverage,NSE-only observation; official live session verified,VERIFIED,No calendar action; Yahoo coverage remains absent
+2026-11-08,special_session_source_coverage,NSE-only observation; official special session verified,VERIFIED,No calendar action; Yahoo coverage remains absent

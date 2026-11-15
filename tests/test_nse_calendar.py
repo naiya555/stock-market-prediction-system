@@ -10,7 +10,7 @@ def test_cached_special_session_and_unresolved_date():
         "research/forecasting_readiness/calendar_classifications.csv"
     )
     assert classify_nse_date(date(2026, 11, 8), evidence).classification == "SPECIAL_SESSION"
-    assert classify_nse_date(date(2026, 2, 1), evidence).verification_status == "UNVERIFIED"
+    assert classify_nse_date(date(2026, 2, 1), evidence).classification == "SPECIAL_SESSION"
     assert classify_nse_date(date(2030, 1, 1), evidence).classification == "UNVERIFIED"
 
 

@@ -1,0 +1,93 @@
+{
+  "retrieval_date": "2026-11-15",
+  "sources": [
+    {
+      "url": "https://nsearchives.nseindia.com/content/circulars/CMTR31297.pdf",
+      "reference": "NSE/CMTR/31297",
+      "type": "official NSE capital-market holiday circular",
+      "use": "2016 calendar evidence; 16-Nov not explicitly classified"
+    },
+    {
+      "url": "https://nsearchives.nseindia.com/content/circulars/CMTR36475.pdf",
+      "reference": "NSE/CMTR/36475",
+      "type": "official NSE capital-market holiday circular",
+      "use": "2018 calendar evidence; 01-Jan not explicitly classified"
+    },
+    {
+      "url": "https://nsearchives.nseindia.com/content/circulars/CMTR39612.pdf",
+      "reference": "NSE/CMTR/39612",
+      "type": "official NSE capital-market holiday circular",
+      "use": "2019 calendar evidence; unresolved dates not explicitly classified"
+    },
+    {
+      "url": "https://nsearchives.nseindia.com/content/circulars/CMTR72349.pdf",
+      "reference": "NSE/CMTR/72349",
+      "type": "official NSE capital-market circular",
+      "use": "01-Feb-2026 live Union Budget trading session"
+    },
+    {
+      "url": "https://nsearchives.nseindia.com/content/circulars/CMTR42483.pdf",
+      "reference": "NSE/CMTR/42483",
+      "type": "official NSE trading circular",
+      "use": "27-Oct-2019 special session"
+    },
+    {
+      "url": "https://nsearchives.nseindia.com/content/circulars/FAOP43291.pdf",
+      "reference": "NSE/FAOP/43291",
+      "type": "official NSE trading circular",
+      "use": "01-Feb-2020 special session"
+    },
+    {
+      "url": "https://nsearchives.nseindia.com/content/circulars/CMTR46230.pdf",
+      "reference": "NSE/CMTR/46230",
+      "type": "official NSE trading circular",
+      "use": "14-Nov-2020 special session"
+    },
+    {
+      "url": "https://nsearchives.nseindia.com/content/circulars/CMTR59124.pdf",
+      "reference": "NSE/CMTR/59124",
+      "type": "official NSE trading circular",
+      "use": "12-Nov-2023 special session"
+    },
+    {
+      "url": "https://nsearchives.nseindia.com/content/circulars/MSD59999.pdf",
+      "reference": "NSE/MSD/59999",
+      "type": "official NSE trading circular",
+      "use": "20-Jan-2024 special session"
+    },
+    {
+      "url": "https://nsearchives.nseindia.com/content/circulars/MSD60677.pdf?0",
+      "reference": "NSE/MSD/60677",
+      "type": "official NSE trading circular",
+      "use": "02-Mar-2024 special session"
+    },
+    {
+      "url": "https://nsearchives.nseindia.com/content/circulars/MSD62061.pdf",
+      "reference": "NSE/MSD/62061",
+      "type": "official NSE trading circular",
+      "use": "18-May-2024 special session"
+    },
+    {
+      "url": "https://nsearchives.nseindia.com/content/circulars/CMTR76941.pdf",
+      "reference": "NSE/CMTR/76941",
+      "type": "official NSE trading circular",
+      "use": "08-Nov-2026 special session"
+    },
+    {
+      "url": "https://www.niftyindices.com/reports/historical-data",
+      "reference": "Nifty Indices historical endpoint",
+      "type": "official NSE Indices provider",
+      "use": "Current NIFTY 50 observations"
+    },
+    {
+      "url": "project provider adapter",
+      "reference": "YFinanceProvider",
+      "type": "secondary provider",
+      "use": "Current Yahoo Finance cross-check with auto_adjust=False"
+    }
+  ],
+  "inaccessible_or_insufficient": [
+    "No retrieved official NSE source explicitly classified 2016-11-16, 2018-01-01, 2019-01-01, 2019-02-13, or 2019-03-29.",
+    "Yahoo Finance does not provide observations for the 13 current NSE-only dates."
+  ]
+}

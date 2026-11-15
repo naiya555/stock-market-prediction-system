@@ -13,7 +13,7 @@ from app.market.quality.nse_calendar import load_calendar_evidence
 
 logger = get_logger(__name__)
 REPORT_PATH = Path("research/data_quality_monitoring/baseline_quality_report.json")
-CALENDAR_PATH = Path("research/data_quality_monitoring/integration_phase/calendar_verification.csv")
+CALENDAR_PATH = Path("research/forecasting_readiness/calendar_classifications.csv")
 
 
 def run_advisory_monitor(
