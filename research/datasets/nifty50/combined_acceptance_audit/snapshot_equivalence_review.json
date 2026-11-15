@@ -1,0 +1,38 @@
+{
+  "audit_stage": "Stage 1 — Historical Snapshot Equivalence Audit",
+  "audit_date": "2026-11-15",
+  "verdict": "PARTIAL_MATCH",
+  "evidence_status": "VERIFIED",
+  "evidence_reference": "research/datasets/nifty50/snapshot_audit/SNAPSHOT_EQUIVALENCE_REPORT.md",
+  "source_type": "internal_audit_artifact",
+  "assessment": "The November 15, 2026 frozen provider snapshots represent a verified, extended superset of the November 14, 2026 snapshot. Across all 2,478 shared NSE observations and all 2,466 shared Yahoo observations, closing prices match with 100.0% precision (0 price discrepancies under 1e-4 tolerance).",
+  "decision": "CONFIRM_PARTIAL_MATCH",
+  "reason": "Date set differences (+10 pre-start dates from 2016-11-01 to 2016-11-15 and endpoint resolution on 2016-11-16) explain row count divergence, while underlying pricing data is completely preserved without drift.",
+  "limitations": "Historical raw full OHLCV (open, high, low, volume) from the November 14 retrieval was not saved as separate CSV files; equivalence is verified on close prices preserved in price_reconciliation.csv.",
+  "comparison_summary": {
+    "earlier_snapshot_total_dates": 2479,
+    "current_snapshot_total_dates": 2489,
+    "overlapping_dates_count": 2479,
+    "nse_shared_dates_count": 2478,
+    "nse_price_matches_count": 2478,
+    "nse_price_discrepancies_count": 0,
+    "yahoo_shared_dates_count": 2466,
+    "yahoo_price_matches_count": 2466,
+    "yahoo_price_discrepancies_count": 0,
+    "divergent_dates_count": 11,
+    "pre_start_trading_dates_count": 10,
+    "endpoint_coverage_change_dates_count": 1
+  },
+  "inconsistencies_recorded": [
+    {
+      "issue": "Pre-start date set expansion not highlighted in earlier brief summaries",
+      "detail": "Earlier documentation referenced the shift from 2,465 to 2,476 matched dates primarily focusing on 2016-11-16, without explicitly explaining that the requested start date of 2016-11-01 added 10 dual-source trading sessions prior to 2016-11-16.",
+      "evidence_reference": "research/forecasting_readiness/nifty50_verification/NIFTY50_VERIFICATION_REPORT.md#L10-L13"
+    },
+    {
+      "issue": "Historical raw OHLCV non-persistence",
+      "detail": "The November 14 audit scripts did not archive raw provider OHLCV CSVs, leaving price_reconciliation.csv as the sole historical record. Full raw OHLCV equivalence cannot be verified beyond close price.",
+      "evidence_reference": "research/data_verification_remediation/price_reconciliation.csv"
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "audit_stage": "Stage 6 — Integrated Readiness Decision",
+  "audit_date": "2026-11-15",
+  "instrument": "NIFTY_50",
+  "readiness_classification": "PARTIALLY_READY",
+  "previous_readiness": "PARTIALLY_READY",
+  "promotion_decision": "NOT_PROMOTED",
+  "evidence_status": "PARTIALLY_VERIFIED",
+  "evidence_reference": "research/datasets/nifty50/combined_acceptance_audit/FINAL_READINESS_REPORT.md",
+  "source_type": "integrated_research_audit",
+  "assessment": "NIFTY 50 satisfies core technical prerequisites for baseline specification on 2,475 dual-source verified observations. However, five calendar dates remain unverified, 13 dates lack secondary provider corroboration, and cross-asset constituents lack independent verification. Readiness is retained at PARTIALLY_READY.",
+  "decision": "RETAIN_PARTIALLY_READY",
+  "reason": "Material calendar and provider coverage gaps remain unresolved. Promoting to RESEARCH_READY would violate strict evidence standards.",
+  "acceptance_criteria_evaluation": {
+    "source_reconciliation_overlapping_records": {
+      "assessment": "2,476 overlapping dates match within 0.01 abs / 0.0001 rel tolerance with 0 mismatches",
+      "test_result": "PASS",
+      "evidence_status": "VERIFIED",
+      "evidence_reference": "research/datasets/nifty50/nifty50_aligned.csv"
+    },
+    "dual_source_provider_coverage": {
+      "assessment": "Yahoo Finance lacks coverage for 13 NSE-only dates (9 special sessions + 4 unverified sessions)",
+      "test_result": "FAIL",
+      "evidence_status": "PARTIALLY_VERIFIED",
+      "evidence_reference": "research/datasets/nifty50/excluded_observations.csv"
+    },
+    "exchange_calendar_verification": {
+      "assessment": "5 dates remain UNVERIFIED for official capital-market equity session status",
+      "test_result": "FAIL",
+      "evidence_status": "UNVERIFIED",
+      "evidence_reference": "research/datasets/nifty50/combined_acceptance_audit/unresolved_dates_assessment.csv"
+    },
+    "leakage_and_chronological_isolation": {
+      "assessment": "Expanding-window walk-forward splits, causal feature engineering, and embargo buffers are verified",
+      "test_result": "PASS",
+      "evidence_status": "VERIFIED",
+      "evidence_reference": "research/datasets/nifty50/combined_acceptance_audit/leakage_audit_checklist.json"
+    },
+    "baseline_validation_specification": {
+      "assessment": "Previous-close and zero-return baseline specifications on 2,475 included sessions are complete",
+      "test_result": "PASS",
+      "evidence_status": "VERIFIED",
+      "evidence_reference": "research/datasets/nifty50/combined_acceptance_audit/baseline_validation_specification.md"
+    }
+  },
+  "remaining_blockers": [
+    {
+      "blocker_id": "BLK-01",
+      "description": "Five dates (2016-11-16, 2018-01-01, 2019-01-01, 2019-02-13, 2019-03-29) lack official capital-market session circular verification.",
+      "evidence_status": "UNVERIFIED",
+      "remediation_action": "Retrieve positive official NSE equity trading circulars or formalize a project-wide exclusion waiver."
+    },
+    {
+      "blocker_id": "BLK-02",
+      "description": "Yahoo Finance omits 13 dates present in official NSE Indices, including 9 verified special sessions.",
+      "evidence_status": "PARTIALLY_VERIFIED",
+      "remediation_action": "Retain strict segregation between regular 375-min market sessions and 60-min special sessions."
+    },
+    {
+      "blocker_id": "BLK-03",
+      "description": "Absence of independent secondary price feeds for cross-asset constituents (BHARTIARTL, TCS, NIFTY Telecommunications).",
+      "evidence_status": "UNVERIFIED",
+      "remediation_action": "Acquire independent secondary price and corporate-action series before resuming ensemble or sectoral experiments."
+    }
+  ],
+  "limitations": "The November 14 raw OHLCV series was not preserved; snapshot equivalence is certified on close prices."
+}
