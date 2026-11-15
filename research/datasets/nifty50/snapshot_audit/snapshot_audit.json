@@ -1,0 +1,75 @@
+{
+  "audit_name": "NIFTY_50_SNAPSHOT_EQUIVALENCE_AUDIT",
+  "audit_date": "2026-11-15",
+  "verdict": "PARTIAL_MATCH",
+  "verdict_summary": "The November 15, 2026 frozen snapshot is a PARTIAL_MATCH (extended superset) with the earlier November 14, 2026 snapshot. For all 2,478 shared NSE observations and all 2,466 shared Yahoo observations, close prices are 100.0% numerically identical with zero drift. However, exact equivalence is not established because the date sets differ (Nov 15 requested start was 2016-11-01 adding 10 earlier trading days), on 2016-11-16 the NSE Indices provider endpoint returned an observation absent in the Nov 14 snapshot, and earlier Nov 14 raw OHLCV files were not persisted independently.",
+  "source_artifacts": {
+    "earlier_snapshot": {
+      "file": "research/data_verification_remediation/price_reconciliation.csv",
+      "retrieval_date": "2026-11-14",
+      "retrieval_parameters": "START = datetime.now() - timedelta(days=3650) (approx 2016-11-16 to 2026-11-13)",
+      "total_rows_nifty50": 2479,
+      "date_min": "2016-11-16",
+      "date_max": "2026-11-13",
+      "nse_records_count": 2478,
+      "yahoo_records_count": 2466,
+      "matched_count": 2465,
+      "unmatched_count": 14,
+      "raw_ohlcv_available": false,
+      "provenance_limitation": "Full OHLCV (open, high, low, volume) was not persisted as separate CSVs in Nov 14 audit; only close prices exist in price_reconciliation.csv."
+    },
+    "current_frozen_snapshot": {
+      "files": [
+        "research/datasets/nifty50/nifty50_nse_indices_raw.csv",
+        "research/datasets/nifty50/nifty50_yahoo_raw.csv",
+        "research/datasets/nifty50/nifty50_aligned.csv",
+        "research/datasets/nifty50/excluded_observations.csv",
+        "research/datasets/nifty50/dataset_manifest.json"
+      ],
+      "retrieval_date": "2026-11-15",
+      "retrieval_parameters": "START = 2016-11-01, END = 2026-11-15 (actual 2016-11-01 to 2026-11-13)",
+      "total_rows": 2489,
+      "date_min": "2016-11-01",
+      "date_max": "2026-11-13",
+      "nse_records_count": 2489,
+      "yahoo_records_count": 2476,
+      "matched_count": 2476,
+      "unmatched_count": 13,
+      "raw_ohlcv_available": true
+    }
+  },
+  "comparison_metrics": {
+    "total_unique_dates_combined": 2489,
+    "common_dates_count": 2479,
+    "dates_only_in_nov15_count": 10,
+    "dates_only_in_nov14_count": 0,
+    "nse_close_price_comparison": {
+      "overlapping_dates_count": 2478,
+      "exact_matches_count": 2478,
+      "differences_count": 0,
+      "difference_percentage": 0.0
+    },
+    "yahoo_close_price_comparison": {
+      "overlapping_dates_count": 2466,
+      "exact_matches_count": 2466,
+      "differences_count": 0,
+      "difference_percentage": 0.0
+    },
+    "endpoint_coverage_change_20161116": {
+      "date": "2016-11-16",
+      "nov14_nse_status": "MISSING_FROM_PRIMARY (None)",
+      "nov15_nse_status": "PRESENT (8111.60)",
+      "nov14_yahoo_status": "PRESENT (8111.60009765625)",
+      "nov15_yahoo_status": "PRESENT (8111.60009765625)",
+      "price_agreement_nov15": "MATCHED (abs_diff = 0.00009765625 <= 0.01 tolerance)",
+      "finding": "The endpoint behavior changed between retrievals: 2016-11-16 was returned by NSE Indices on Nov 15 but was omitted on Nov 14."
+    }
+  },
+  "verdict_criteria_evaluation": {
+    "EXACT_MATCH": false,
+    "COUNT_ONLY_MATCH": false,
+    "NOT_VERIFIABLE": false,
+    "PARTIAL_MATCH": true,
+    "evaluation_detail": "EXACT_MATCH fails because date sets differ (10 extra dates in Nov 15) and 2016-11-16 presence differs on NSE. COUNT_ONLY_MATCH fails because record-level prices on overlapping dates match with 100% precision rather than merely agreeing in total count. NOT_VERIFIABLE is rejected because historical close prices are fully preserved in price_reconciliation.csv and verifiable. PARTIAL_MATCH is confirmed: an exact subset/superset match with perfect price consistency across all overlapping observations."
+  }
+}
