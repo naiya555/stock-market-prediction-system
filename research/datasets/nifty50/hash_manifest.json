@@ -1,0 +1,11 @@
+{
+  "algorithm": "sha256",
+  "generated_at": "2026-11-15T16:30:04.017046+00:00",
+  "hashes": {
+    "nifty50_nse_indices_raw.csv": "fd65f0dad5fb81c2f693df8c423447067ca9240584913881b3b6cf85b04af4c1",
+    "nifty50_yahoo_raw.csv": "dae00e6673cdc8f1768b8d92886798221662a8d2d30de9d97d1561194fa87e55",
+    "nifty50_aligned.csv": "9fc9bdf536c3402c8fe0e9ed7f1eea4723cb19d6a841824b4480f781143bb869",
+    "excluded_observations.csv": "1547ae741481d2eb4b4e7c0e418e57430ae366797325bb43ba4fcb743b94cb0c",
+    "dataset_manifest.json": "95a91a3f5fbd8ed5dff70d6eb6162206b3d9042224f60b9c1d2a64cb5783d233"
+  }
+}

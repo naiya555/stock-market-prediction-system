@@ -1,0 +1,38 @@
+{
+  "dataset_name": "NIFTY_50_FROZEN_RESEARCH_DATASET",
+  "generated_at": "2026-11-15T16:30:04.017046+00:00",
+  "date_range": {
+    "requested_start": "2016-11-01",
+    "requested_end": "2026-11-15",
+    "actual_start": "2016-11-01",
+    "actual_end": "2026-11-13"
+  },
+  "record_counts": {
+    "total_unique_dates": 2489,
+    "nse_indices_raw_records": 2489,
+    "yahoo_finance_raw_records": 2476,
+    "overlapping_dates": 2476,
+    "matched_within_tolerance": 2476,
+    "mismatched_observations": 0,
+    "nse_only_observations": 13,
+    "yahoo_only_observations": 0,
+    "included_observations": 2475,
+    "excluded_observations": 14
+  },
+  "reconciliation_parameters": {
+    "tolerance_absolute": 0.01,
+    "tolerance_relative": 0.0001
+  },
+  "calendar_breakdown": {
+    "verified_special_sessions": 9,
+    "unresolved_calendar_dates": 5,
+    "calendar_unverified_matched_sessions": 2475
+  },
+  "unresolved_dates_list": [
+    "2016-11-16",
+    "2018-01-01",
+    "2019-01-01",
+    "2019-02-13",
+    "2019-03-29"
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "report_name": "NIFTY_50_DATASET_QUALITY_REPORT",
+  "verified_at": "2026-11-15T16:30:04.017046+00:00",
+  "overall_result": "PASS_WITH_WARNINGS",
+  "checks": {
+    "hash_integrity": {
+      "status": "PASS",
+      "verified_files_count": 5,
+      "details": {
+        "nifty50_nse_indices_raw.csv": {
+          "expected": "fd65f0dad5fb81c2f693df8c423447067ca9240584913881b3b6cf85b04af4c1",
+          "actual": "fd65f0dad5fb81c2f693df8c423447067ca9240584913881b3b6cf85b04af4c1",
+          "matches": true
+        },
+        "nifty50_yahoo_raw.csv": {
+          "expected": "dae00e6673cdc8f1768b8d92886798221662a8d2d30de9d97d1561194fa87e55",
+          "actual": "dae00e6673cdc8f1768b8d92886798221662a8d2d30de9d97d1561194fa87e55",
+          "matches": true
+        },
+        "nifty50_aligned.csv": {
+          "expected": "9fc9bdf536c3402c8fe0e9ed7f1eea4723cb19d6a841824b4480f781143bb869",
+          "actual": "9fc9bdf536c3402c8fe0e9ed7f1eea4723cb19d6a841824b4480f781143bb869",
+          "matches": true
+        },
+        "excluded_observations.csv": {
+          "expected": "1547ae741481d2eb4b4e7c0e418e57430ae366797325bb43ba4fcb743b94cb0c",
+          "actual": "1547ae741481d2eb4b4e7c0e418e57430ae366797325bb43ba4fcb743b94cb0c",
+          "matches": true
+        },
+        "dataset_manifest.json": {
+          "expected": "95a91a3f5fbd8ed5dff70d6eb6162206b3d9042224f60b9c1d2a64cb5783d233",
+          "actual": "95a91a3f5fbd8ed5dff70d6eb6162206b3d9042224f60b9c1d2a64cb5783d233",
+          "matches": true
+        }
+      }
+    },
+    "source_record_counts": {
+      "status": "PASS",
+      "nse_indices_raw_count": 2489,
+      "yahoo_finance_raw_count": 2476,
+      "aligned_count": 2489,
+      "excluded_count": 14
+    },
+    "duplicate_dates": {
+      "status": "PASS",
+      "duplicate_dates_found": 0
+    },
+    "date_ordering": {
+      "status": "PASS",
+      "detail": "Strict chronological ascending order verified across all datasets"
+    },
+    "invalid_prices": {
+      "status": "PASS",
+      "detail": "All price values are finite, positive, and non-zero"
+    },
+    "price_reconciliation_tolerance": {
+      "status": "PASS",
+      "overlapping_observations": 2476,
+      "matched_within_tolerance": 2476,
+      "mismatched_observations": 0,
+      "tolerance_absolute": 0.01,
+      "tolerance_relative": 0.0001
+    },
+    "schema_integrity": {
+      "status": "PASS",
+      "detail": "All canonical aligned and excluded column schemas match specification"
+    },
+    "unresolved_calendar_dates": {
+      "status": "WARNING",
+      "unresolved_dates_count": 5,
+      "unresolved_dates": [
+        "2016-11-16",
+        "2018-01-01",
+        "2019-01-01",
+        "2019-02-13",
+        "2019-03-29"
+      ],
+      "detail": "Exactly 5 documented dates remain UNVERIFIED for official exchange-calendar classification (2016-11-16, 2018-01-01, 2019-01-01, 2019-02-13, 2019-03-29). These are handled per policy and excluded from the verified research baseline."
+    },
+    "raw_snapshot_preservation": {
+      "status": "PASS",
+      "detail": "Source records preserved exactly in separate raw files with original precision. Zero interpolation, zero forward-fill, zero artificial price synthesis."
+    }
+  }
+}

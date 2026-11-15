@@ -1,0 +1,243 @@
+{
+  "dataset_name": "NIFTY 50 Frozen Research Dataset",
+  "dataset_id": "nifty50_frozen_research_v1",
+  "status": "FROZEN_RESEARCH_ONLY",
+  "created_at": "2026-11-15T16:30:04.017046+00:00",
+  "environment": {
+    "python_version": "3.14.7 (tags/v3.14.7:823f032, Aug  5 2026, 10:51:32) [MSC v.1944 64 bit (AMD64)]",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "host_os": "Windows"
+  },
+  "providers": [
+    {
+      "name": "NSE Indices Limited (niftyindices.com)",
+      "role": "Primary Official Index Provider",
+      "adapter": "app.market.providers.nifty_indices_provider.NiftyIndicesProvider",
+      "endpoint": "https://www.niftyindices.com/BackPage/getHistoricaldatatabletoString",
+      "symbol": "NIFTY_50",
+      "official_name": "Nifty 50",
+      "retrieval_date": "2026-11-15",
+      "requested_date_range": [
+        "2016-11-01",
+        "2026-11-15"
+      ],
+      "actual_date_range": [
+        "2016-11-01",
+        "2026-11-13"
+      ],
+      "row_count": 2489,
+      "is_close_only": false,
+      "volume_reported": false
+    },
+    {
+      "name": "Yahoo Finance (yfinance)",
+      "role": "Secondary Market Data Provider / Independent Cross-Check",
+      "adapter": "app.market.providers.yfinance_provider.YFinanceProvider",
+      "ticker": "^NSEI",
+      "symbol": "NIFTY_50",
+      "retrieval_date": "2026-11-15",
+      "requested_date_range": [
+        "2016-11-01",
+        "2026-11-15"
+      ],
+      "actual_date_range": [
+        "2016-11-01",
+        "2026-11-13"
+      ],
+      "row_count": 2476,
+      "is_close_only": false,
+      "volume_reported": true
+    }
+  ],
+  "schemas": {
+    "nifty50_nse_indices_raw.csv": [
+      {
+        "name": "date",
+        "type": "string (ISO 8601 YYYY-MM-DD)",
+        "description": "Trading date"
+      },
+      {
+        "name": "open",
+        "type": "float",
+        "description": "Opening price"
+      },
+      {
+        "name": "high",
+        "type": "float",
+        "description": "Day high price"
+      },
+      {
+        "name": "low",
+        "type": "float",
+        "description": "Day low price"
+      },
+      {
+        "name": "close",
+        "type": "float",
+        "description": "Closing price"
+      },
+      {
+        "name": "volume",
+        "type": "integer",
+        "description": "Reported volume (0 if not reported)"
+      },
+      {
+        "name": "source",
+        "type": "string",
+        "description": "Provider identifier (nifty_indices)"
+      }
+    ],
+    "nifty50_yahoo_raw.csv": [
+      {
+        "name": "date",
+        "type": "string (ISO 8601 YYYY-MM-DD)",
+        "description": "Trading date"
+      },
+      {
+        "name": "open",
+        "type": "float",
+        "description": "Opening price with original precision"
+      },
+      {
+        "name": "high",
+        "type": "float",
+        "description": "Day high price with original precision"
+      },
+      {
+        "name": "low",
+        "type": "float",
+        "description": "Day low price with original precision"
+      },
+      {
+        "name": "close",
+        "type": "float",
+        "description": "Closing price with original precision"
+      },
+      {
+        "name": "volume",
+        "type": "integer",
+        "description": "Trading volume"
+      },
+      {
+        "name": "source",
+        "type": "string",
+        "description": "Provider identifier (yfinance)"
+      }
+    ],
+    "nifty50_aligned.csv": [
+      {
+        "name": "date",
+        "type": "string",
+        "description": "Canonical trading date (YYYY-MM-DD)"
+      },
+      {
+        "name": "nse_indices_close",
+        "type": "float",
+        "description": "Primary close price from NSE Indices"
+      },
+      {
+        "name": "yahoo_finance_close",
+        "type": "float",
+        "description": "Secondary close price from Yahoo Finance"
+      },
+      {
+        "name": "absolute_difference",
+        "type": "float",
+        "description": "abs(nse_close - yf_close)"
+      },
+      {
+        "name": "relative_difference",
+        "type": "float",
+        "description": "abs_diff / nse_close"
+      },
+      {
+        "name": "source_availability",
+        "type": "string",
+        "description": "BOTH | NSE_ONLY | YAHOO_ONLY"
+      },
+      {
+        "name": "reconciliation_status",
+        "type": "string",
+        "description": "MATCHED | MISMATCHED | NSE_ONLY | YAHOO_ONLY"
+      },
+      {
+        "name": "calendar_classification",
+        "type": "string",
+        "description": "SPECIAL_SESSION | UNVERIFIED | CALENDAR_UNVERIFIED"
+      },
+      {
+        "name": "verification_status",
+        "type": "string",
+        "description": "VERIFIED | UNVERIFIED | DATA_MATCHED_CALENDAR_UNVERIFIED"
+      },
+      {
+        "name": "inclusion_status",
+        "type": "string",
+        "description": "INCLUDED | EXCLUDED_UNRESOLVED_CALENDAR | EXCLUDED_SECONDARY_UNAVAILABLE_SPECIAL_SESSION | EXCLUDED_SECONDARY_UNAVAILABLE_UNVERIFIED"
+      }
+    ],
+    "excluded_observations.csv": [
+      {
+        "name": "date",
+        "type": "string",
+        "description": "Trading date"
+      },
+      {
+        "name": "available_source",
+        "type": "string",
+        "description": "Source(s) having an observation"
+      },
+      {
+        "name": "missing_source",
+        "type": "string",
+        "description": "Source lacking an observation"
+      },
+      {
+        "name": "available_close_value",
+        "type": "string",
+        "description": "Close value(s) in available source(s)"
+      },
+      {
+        "name": "calendar_classification",
+        "type": "string",
+        "description": "Official calendar status"
+      },
+      {
+        "name": "official_evidence_reference",
+        "type": "string",
+        "description": "Circular or archive reference"
+      },
+      {
+        "name": "inclusion_exclusion_decision",
+        "type": "string",
+        "description": "EXCLUDED"
+      },
+      {
+        "name": "reason",
+        "type": "string",
+        "description": "Detailed justification"
+      },
+      {
+        "name": "verification_status",
+        "type": "string",
+        "description": "VERIFIED | UNVERIFIED"
+      }
+    ]
+  },
+  "alignment_and_reconciliation_rules": {
+    "date_alignment": "Full outer join on calendar date (YYYY-MM-DD); zero interpolation, forward-filling, or price fabrication",
+    "tolerance_absolute": 0.01,
+    "tolerance_relative": 0.0001,
+    "match_condition": "abs_diff <= tolerance_absolute OR rel_diff <= tolerance_relative"
+  },
+  "inclusion_exclusion_policy": {
+    "INCLUDED": "Observations present in both providers matching within tolerance, without unresolved calendar blockers (2,475 rows)",
+    "EXCLUDED_UNRESOLVED_CALENDAR": "Overlapping observation where official calendar classification remains unverified and prior snapshot lacked NSE data (2016-11-16, 1 row)",
+    "EXCLUDED_SECONDARY_UNAVAILABLE_SPECIAL_SESSION": "Verified official NSE special trading sessions omitted by Yahoo Finance (9 rows)",
+    "EXCLUDED_SECONDARY_UNAVAILABLE_UNVERIFIED": "NSE-only weekday dates omitted by Yahoo Finance with unverified calendar classification (4 rows)"
+  },
+  "unavailable_provenance_fields": [
+    "Exact sub-second bar timestamp from upstream Yahoo Finance feed",
+    "Individual official exchange circulars for standard regular trading sessions (NSE only publishes special sessions and holiday circulars)"
+  ]
+}
