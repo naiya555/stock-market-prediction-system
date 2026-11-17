@@ -1,0 +1,91 @@
+{
+  "audit_stage": "Stage 2 — Verify 1/3/5-Session Target Generation",
+  "audit_date": "2026-11-17",
+  "evidence_status": "PARTIALLY_VERIFIED",
+  "source_type": "codebase_inspection",
+  "target_modules_inspected": [
+    "app/prediction/target.py",
+    "app/training/feature_matrix.py",
+    "app/training/regression_phase4.py"
+  ],
+  "verification_items": [
+    {
+      "item_id": "TGT-01",
+      "requirement": "Support for 1-session, 3-session, and 5-session target generation in core prediction engine",
+      "code_reference": "app/prediction/target.py#L178-L238",
+      "test_result": "FAIL",
+      "evidence_status": "PARTIALLY_VERIFIED",
+      "assessment": "The production module app/prediction/target.py strictly implements single-session (h=1) target generation via generate_direction_targets(). Multi-session horizons (h=3, h=5) are not implemented in the primary target module; they exist only as research helper _target_frame() in app/training/regression_phase4.py.",
+      "gap_type": "MISSING_CORE_IMPLEMENTATION",
+      "decision": "REMEDIATION_REQUIRED",
+      "remediation": "Implement parameterized generate_multi_horizon_targets(records, horizons=[1, 3, 5]) in app/prediction/target.py."
+    },
+    {
+      "item_id": "TGT-02",
+      "requirement": "Prevention of silent entry of excluded observations into target construction",
+      "code_reference": "app/prediction/target.py#L196-L238",
+      "test_result": "FAIL",
+      "evidence_status": "CONTRADICTED",
+      "assessment": "app/prediction/target.py blindly iterates sorted_records[t + 1]. If an unfiltered dataset containing the 14 excluded dates (e.g. 60-min Sunday Diwali Muhurat sessions or unverified New Year dates) is passed, target.py silently pairs Friday regular close with Sunday 1-hour close without warning.",
+      "gap_type": "SILENT_LEAKAGE_VULNERABILITY",
+      "decision": "REMEDIATION_REQUIRED",
+      "remediation": "Create an authoritative NIFTY 50 research data loader that strictly filters inclusion_status == 'INCLUDED' before invoking target generation."
+    },
+    {
+      "item_id": "TGT-03",
+      "requirement": "Zero calendar-day arithmetic in session horizons",
+      "code_reference": "app/prediction/target.py#L210-L215",
+      "test_result": "PASS",
+      "evidence_status": "VERIFIED",
+      "assessment": "Targets use sequence index stepping (sorted_records[t + 1]), not calendar timedelta (e.g. date + 1 day). Weekends and exchange holidays are naturally bridged as consecutive available sessions.",
+      "gap_type": "NONE",
+      "decision": "ACCEPT",
+      "remediation": "None required."
+    },
+    {
+      "item_id": "TGT-04",
+      "requirement": "Correct handling of missing future targets at series tail",
+      "code_reference": "app/prediction/target.py#L218-L224",
+      "test_result": "PASS",
+      "evidence_status": "VERIFIED",
+      "assessment": "In app/prediction/target.py, the final session t=N-1 strictly receives None for target_return, target_direction, and target_binary. In regression_phase4.py, frame['close'].shift(-horizon) generates NaN for the final h rows.",
+      "gap_type": "NONE",
+      "decision": "ACCEPT",
+      "remediation": "Ensure tail NaN drop is enforced across all multi-horizon outputs."
+    },
+    {
+      "item_id": "TGT-05",
+      "requirement": "Zero future information in feature calculations",
+      "code_reference": "app/training/feature_matrix.py#L54-L61",
+      "test_result": "PASS",
+      "evidence_status": "VERIFIED",
+      "assessment": "Feature matrix assembly strictly enforces FORBIDDEN_FEATURE_PATTERNS ('target', 'next_', 'future', 'outcome') to prevent forward leakage.",
+      "gap_type": "NONE",
+      "decision": "ACCEPT",
+      "remediation": "None required."
+    },
+    {
+      "item_id": "TGT-06",
+      "requirement": "Feature availability strictly matches prediction timestamp",
+      "code_reference": "app/market/indicators.py#L75-L120",
+      "test_result": "PASS",
+      "evidence_status": "VERIFIED",
+      "assessment": "All technical indicators (SMA, EMA, RSI, MACD, Bollinger, ATR) evaluate over historical rolling intervals ending at session close t.",
+      "gap_type": "NONE",
+      "decision": "ACCEPT",
+      "remediation": "None required."
+    }
+  ],
+  "specification_vs_implementation_differences": [
+    {
+      "difference_id": "DIFF-01",
+      "specification": "baseline_validation_specification.md specifies unified multi-horizon targets for h=1, 3, 5 sessions.",
+      "actual_implementation": "app/prediction/target.py only supports h=1. Horizons h=3 and h=5 only exist in isolated research script app/training/regression_phase4.py."
+    },
+    {
+      "difference_id": "DIFF-02",
+      "specification": "Excluded observations (14 sessions) must be barred from intervening in target calculations.",
+      "actual_implementation": "Target generation functions have no awareness of inclusion_status; they assume pre-cleaned inputs."
+    }
+  ]
+}

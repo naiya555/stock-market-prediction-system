@@ -1,0 +1,53 @@
+{
+  "audit_stage": "Stage 3 \u2014 Verify Walk-Forward Validation and Embargo",
+  "audit_date": "2026-11-17",
+  "implementation_reference": "app/training/walk_forward.py#L98-L200",
+  "evidence_status": "VERIFIED",
+  "source_type": "cross_validation_engine_inspection",
+  "horizons_audited": [
+    {
+      "horizon_sessions": 1,
+      "total_valid_samples": 2474,
+      "configured_embargo_sessions": 1,
+      "required_minimum_embargo": 1,
+      "is_embargo_sufficient": true,
+      "test_result": "PASS",
+      "evidence_status": "VERIFIED",
+      "assessment": "With embargo=1, the last training sample outcome is realized at t_end + 1 (the embargo session) and does not reach val_start (t_end + 2)."
+    },
+    {
+      "horizon_sessions": 3,
+      "total_valid_samples": 2472,
+      "configured_embargo_sessions": 3,
+      "required_minimum_embargo": 3,
+      "is_embargo_sufficient": true,
+      "test_result": "PASS",
+      "evidence_status": "VERIFIED",
+      "assessment": "With embargo=3, the last training sample outcome is realized at t_end + 3 (the final embargo session) and does not reach val_start (t_end + 4)."
+    },
+    {
+      "horizon_sessions": 5,
+      "total_valid_samples": 2470,
+      "configured_embargo_sessions": 5,
+      "required_minimum_embargo": 5,
+      "is_embargo_sufficient": true,
+      "test_result": "PASS",
+      "evidence_status": "VERIFIED",
+      "assessment": "With embargo=5, the last training sample outcome is realized at t_end + 5 (the final embargo session) and does not reach val_start (t_end + 6)."
+    }
+  ],
+  "critical_implementation_risk": {
+    "risk_id": "RISK-EMBARGO-DEFAULT",
+    "severity": "HIGH",
+    "finding": "app/training/walk_forward.py hardcodes a default embargo_sessions: int = 1. If multi-horizon targets (h=3 or h=5) are evaluated without explicitly overriding embargo_sessions=h, the training outcome will bleed 2 to 4 sessions into the validation window, causing lookahead label leakage.",
+    "evidence_status": "VERIFIED",
+    "code_reference": "app/training/walk_forward.py#L102",
+    "remediation": "Refactor generate_walk_forward_splits or create a baseline validation wrapper that dynamically enforces embargo_sessions >= horizon_sessions."
+  },
+  "identical_validation_dates_assessment": {
+    "assessment": "In app/training/walk_forward.py#evaluate_walk_forward_models, all baseline classifiers (MajorityClass, Random) and candidate models (XGBoost, LightGBM) iterate over the exact same fold.X_val and fold.y_val instances. Validation dates and sample indices are 100% identical across all compared models.",
+    "test_result": "PASS",
+    "evidence_status": "VERIFIED",
+    "code_reference": "app/training/walk_forward.py#L500-L580"
+  }
+}

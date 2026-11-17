@@ -1,0 +1,44 @@
+{
+  "audit_stage": "Stage 1 \u2014 Verify the 2,475 Observation Dataset",
+  "dataset_file": "research/datasets/nifty50/nifty50_aligned.csv",
+  "excluded_file": "research/datasets/nifty50/excluded_observations.csv",
+  "evidence_status": "VERIFIED",
+  "source_type": "frozen_dataset_inspection",
+  "total_aligned_records": 2489,
+  "total_included_records": 2475,
+  "total_excluded_records": 14,
+  "date_range": {
+    "start_date": "2016-11-01",
+    "end_date": "2026-11-13"
+  },
+  "integrity_checks": {
+    "duplicate_dates_count": 0,
+    "duplicates_test_result": "PASS",
+    "is_chronologically_sorted": true,
+    "sorting_test_result": "PASS",
+    "null_prices_count": 0,
+    "prices_test_result": "PASS",
+    "dual_source_corroboration_100_percent": true,
+    "corroboration_test_result": "PASS"
+  },
+  "included_classifications": {
+    "CALENDAR_UNVERIFIED": 2475
+  },
+  "included_verification_statuses": {
+    "DATA_MATCHED_CALENDAR_UNVERIFIED": 2475
+  },
+  "excluded_classifications": {
+    "SPECIAL_SESSION": 9,
+    "UNVERIFIED": 5
+  },
+  "excluded_verification_statuses": {
+    "VERIFIED": 9,
+    "UNVERIFIED": 5
+  },
+  "calendar_verification_assessment": {
+    "assessment": "Dual-source price identity (NSE Indices and Yahoo Finance match within 0.01 / 0.0001 tolerance) is 100% verified across all 2,475 included sessions. However, these sessions are classified as CALENDAR_UNVERIFIED because individual official exchange circulars for standard regular sessions are not archived by NSE (only holidays and special sessions are published). Overlapping price identity is corroborative evidence of trading activity, not formal regulatory calendar proof.",
+    "evidence_status": "CORROBORATED",
+    "decision": "ACCEPT_FOR_BASELINE_RESEARCH",
+    "reason": "Contiguous dual-source agreement across two independent market data provider backends confirms genuine market trading sessions without price synthesis."
+  }
+}
